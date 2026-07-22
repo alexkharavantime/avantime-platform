@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String           @id @default(cuid())
+  email     String           @unique
+  name      String
+  role      UserRole         @default(CLIENT)
+  active    Boolean          @default(true)
+  passwordHash String?
+  phone     String?
+  jobTitle  String?
+  company   Company?         @relation(fields: [companyId], references: [id])
+  companyId String?
+  requests  SupportRequest[]
+  messages  RequestMessage[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  passwordResetTokens PasswordResetToken[]
+  notificationPreference NotificationPreference?
+  emailMessages EmailMessage[]
+  knowledgeArticles KnowledgeArticle[]
+}
+
+model Company {
+  id        String           @id @default(cuid())
+  name      String
+  registrationNumber String?
+  address   String?
+  users     User[]
+  requests  SupportRequest[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model SupportRequest {
+  id          String           @id @default(cuid())
+  publicId    String           @unique
+  title       String
+  description String
+  category    String
+  priority    Priority         @default(NORMAL)
+  status      RequestStatus    @default(NEW)
+  jiraKey     String?
+  jiraSyncAt  DateTime?
+  dueAt       DateTime?
+  requester   User             @relation(fields: [requesterId], references: [id])
+  requesterId String
+  company     Company          @relation(fields: [companyId], references: [id])
+  companyId   String
+  messages    RequestMessage[]
+  auditEvents AuditEvent[]
+  attachments RequestAttachment[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RequestMessage {
+  id        String         @id @default(cuid())
+  body      String
+  author    User           @relation(fields: [authorId], references: [id])
+  authorId  String
+  request   SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId String
+  createdAt DateTime       @default(now())
+}
+
+enum UserRole {
+  CLIENT
+  ADMIN
+}
+
+enum RequestStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+model AuditEvent {
+  id        String         @id @default(cuid())
+  action    String
+  actorName String
+  request   SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId String
+  createdAt DateTime       @default(now())
+}
+
+model RequestAttachment {
+  id         String         @id @default(cuid())
+  name       String
+  mimeType   String
+  size       Int
+  storageKey String
+  request    SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId  String
+  createdAt  DateTime       @default(now())
+}
+
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model SystemEvent {
+  id        String   @id @default(cuid())
+  level     String   @default("INFO")
+  category  String
+  message   String
+  actorEmail String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+
+model NotificationPreference {
+  id String @id @default(cuid())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  requestCreated Boolean @default(true)
+  requestUpdated Boolean @default(true)
+  newMessage Boolean @default(true)
+  slaAlerts Boolean @default(true)
+  weeklySummary Boolean @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+model EmailMessage {
+  id String @id @default(cuid())
+  recipient String
+  subject String
+  textBody String
+  htmlBody String?
+  template String
+  status EmailStatus @default(PENDING)
+  attempts Int @default(0)
+  lastError String?
+  providerId String?
+  scheduledAt DateTime @default(now())
+  sentAt DateTime?
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, scheduledAt])
+}
+
+enum EmailStatus { PENDING SENDING SENT FAILED }
+
+
+model KnowledgeArticle {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  title       String
+  summary     String
+  category    String
+  tags        String[]        @default([])
+  readingTime String          @default("5 минут")
+  content     Json
+  status      ArticleStatus   @default(DRAFT)
+  author      User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorId    String?
+  publishedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  @@index([status, category])
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}

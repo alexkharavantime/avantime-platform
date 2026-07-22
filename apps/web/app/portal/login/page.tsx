@@ -1,0 +1,12 @@
+import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { LoginForm } from '../../../components/portal/login-form';
+import { PageShell } from '../../../components/page-shell';
+import { getSession } from '../../../lib/session';
+
+export const metadata: Metadata = { title: 'Вход в кабинет — Avantime' };
+
+export default async function LoginPage() {
+  if (await getSession()) redirect('/portal');
+  return <PageShell><section className="bg-slate-50 py-20"><div className="mx-auto max-w-md px-6"><div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl shadow-slate-950/5"><p className="eyebrow">Кабинет клиента</p><h1 className="mt-4 text-4xl font-black tracking-tight">Вход</h1><p className="mt-3 text-slate-600">Обращения, документы, статусы и база знаний в одном месте.</p><LoginForm /></div></div></section></PageShell>;
+}

@@ -1,0 +1,221 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { getPrisma } from '@avantime/database';
+
+export type RequestStatus = 'NEW' | 'IN_PROGRESS' | 'WAITING_CUSTOMER' | 'RESOLVED';
+export type RequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+
+export type AuditEvent = {
+  id: string;
+  action: string;
+  actorName: string;
+  createdAt: string;
+};
+
+export type RequestMessage = {
+  id: string;
+  body: string;
+  authorName: string;
+  createdAt: string;
+};
+
+export type SupportRequest = {
+  id: string;
+  title: string;
+  description: string;
+  status: RequestStatus;
+  priority: RequestPriority;
+  category: string;
+  createdAt: string;
+  updatedAt: string;
+  jiraKey?: string;
+  messages: RequestMessage[];
+  audit: AuditEvent[];
+  dueAt: string;
+  requesterName?: string;
+  requesterEmail?: string;
+  companyName?: string;
+};
+
+const seed: SupportRequest[] = [
+  {
+    id: 'AV-1042',
+    title: 'Обмен заказами с интернет-магазином',
+    description: 'Необходимо проверить задержку обмена заказами между сайтом и 1С.',
+    status: 'IN_PROGRESS',
+    priority: 'HIGH',
+    category: 'Интеграция',
+    createdAt: '2026-07-18T09:30:00.000Z',
+    updatedAt: '2026-07-21T08:15:00.000Z',
+    jiraKey: 'SUP-1042',
+    dueAt: '2026-07-20T09:30:00.000Z',
+    audit: [{ id: 'a1', action: 'Обращение переведено в работу', actorName: 'Avantime', createdAt: '2026-07-18T10:00:00.000Z' }],
+    messages: [
+      { id: 'm1', body: 'Обращение принято в работу.', authorName: 'Avantime', createdAt: '2026-07-18T10:00:00.000Z' },
+      { id: 'm2', body: 'Подготовлены журналы обмена за последние сутки.', authorName: 'Demo Client', createdAt: '2026-07-21T08:15:00.000Z' },
+    ],
+  },
+  {
+    id: 'AV-1037',
+    title: 'Ошибка загрузки банковской выписки',
+    description: 'После загрузки файла часть строк не распознается.',
+    status: 'WAITING_CUSTOMER',
+    priority: 'NORMAL',
+    category: '1С',
+    createdAt: '2026-07-16T11:00:00.000Z',
+    updatedAt: '2026-07-20T15:40:00.000Z',
+    dueAt: '2026-07-18T11:00:00.000Z',
+    audit: [],
+    messages: [],
+  },
+  {
+    id: 'AV-1018',
+    title: 'Добавить новое поле в отчет',
+    description: 'Добавить регистрационный номер контрагента в отчет по продажам.',
+    status: 'RESOLVED',
+    priority: 'LOW',
+    category: 'Доработка',
+    createdAt: '2026-07-08T07:20:00.000Z',
+    updatedAt: '2026-07-12T13:10:00.000Z',
+    jiraKey: 'SUP-1018',
+    dueAt: '2026-07-10T07:20:00.000Z',
+    audit: [],
+    messages: [],
+  },
+];
+
+const requests = [...seed];
+
+function databaseConfigured() {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+function mapDbRequest(item: any): SupportRequest {
+  return {
+    id: item.publicId,
+    title: item.title,
+    description: item.description,
+    status: item.status,
+    priority: item.priority,
+    category: item.category,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    jiraKey: item.jiraKey ?? undefined,
+    dueAt: item.dueAt?.toISOString() ?? new Date(item.createdAt.getTime() + 48 * 3600 * 1000).toISOString(),
+    requesterName: item.requester?.name ?? undefined,
+    requesterEmail: item.requester?.email ?? undefined,
+    companyName: item.company?.name ?? undefined,
+    audit: (item.auditEvents ?? []).map((event: any) => ({ id: event.id, action: event.action, actorName: event.actorName, createdAt: event.createdAt.toISOString() })),
+    messages: (item.messages ?? []).map((message: any) => ({
+      id: message.id,
+      body: message.body,
+      authorName: message.author?.name ?? 'Avantime',
+      createdAt: message.createdAt.toISOString(),
+    })),
+  };
+}
+
+export async function listRequests(): Promise<SupportRequest[]> {
+  if (databaseConfigured()) {
+    try {
+      const prisma = await getPrisma();
+      if (!prisma) throw new Error('Prisma unavailable');
+      const items = await prisma.supportRequest.findMany({ include: { requester: true, company: true, messages: { include: { author: true }, orderBy: { createdAt: 'asc' } }, auditEvents: { orderBy: { createdAt: 'desc' } } }, orderBy: { updatedAt: 'desc' } });
+      return (items as any[]).map(mapDbRequest);
+    } catch (error) {
+      console.warn('Database unavailable, using demo request store.', error);
+    }
+  }
+  return [...requests].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getRequest(id: string): Promise<SupportRequest | null> {
+  if (databaseConfigured()) {
+    try {
+      const prisma = await getPrisma();
+      if (!prisma) throw new Error('Prisma unavailable');
+      const item = await prisma.supportRequest.findUnique({ where: { publicId: id }, include: { requester: true, company: true, messages: { include: { author: true }, orderBy: { createdAt: 'asc' } }, auditEvents: { orderBy: { createdAt: 'desc' } } } });
+      return item ? mapDbRequest(item) : null;
+    } catch (error) {
+      console.warn('Database unavailable, using demo request store.', error);
+    }
+  }
+  return requests.find((item) => item.id === id) ?? null;
+}
+
+async function ensureDemoIdentity(prisma: any) {
+  const company = await prisma.company.upsert({ where: { id: 'demo-company' }, update: {}, create: { id: 'demo-company', name: 'Demo Company' } });
+  const user = await prisma.user.upsert({ where: { email: 'demo@avantime.lv' }, update: { companyId: company.id }, create: { id: 'demo-user', email: 'demo@avantime.lv', name: 'Demo Client', companyId: company.id } });
+  return { company, user };
+}
+
+export async function createRequest(input: Pick<SupportRequest, 'title' | 'description' | 'priority' | 'category'>): Promise<SupportRequest> {
+  if (databaseConfigured()) {
+    try {
+      const prisma = await getPrisma();
+      if (!prisma) throw new Error('Prisma unavailable');
+      const { company, user } = await ensureDemoIdentity(prisma);
+      const count = await prisma.supportRequest.count();
+      const dueAt = new Date(Date.now() + (input.priority === 'CRITICAL' ? 4 : input.priority === 'HIGH' ? 8 : 48) * 3600 * 1000);
+      const item = await prisma.supportRequest.create({ data: { publicId: `AV-${1043 + count}`, ...input, dueAt, requesterId: user.id, companyId: company.id, auditEvents: { create: { action: 'Обращение создано', actorName: 'Demo Client' } } }, include: { requester: true, company: true, messages: { include: { author: true } }, auditEvents: true } });
+      return mapDbRequest(item);
+    } catch (error) {
+      console.warn('Database unavailable, creating request in demo store.', error);
+    }
+  }
+  const number = 1043 + requests.filter((item) => Number(item.id.replace('AV-', '')) >= 1043).length;
+  const now = new Date().toISOString();
+  const dueHours = input.priority === 'CRITICAL' ? 4 : input.priority === 'HIGH' ? 8 : 48;
+  const request: SupportRequest = { id: `AV-${number}`, status: 'NEW', createdAt: now, updatedAt: now, dueAt: new Date(Date.now() + dueHours * 3600 * 1000).toISOString(), audit: [{ id: `a-${Date.now()}`, action: 'Обращение создано', actorName: 'Demo Client', createdAt: now }], messages: [], ...input };
+  requests.unshift(request);
+  return request;
+}
+
+export async function addRequestMessage(id: string, body: string, authorName = 'Demo Client'): Promise<SupportRequest | null> {
+  if (databaseConfigured()) {
+    try {
+      const prisma = await getPrisma();
+      if (!prisma) throw new Error('Prisma unavailable');
+      const item = await prisma.supportRequest.findUnique({ where: { publicId: id } });
+      if (!item) return null;
+      const { user } = await ensureDemoIdentity(prisma);
+      await prisma.requestMessage.create({ data: { body, authorId: user.id, requestId: item.id } });
+      await prisma.supportRequest.update({ where: { id: item.id }, data: { updatedAt: new Date() } });
+      return getRequest(id);
+    } catch (error) {
+      console.warn('Database unavailable, adding message to demo store.', error);
+    }
+  }
+  const request = requests.find((item) => item.id === id);
+  if (!request) return null;
+  const now = new Date().toISOString();
+  request.messages.push({ id: `m-${Date.now()}`, body, authorName, createdAt: now });
+  request.updatedAt = now;
+  return request;
+}
+
+export async function updateRequestStatus(
+  id: string,
+  status: RequestStatus,
+): Promise<SupportRequest | null> {
+  if (databaseConfigured()) {
+    try {
+      const prisma = await getPrisma();
+      if (!prisma) throw new Error('Prisma unavailable');
+      const item = await prisma.supportRequest.update({
+        where: { publicId: id },
+        data: { status, auditEvents: { create: { action: `Статус изменен: ${status}`, actorName: 'Администратор Avantime' } } },
+        include: { requester: true, company: true, messages: { include: { author: true }, orderBy: { createdAt: 'asc' } }, auditEvents: { orderBy: { createdAt: 'desc' } } },
+      });
+      return mapDbRequest(item);
+    } catch (error) {
+      console.warn('Database unavailable, updating request in demo store.', error);
+    }
+  }
+
+  const request = requests.find((item) => item.id === id);
+  if (!request) return null;
+  request.status = status;
+  request.audit.unshift({ id: `a-${Date.now()}`, action: `Статус изменен: ${status}`, actorName: 'Администратор Avantime', createdAt: new Date().toISOString() });
+  request.updatedAt = new Date().toISOString();
+  return request;
+}
