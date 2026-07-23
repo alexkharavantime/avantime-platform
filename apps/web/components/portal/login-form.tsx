@@ -1,3 +1,4 @@
+import Link from 'next/link';
 'use client';
 
 import { useState } from 'react';
@@ -47,7 +48,12 @@ export function LoginForm() {
       <label className="block"><span className="mb-2 block text-sm font-bold text-slate-700">Email</span><input value={email} onChange={(e)=>setEmail(e.target.value)} type="email" className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600" /></label>
       <label className="block"><span className="mb-2 block text-sm font-bold text-slate-700">Пароль</span><input value={password} onChange={(e)=>setPassword(e.target.value)} type="password" className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600" /></label>
       {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</p>}
-      <a href="/portal/forgot-password" className="block text-center text-sm font-bold text-blue-700">Забыли пароль?</a>
+      <Link
+  href="/portal/forgot-password"
+  className="block text-center text-sm font-bold text-blue-700"
+>
+  Забыли пароль?
+</Link>
       <button disabled={pending} className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60">{pending ? 'Входим…' : 'Войти'}</button>
       <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
         <p><strong>Клиент:</strong> demo@avantime.lv / avantime</p>
