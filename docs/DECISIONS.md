@@ -1102,6 +1102,90 @@ Avantime использует Codex для анализа, разработки,
 
 ---
 
+## ADR-0016
+
+**Название:** Production persistence документов через PostgreSQL и S3-compatible storage
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-27
+
+### Контекст
+
+Первая итерация TASK-002 ввела tenant-aware контракты, но metadata и объекты оставались в локальной `.data`. Production требует транзакционного metadata source, горизонтально доступного object storage, проверяемой миграции и восстановления после частичного сбоя удаления.
+
+### Варианты
+
+- сохранить локальные JSON и filesystem в production;
+- хранить metadata и бинарные объекты только в PostgreSQL;
+- использовать PostgreSQL для metadata и S3-compatible private bucket для объектов;
+- сразу внедрить отдельный document microservice.
+
+### Принятое решение
+
+Использовать PostgreSQL через `DocumentMetadataRepository` как production-источник metadata и S3-compatible private bucket через `DocumentStorage` как хранилище объектов. Конкретный S3-провайдер выбирается отдельно и не влияет на доменные/API-контракты.
+
+Каждый database query и object key содержит server-derived `companyId`. Metadata использует составной ключ `(companyId, id)`, SHA-256 checksum и soft delete. API не удаляет объект синхронно с metadata; физический cleanup выполняется отдельной повторяемой командой.
+
+Development сохраняет local adapters. Production configuration разрешает только PostgreSQL/S3 и работает fail-fast при неполных environment variables.
+
+### Альтернативы, которые были отклонены
+
+- локальный filesystem отклонён из-за отсутствия общей доступности, надёжной конкурентной записи и production backup;
+- хранение PDF в PostgreSQL отклонено из-за роста базы и смешения transactional/object workloads;
+- document microservice отклонён как преждевременное усложнение модульного монолита;
+- немедленное hard delete отклонено из-за риска потерять metadata при частичном сбое storage.
+
+### Причины выбора
+
+Решение соответствует ADR-0003 и ADR-0004, сохраняет обратимые repository/storage boundaries и позволяет независимо заменить S3-провайдера. Soft delete и checksum делают миграцию и удаление проверяемыми без внедрения очереди в текущей итерации.
+
+### Преимущества
+
+- обязательная tenant-изоляция на database и object-key уровнях;
+- PostgreSQL constraints и индексы для metadata;
+- горизонтально доступное object storage;
+- проверка целостности SHA-256;
+- безопасный повторный migration/cleanup;
+- отсутствие изменений UI и Document API contract.
+
+### Недостатки
+
+- требуются PostgreSQL и S3-compatible infrastructure;
+- нет атомарной транзакции между database и object storage;
+- cleanup пока запускается вручную;
+- private bucket, encryption, versioning и backup настраиваются вне приложения;
+- реальные integration tests требуют отдельного CI-окружения.
+
+### Последствия
+
+Deployment обязан создать private bucket с блокировкой публичного доступа, encryption, versioning и backup policy. Перед production cutover выполняются database migration, dry-run переноса, checksum verification и backup. Legacy `.data` автоматически не удаляется.
+
+### Откат
+
+До production cutover можно вернуть local drivers и повторить migration из неизменённой `.data`. После cutover откат требует восстановления PostgreSQL и bucket из backup либо управляемого удаления объектов и записей по migration report. Автоматический destructive rollback не допускается.
+
+### Влияние на архитектуру
+
+Решение затрагивает Document API, Prisma schema, deployment configuration, object storage, backup и operational cleanup, но не меняет UI, RBAC, PDF pipeline, lexical search или AI providers.
+
+### Связанные документы
+
+- `docs/ARCHITECTURE_2_0.md`, разделы 1 и 8;
+- `docs/tasks/TASK-002.md`;
+- `docs/ROADMAP.md`, Version 2.0;
+- `docs/PROJECT_STATUS.md`.
+
+### Связанные задачи Product Backlog
+
+- DOC-001;
+- PORTAL-003;
+- SEC-002;
+- SEC-006;
+- INFRA-001.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1109,7 +1193,7 @@ Avantime использует Codex для анализа, разработки,
 | Предлагаемая тема | Ожидаемая версия | Причина |
 |---|---|---|
 | Выбор механизма очередей и фоновых задач | Version 2.0 | Документы, Email, embeddings и интеграции не должны выполняться в пользовательском запросе |
-| Выбор S3-совместимого объектного хранилища | Version 2.0 | Требуется production-хранение документов и вложений |
+| Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0 | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup |
 | Использование `pgvector` и стратегия векторного поиска | Version 2.0 | Требуется подтвердить объём, индексы и порядок миграции |
 | Модель сессий, MFA и корпоративного входа | Version 2.0–3.0 | Требуется определить жизненный цикл identity |
 | Выбор системы кэша и rate limit | Version 2.0 | Требуется распределённая координация |
@@ -1121,7 +1205,7 @@ Avantime использует Codex для анализа, разработки,
 | Стратегия локальных LLM | Version 3.0 | Требуются изолированные и гибридные развёртывания |
 | Переход от `develop` к классическому GitHub Flow | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса |
 
-Следующий свободный номер: `ADR-0016`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0017`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 
@@ -1153,7 +1237,7 @@ Avantime использует Codex для анализа, разработки,
 - единую архитектуру клиентского кабинета;
 - RBAC и tenant-контекст;
 - механизм очередей;
-- объектное хранилище;
+- конкретного S3-провайдера и bucket policy;
 - secrets management;
 - мониторинг и аудит;
 - интеграционный контракт 1С;

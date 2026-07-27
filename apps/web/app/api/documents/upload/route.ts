@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
-import {
-  getDocumentTenantContext,
-  toDocumentApiItem,
-} from '../../../../lib/document-model';
-import {
-  deleteDocument,
-  getDocumentServices,
-} from '../../../../lib/document-services';
+import { getDocumentTenantContext, toDocumentApiItem } from '../../../../lib/document-model';
+import { deleteDocument, getDocumentServices } from '../../../../lib/document-services';
 import { extractPdfText } from '../../../../lib/pdf-extractor';
 
 export const runtime = 'nodejs';
@@ -29,10 +23,7 @@ export async function GET() {
   } catch (error) {
     console.error('Document list error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось получить список документов.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось получить список документов.' }, { status: 500 });
   }
 }
 
@@ -49,8 +40,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Файл не выбран.' }, { status: 400 });
     }
 
-    const isPdf =
-      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if (!isPdf) {
       return NextResponse.json(
         { error: 'Сейчас поддерживаются только PDF-файлы.' },
@@ -76,7 +66,9 @@ export async function POST(request: Request) {
     const pdfBuffer = Buffer.from(await file.arrayBuffer());
     const now = new Date().toISOString();
 
-    await services.storage.write(tenant, 'original', storedName, pdfBuffer);
+    const storedObject = await services.storage.write(tenant, 'original', storedName, pdfBuffer, {
+      contentType: 'application/pdf',
+    });
 
     let document;
     try {
@@ -87,6 +79,7 @@ export async function POST(request: Request) {
         storedName,
         mimeType: 'application/pdf',
         size: file.size,
+        checksum: storedObject.checksum,
         createdAt: now,
         updatedAt: now,
       });
@@ -126,10 +119,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Document upload error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось загрузить документ.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось загрузить документ.' }, { status: 500 });
   }
 }
 
@@ -142,10 +132,7 @@ export async function DELETE(request: Request) {
     const id = new URL(request.url).searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'Не указан идентификатор документа.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Не указан идентификатор документа.' }, { status: 400 });
     }
 
     const document = await deleteDocument(tenant, id);
@@ -157,9 +144,6 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error('Document delete error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось удалить документ.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось удалить документ.' }, { status: 500 });
   }
 }

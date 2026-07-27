@@ -1,6 +1,7 @@
 import type { AppSession } from './session';
 
 export const AVANTIME_DOCUMENT_COMPANY_ID = 'avantime';
+export const UNVERIFIED_DOCUMENT_CHECKSUM = '0'.repeat(64);
 
 export type DocumentTenantContext = {
   companyId: string;
@@ -26,8 +27,10 @@ export type DocumentMetadata = {
   storedName: string;
   mimeType: string;
   size: number;
+  checksum: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt: string | null;
   pages?: number;
   textLength?: number;
   processedAt?: string;

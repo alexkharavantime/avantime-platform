@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
-import { getDocumentTenantContext } from '../../../../lib/document-model';
+import {
+  getDocumentTenantContext,
+  UNVERIFIED_DOCUMENT_CHECKSUM,
+} from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
 
 export async function GET(request: Request) {
@@ -25,6 +28,11 @@ export async function GET(request: Request) {
       tenant,
       'original',
       document.storedName,
+      document.checksum === UNVERIFIED_DOCUMENT_CHECKSUM
+        ? undefined
+        : {
+            expectedChecksum: document.checksum,
+          },
     );
     if (!file) {
       return NextResponse.json({ error: 'Файл не найден.' }, { status: 404 });
@@ -34,18 +42,13 @@ export async function GET(request: Request) {
       status: 200,
       headers: {
         'Content-Type': document.mimeType,
-        'Content-Disposition': `inline; filename="${encodeURIComponent(
-          document.originalName,
-        )}"`,
+        'Content-Disposition': `inline; filename="${encodeURIComponent(document.originalName)}"`,
         'Cache-Control': 'private, no-store',
       },
     });
   } catch (error) {
     console.error('Document file error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось открыть документ.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось открыть документ.' }, { status: 500 });
   }
 }
