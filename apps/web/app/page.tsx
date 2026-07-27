@@ -1,90 +1,142 @@
+import Link from 'next/link';
 import { ContactForm } from '../components/contact-form';
 import { SiteHeader } from '../components/site-header';
 
-const solutions = [
+const secondarySolutions = [
   {
-    number: '01',
-    title: 'Внедрение и развитие 1С',
-    text: 'Проектируем учет и управленческие процессы, внедряем решения 1С, развиваем существующие конфигурации и сопровождаем пользователей.',
-    tags: ['Внедрение', 'Доработки', 'Сопровождение'],
+    label: 'AI',
+    title: 'AI в контуре вашей компании',
+    text: 'Ассистенты для базы знаний, документов и поддержки — с контролируемыми источниками и понятной ролью человека.',
+    href: '/solutions/ai',
+    accent: 'from-violet-500 to-blue-500',
+    icon: '✦',
   },
   {
-    number: '02',
-    title: 'AI для бизнес-процессов',
-    text: 'Создаем ассистентов и AI-агентов для работы с документами, знаниями, обращениями клиентов и внутренними операциями.',
-    tags: ['AI-ассистенты', 'RAG', 'Агенты'],
+    label: 'Cloud',
+    title: 'Надёжная облачная среда',
+    text: 'Размещение 1С и сервисов, резервное копирование, мониторинг, безопасный доступ и план восстановления.',
+    href: '/solutions/cloud',
+    accent: 'from-cyan-500 to-blue-500',
+    icon: '☁',
   },
   {
-    number: '03',
-    title: 'Agent+ и мобильная торговля',
-    text: 'Организуем работу торговых представителей: маршруты, заказы, остатки, цены, контроль задач и обмен с учетной системой.',
-    tags: ['Мобильные продажи', 'Маршруты', 'Обмен'],
+    label: 'Integrations',
+    title: 'Системы работают вместе',
+    text: 'Связываем 1С с сайтами, Jira, маркетплейсами, банками, API и ЭДО без повторного ввода данных.',
+    href: '/solutions/integrations',
+    accent: 'from-emerald-500 to-cyan-500',
+    icon: '⌁',
   },
   {
-    number: '04',
-    title: 'Интеграции и ЭДО',
-    text: 'Связываем 1С, сайты, Jira, маркетплейсы, API и системы электронного документооборота в единый цифровой контур.',
-    tags: ['API', 'Jira', 'ЭДО'],
-  },
-  {
-    number: '05',
-    title: 'Облачная инфраструктура',
-    text: 'Помогаем перейти к надежной инфраструктуре, организуем доступ, резервирование, мониторинг и безопасную работу сервисов.',
-    tags: ['Cloud', 'Мониторинг', 'Безопасность'],
-  },
-  {
-    number: '06',
-    title: 'Кабинеты и корпоративные порталы',
-    text: 'Создаем клиентские кабинеты, базы знаний и сервисные порталы с интеграцией в учетные и сервисные системы.',
-    tags: ['Личный кабинет', 'База знаний', 'Service desk'],
+    label: 'Agent+',
+    title: 'Продажи всегда в движении',
+    text: 'Маршруты, заказы, цены, остатки и задачи торгового представителя с двусторонним обменом с 1С.',
+    href: '/solutions/agent-plus',
+    accent: 'from-orange-500 to-rose-500',
+    icon: '↗',
   },
 ];
 
-const industries = [
-  ['Оптовая и розничная торговля', 'Управление ассортиментом, складами, заказами и распределенными точками.'],
-  ['Дистрибуция и FMCG', 'Мобильные продажи, маршруты, дебиторская задолженность и контроль исполнения.'],
-  ['Производство', 'Планирование, закупки, себестоимость, прослеживаемость и обмен данными.'],
-  ['Профессиональные услуги', 'Проекты, обращения, документы, знания и прозрачная работа с клиентами.'],
+const capabilities = [
+  ['01', 'Обследование', 'Разбираем процессы, роли, документы и данные. Формируем понятную карту изменений.'],
+  ['02', 'Внедрение', 'Настраиваем типовые решения 1С и дорабатываем только там, где это даёт бизнес-эффект.'],
+  ['03', 'Интеграции', 'Строим устойчивый обмен с внешними системами, контролем ошибок и журналированием.'],
+  ['04', 'Развитие', 'Поддерживаем пользователей, управляем очередью задач и планомерно развиваем систему.'],
 ];
 
-const insights = [
-  {
-    type: 'Практика',
-    title: 'Как подготовить компанию к внедрению AI без большого и рискованного проекта',
-    text: 'Начинаем с одного процесса, измеримого результата и контролируемой базы знаний.',
-  },
-  {
-    type: '1С',
-    title: 'Когда доработка 1С полезнее замены всей системы',
-    text: 'Разбираем признаки, при которых развитие текущей конфигурации дает быстрый эффект.',
-  },
-  {
-    type: 'Интеграции',
-    title: 'Клиентский кабинет, Jira и 1С: как разделить ответственность систем',
-    text: 'Архитектурный подход без дублирования данных и лишней сложности.',
-  },
+const outcomes = [
+  ['Единые данные', 'Продажи, склад, финансы и управление опираются на согласованную информацию.'],
+  ['Меньше ручной работы', 'Повторяемые операции автоматизированы, а сотрудники занимаются задачами, где нужен опыт.'],
+  ['Прозрачные процессы', 'Понятно, где находится документ, кто отвечает за следующий шаг и что требует внимания.'],
 ];
 
-const steps = [
-  ['Диагностика', 'Фиксируем бизнес-задачу, ограничения, данные и ожидаемый эффект.'],
-  ['Рабочий прототип', 'Быстро создаем первую версию решения на реальных сценариях.'],
-  ['Проверка', 'Тестируем с пользователями, измеряем результат и корректируем решение.'],
-  ['Развитие', 'Масштабируем только то, что подтвердило практическую ценность.'],
-];
+const industries = ['Оптовая торговля', 'Дистрибуция и FMCG', 'Производство', 'Профессиональные услуги'];
 
-function ArrowIcon() {
+function Arrow({ className = 'h-5 w-5' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M5 12h14M13 6l6 6-6 6" />
     </svg>
   );
 }
 
-function CheckIcon() {
+function Check() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
       <path d="m5 12 4 4L19 6" />
     </svg>
+  );
+}
+
+function OneCSystemVisual() {
+  return (
+    <div className="relative mx-auto w-full max-w-[590px]">
+      <div className="absolute -inset-8 rounded-full bg-blue-500/20 blur-3xl" />
+      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/90 p-4 shadow-2xl shadow-black/40 backdrop-blur sm:p-6">
+        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          </div>
+          <span className="rounded-full bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-blue-200">
+            Иллюстрация контура
+          </span>
+        </div>
+        <div className="grid gap-3 pt-4 sm:grid-cols-[0.72fr_1.28fr]">
+          <div className="rounded-2xl bg-white/[0.05] p-4">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-amber-300 to-amber-500 font-black text-slate-950">1С</span>
+              <div>
+                <p className="text-sm font-bold text-white">Контур учёта</p>
+                <p className="text-xs text-slate-500">единое ядро</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {['Продажи', 'Склад', 'Финансы', 'Закупки'].map((item, index) => (
+                <div key={item} className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs ${index === 0 ? 'bg-blue-500 text-white' : 'text-slate-400'}`}>
+                  <span>{item}</span><span>›</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-white p-4 text-slate-950">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Заказы</p>
+                <p className="mt-3 text-lg font-black">Единый поток</p>
+                <p className="mt-1 text-xs font-bold text-emerald-600">статусы под контролем</p>
+              </div>
+              <div className="rounded-2xl bg-blue-500 p-4 text-white">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-100">Операции</p>
+                <p className="mt-3 text-lg font-black">Автоматизация</p>
+                <p className="mt-1 text-xs text-blue-100">меньше ручного ввода</p>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-white/[0.06] p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-white">Обмен данными</p>
+                <p className="text-[10px] text-slate-500">мониторинг</p>
+              </div>
+              <div className="mt-4 flex items-end gap-1.5">
+                {[38, 55, 44, 72, 59, 84, 68, 96, 76, 88, 100, 84].map((height, index) => (
+                  <span key={index} className="flex-1 rounded-t bg-gradient-to-t from-blue-600 to-cyan-400" style={{ height: `${height * 0.42}px` }} />
+                ))}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {['Сайт', 'Jira', 'Agent+', 'ЭДО'].map((item) => (
+                  <span key={item} className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-slate-300">{item}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="absolute -bottom-5 -left-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 shadow-xl sm:-left-8">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-500/20 text-violet-300">✦</span>
+        <div><p className="text-xs font-bold text-white">AI-помощник</p><p className="text-[10px] text-slate-400">помогает разбирать ошибки</p></div>
+      </div>
+    </div>
   );
 }
 
@@ -93,322 +145,157 @@ export default function HomePage() {
     <main id="top" className="overflow-hidden bg-white text-slate-950">
       <SiteHeader />
 
-      <section className="relative border-b border-slate-200 bg-[linear-gradient(135deg,#f8fbff_0%,#eef5ff_52%,#f2fffc_100%)]">
-        <div className="hero-grid absolute inset-0 opacity-55" />
-        <div className="absolute -right-24 top-16 h-96 w-96 rounded-full bg-cyan-300/20 blur-3xl" />
-        <div className="absolute -left-24 bottom-0 h-80 w-80 rounded-full bg-blue-400/20 blur-3xl" />
-
-        <div className="relative mx-auto grid max-w-7xl gap-14 px-6 py-20 lg:grid-cols-[1.08fr_0.92fr] lg:items-center lg:py-28">
+      <section className="relative isolate min-h-[760px] overflow-hidden bg-[#07101f] text-white">
+        <div className="landing-grid absolute inset-0 opacity-30" />
+        <div className="absolute left-1/2 top-0 h-[650px] w-[650px] -translate-x-1/2 rounded-full bg-blue-600/20 blur-[130px]" />
+        <div className="absolute -right-48 bottom-0 h-[480px] w-[480px] rounded-full bg-cyan-500/10 blur-[100px]" />
+        <div className="relative mx-auto grid max-w-7xl gap-16 px-6 py-20 lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:py-28">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-sm font-bold text-blue-700 shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Практичная автоматизация с AI
+            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-200">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_#34d399]" />
+              Автоматизация бизнеса на базе 1С
             </div>
-            <h1 className="mt-7 max-w-4xl text-5xl font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
-              Технологии, которые
-              <span className="block bg-gradient-to-r from-blue-700 to-cyan-500 bg-clip-text text-transparent">
-                работают на бизнес
+            <h1 className="mt-8 max-w-3xl text-5xl font-black leading-[0.96] tracking-[-0.05em] sm:text-6xl lg:text-[5.2rem]">
+              1С, которая
+              <span className="block bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300 bg-clip-text text-transparent">
+                двигает бизнес
               </span>
+              вперёд
             </h1>
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-              Avantime внедряет 1С, развивает цифровые процессы и создает AI-решения, которые
-              помогают компаниям работать быстрее, прозрачнее и точнее.
+            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
+              Внедряем и развиваем 1С, соединяем её с AI, облаком и внешними сервисами. Один технологический партнёр — от диагностики до поддержки.
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <a
-                href="#contact"
-                className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-blue-600 px-7 font-bold text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700"
-              >
-                Обсудить проект <ArrowIcon />
+              <a href="#contact" className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-blue-500 px-7 font-black text-white shadow-xl shadow-blue-600/30 transition hover:-translate-y-0.5 hover:bg-blue-400">
+                Обсудить проект <Arrow />
               </a>
-              <a
-                href="#solutions"
-                className="inline-flex min-h-14 items-center justify-center rounded-full border border-slate-300 bg-white/70 px-7 font-bold text-slate-800 transition hover:border-blue-300 hover:bg-white"
-              >
-                Наши решения
-              </a>
+              <Link href="/solutions/1c" className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full border border-white/15 bg-white/[0.06] px-7 font-bold text-white transition hover:bg-white/10">
+                Как мы внедряем 1С
+              </Link>
             </div>
-            <div className="mt-10 grid max-w-2xl gap-4 text-sm font-semibold text-slate-700 sm:grid-cols-3">
-              {['Фокус на результате', 'Поэтапное внедрение', 'Единая архитектура'].map((item) => (
-                <div key={item} className="flex items-center gap-2">
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-emerald-100 text-emerald-700">
-                    <CheckIcon />
-                  </span>
-                  {item}
-                </div>
+            <div className="mt-10 flex flex-wrap gap-x-7 gap-y-3 text-sm text-slate-400">
+              {['Поэтапный запуск', 'Без остановки бизнеса', 'Поддержка после внедрения'].map((item) => (
+                <span key={item} className="flex items-center gap-2"><span className="text-emerald-400"><Check /></span>{item}</span>
               ))}
             </div>
           </div>
-
-          <div className="relative mx-auto w-full max-w-xl">
-            <div className="absolute -inset-8 rounded-[3rem] bg-blue-500/10 blur-2xl" />
-            <div className="relative rounded-[2rem] border border-white bg-slate-950 p-5 shadow-2xl shadow-blue-950/25 sm:p-7">
-              <div className="flex items-center justify-between border-b border-white/10 pb-5">
-                <div className="flex items-center gap-3">
-                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-white">
-                    AI
-                  </span>
-                  <div>
-                    <p className="font-bold text-white">Avantime Assistant</p>
-                    <p className="text-xs text-slate-400">Анализ бизнес-задачи</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">
-                  online
-                </span>
-              </div>
-
-              <div className="space-y-4 py-6">
-                <div className="max-w-[86%] rounded-2xl rounded-tl-sm bg-white/10 p-4 text-sm leading-6 text-slate-200">
-                  Что сейчас создает больше всего ручной работы?
-                </div>
-                <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-sm bg-blue-600 p-4 text-sm leading-6 text-white">
-                  Обращения клиентов приходят по почте, затем вручную переносятся в Jira и 1С.
-                </div>
-                <div className="max-w-[92%] rounded-2xl rounded-tl-sm bg-white/10 p-4 text-sm leading-6 text-slate-200">
-                  Предлагаю начать с единой формы обращения и автоматической маршрутизации. Затем
-                  подключить базу знаний и AI-классификацию запросов.
-                </div>
-              </div>
-
-              <div className="grid gap-3 border-t border-white/10 pt-5 sm:grid-cols-3">
-                {[
-                  ['−40%', 'ручных операций'],
-                  ['1 окно', 'для клиента'],
-                  ['24/7', 'доступ к знаниям'],
-                ].map(([value, label]) => (
-                  <div key={label} className="rounded-xl bg-white/5 p-3">
-                    <p className="text-xl font-black text-white">{value}</p>
-                    <p className="mt-1 text-xs text-slate-400">{label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <OneCSystemVisual />
         </div>
       </section>
 
       <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['1С', 'основа надежного учета'],
-            ['AI', 'ускорение ежедневной работы'],
-            ['Agent+', 'мобильные продажи'],
-            ['Интеграции', 'единый цифровой контур'],
-          ].map(([title, text]) => (
-            <div key={title} className="flex items-center gap-4">
-              <span className="h-10 w-1 rounded-full bg-gradient-to-b from-blue-600 to-cyan-400" />
-              <div>
-                <p className="font-black text-slate-950">{title}</p>
-                <p className="text-sm text-slate-500">{text}</p>
-              </div>
-            </div>
-          ))}
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-7 lg:flex-row lg:items-center lg:justify-between">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Единый цифровой контур</p>
+          <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-black text-slate-700 sm:gap-x-12">
+            {['1С:Предприятие', 'AI & RAG', 'Cloud', 'Agent+', 'API & ЭДО'].map((item) => <span key={item}>{item}</span>)}
+          </div>
         </div>
       </section>
 
       <section id="solutions" className="bg-slate-50 py-24 sm:py-28">
         <div className="mx-auto max-w-7xl px-6">
-          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
             <div>
-              <p className="eyebrow">Решения Avantime</p>
-              <h2 className="section-title mt-4">Автоматизация без разрыва между системами</h2>
+              <p className="eyebrow">1С — основа решений</p>
+              <h2 className="section-title mt-4">Не просто настройка. Рабочая система управления.</h2>
             </div>
             <p className="max-w-2xl text-lg leading-8 text-slate-600 lg:justify-self-end">
-              Мы рассматриваем учет, продажи, сервис, документы и данные как единый процесс. Это
-              позволяет внедрять изменения постепенно, не создавая новый технологический хаос.
+              Начинаем с реального процесса компании, а не с перечня функций. Сохраняем сильные стороны типового решения и добавляем ровно те изменения, которые нужны бизнесу.
             </p>
           </div>
 
-          <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {solutions.map((solution) => (
-              <a
-                href={`/solutions/${['1c', 'ai', 'agent-plus', 'integrations', 'cloud', 'portals'][Number(solution.number) - 1]}`}
-                key={solution.number}
-                className="group flex min-h-[330px] flex-col rounded-3xl border border-slate-200 bg-white p-7 transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-2xl hover:shadow-blue-950/10"
-              >
-                <div className="flex items-start justify-between">
-                  <span className="text-sm font-black tracking-[0.2em] text-blue-600">{solution.number}</span>
-                  <span className="grid h-10 w-10 place-items-center rounded-full bg-slate-100 text-slate-500 transition group-hover:bg-blue-600 group-hover:text-white">
-                    <ArrowIcon />
-                  </span>
+          <div className="mt-14 grid overflow-hidden rounded-[2rem] border border-slate-200 bg-white lg:grid-cols-4">
+            {capabilities.map(([number, title, text], index) => (
+              <article key={title} className={`relative p-7 lg:min-h-[300px] ${index < capabilities.length - 1 ? 'border-b border-slate-200 lg:border-b-0 lg:border-r' : ''}`}>
+                <span className="text-xs font-black tracking-[0.18em] text-blue-600">{number}</span>
+                <h3 className="mt-10 text-2xl font-black tracking-tight">{title}</h3>
+                <p className="mt-4 leading-7 text-slate-600">{text}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Link href="/solutions/1c" className="inline-flex items-center gap-2 font-black text-blue-600 transition hover:gap-3">Подробнее о 1С <Arrow /></Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-[#07101f] py-24 text-white sm:py-28">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">Больше возможностей</p>
+            <h2 className="mt-4 text-4xl font-black leading-tight tracking-[-0.04em] sm:text-6xl">Усиливаем 1С современными технологиями</h2>
+          </div>
+          <div className="mt-14 grid gap-5 md:grid-cols-2">
+            {secondarySolutions.map((item) => (
+              <Link href={item.href} key={item.label} className="group relative min-h-[330px] overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.045] p-7 transition hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.07] sm:p-9">
+                <div className={`absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br ${item.accent} opacity-15 blur-3xl transition group-hover:opacity-25`} />
+                <div className="relative flex h-full flex-col">
+                  <div className="flex items-start justify-between">
+                    <span className={`grid h-13 w-13 place-items-center rounded-2xl bg-gradient-to-br ${item.accent} text-xl font-black shadow-lg`}>{item.icon}</span>
+                    <span className="grid h-11 w-11 place-items-center rounded-full border border-white/10 text-slate-400 transition group-hover:border-white/20 group-hover:text-white"><Arrow /></span>
+                  </div>
+                  <p className="mt-10 text-xs font-black uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
+                  <h3 className="mt-3 text-3xl font-black tracking-tight">{item.title}</h3>
+                  <p className="mt-4 max-w-xl text-base leading-7 text-slate-400">{item.text}</p>
                 </div>
-                <h3 className="mt-8 text-2xl font-black tracking-tight">{solution.title}</h3>
-                <p className="mt-4 flex-1 leading-7 text-slate-600">{solution.text}</p>
-                <div className="mt-7 flex flex-wrap gap-2">
-                  {solution.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </a>
+              </Link>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="industries" className="py-24 sm:py-28">
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="max-w-3xl">
-            <p className="eyebrow">Отраслевой опыт</p>
-            <h2 className="section-title mt-4">Понимаем процессы, а не только технологии</h2>
-            <p className="mt-5 text-lg leading-8 text-slate-600">
-              Решение должно учитывать реальные роли сотрудников, движение документов, особенности
-              учета и привычный ритм компании.
-            </p>
+      <section id="approach" className="py-24 sm:py-28">
+        <div className="mx-auto grid max-w-7xl gap-14 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+          <div>
+            <p className="eyebrow">Результат для бизнеса</p>
+            <h2 className="section-title mt-4">Технологии должны упрощать работу</h2>
+            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">Оцениваем успех проекта не количеством доработок, а тем, насколько быстрее и точнее работает компания.</p>
+            <div className="mt-8 flex flex-wrap gap-2">
+              {industries.map((industry) => <span key={industry} className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-600">{industry}</span>)}
+            </div>
           </div>
-
-          <div className="mt-14 grid overflow-hidden rounded-3xl border border-slate-200 lg:grid-cols-2">
-            {industries.map(([title, text], index) => (
-              <article
-                key={title}
-                className={`group min-h-64 p-8 transition hover:bg-slate-950 hover:text-white sm:p-10 ${
-                  index % 2 === 0 ? 'lg:border-r lg:border-slate-200' : ''
-                } ${index < 2 ? 'border-b border-slate-200' : ''}`}
-              >
-                <span className="text-sm font-black text-blue-600 group-hover:text-cyan-300">0{index + 1}</span>
-                <h3 className="mt-8 text-2xl font-black">{title}</h3>
-                <p className="mt-4 max-w-xl leading-7 text-slate-600 group-hover:text-slate-300">{text}</p>
+          <div className="space-y-3">
+            {outcomes.map(([title, text], index) => (
+              <article key={title} className="group grid gap-5 rounded-2xl border border-slate-200 p-6 transition hover:border-blue-200 hover:bg-blue-50/40 sm:grid-cols-[64px_1fr] sm:items-start">
+                <span className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-950 text-lg font-black text-white transition group-hover:bg-blue-600">0{index + 1}</span>
+                <div><h3 className="text-xl font-black">{title}</h3><p className="mt-2 leading-7 text-slate-600">{text}</p></div>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="approach" className="bg-slate-950 py-24 text-white sm:py-28">
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
-            <div>
-              <p className="font-black uppercase tracking-[0.18em] text-cyan-300">Как мы работаем</p>
-              <h2 className="mt-4 text-4xl font-black leading-tight tracking-[-0.035em] sm:text-5xl">
-                От задачи к работающему результату
-              </h2>
-              <p className="mt-6 max-w-xl text-lg leading-8 text-slate-400">
-                Не начинаем с многомесячного проекта. Выбираем значимый сценарий, создаем рабочую
-                версию и развиваем ее на основе фактов.
-              </p>
-            </div>
-
-            <div className="grid gap-px overflow-hidden rounded-3xl bg-white/10 sm:grid-cols-2">
-              {steps.map(([title, text], index) => (
-                <article key={title} className="bg-slate-950 p-7 sm:p-8">
-                  <div className="flex items-center gap-4">
-                    <span className="grid h-11 w-11 place-items-center rounded-full border border-blue-400/40 bg-blue-500/10 font-black text-blue-300">
-                      {index + 1}
-                    </span>
-                    <h3 className="text-xl font-black">{title}</h3>
-                  </div>
-                  <p className="mt-5 leading-7 text-slate-400">{text}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-blue-600 py-16 text-white">
-        <div className="mx-auto grid max-w-7xl gap-8 px-6 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div>
-            <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-100">Первый шаг</p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
-              Найдем одну задачу, с которой стоит начать
-            </h2>
-          </div>
-          <a
-            href="#contact"
-            className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-white px-7 font-black text-blue-700 transition hover:-translate-y-0.5 hover:shadow-xl"
-          >
-            Назначить консультацию <ArrowIcon />
-          </a>
-        </div>
-      </section>
-
-      <section id="insights" className="bg-slate-50 py-24 sm:py-28">
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="eyebrow">Материалы и знания</p>
-              <h2 className="section-title mt-4">Практика цифровой трансформации</h2>
-            </div>
-            <span className="text-sm font-bold text-slate-500">Раздел подготовлен для подключения CMS</span>
-          </div>
-
-          <div className="mt-12 grid gap-5 lg:grid-cols-3">
-            {insights.map((item, index) => (
-              <a href={`/knowledge/${['ai-first-step', 'develop-or-replace-1c', 'portal-jira-1c'][index]}`} key={item.title} className="rounded-3xl border border-slate-200 bg-white p-7">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">{item.type}</p>
-                <h3 className="mt-6 text-2xl font-black leading-tight tracking-tight">{item.title}</h3>
-                <p className="mt-4 leading-7 text-slate-600">{item.text}</p>
-                <span className="mt-7 inline-flex items-center gap-2 font-bold text-blue-600">
-                  Читать материал <ArrowIcon />
-                </span>
-              </a>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="contact" className="relative overflow-hidden bg-[linear-gradient(135deg,#eff6ff,#ecfeff)] py-24 sm:py-28">
-        <div className="absolute -right-32 top-0 h-96 w-96 rounded-full bg-cyan-300/25 blur-3xl" />
+      <section id="contact" className="relative overflow-hidden bg-slate-100 py-24 sm:py-28">
+        <div className="absolute left-0 top-0 h-96 w-96 rounded-full bg-blue-300/20 blur-3xl" />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
           <div className="lg:sticky lg:top-28">
-            <p className="eyebrow">Связаться с Avantime</p>
-            <h2 className="section-title mt-4">Расскажите, что нужно улучшить</h2>
+            <p className="eyebrow">Первый шаг</p>
+            <h2 className="section-title mt-4">Обсудим, где 1С может работать лучше</h2>
             <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">
-              Подойдет даже краткое описание. На первой встрече определим задачу, возможный формат
-              решения и разумный следующий шаг.
+              Опишите текущую задачу. На первой встрече разберём контекст, определим приоритет и предложим реалистичный следующий шаг.
             </p>
             <div className="mt-9 space-y-4">
-              {['Обсудим текущий процесс', 'Определим приоритетный сценарий', 'Предложим формат первого этапа'].map(
-                (item) => (
-                  <div key={item} className="flex items-center gap-3 font-bold text-slate-800">
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-blue-600 shadow-sm">
-                      <CheckIcon />
-                    </span>
-                    {item}
-                  </div>
-                ),
-              )}
+              {['Разберём процесс и ограничения', 'Определим ожидаемый результат', 'Предложим формат первого этапа'].map((item) => (
+                <div key={item} className="flex items-center gap-3 font-bold text-slate-800">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-blue-600 shadow-sm"><Check /></span>{item}
+                </div>
+              ))}
             </div>
           </div>
           <ContactForm />
         </div>
       </section>
 
-      <footer className="bg-slate-950 text-slate-300">
-        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-14 md:grid-cols-[1fr_auto_auto]">
+      <footer className="bg-[#07101f] text-slate-400">
+        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-14 md:grid-cols-[1.3fr_0.7fr_0.7fr]">
           <div className="max-w-md">
             <p className="text-2xl font-black text-white">Avantime<span className="text-blue-500">.</span></p>
-            <p className="mt-4 leading-7 text-slate-400">
-              1С, искусственный интеллект и интеграции для практической автоматизации бизнеса.
-            </p>
+            <p className="mt-4 leading-7">Внедрение 1С, AI, облачные решения и интеграции для устойчивой автоматизации бизнеса.</p>
           </div>
-          <div>
-            <p className="font-black text-white">Решения</p>
-            <div className="mt-4 space-y-3 text-sm text-slate-400">
-              <p>Внедрение 1С</p>
-              <p>AI и автоматизация</p>
-              <p>Agent+</p>
-              <p>Интеграции и ЭДО</p>
-            </div>
-          </div>
-          <div>
-            <p className="font-black text-white">Платформа</p>
-            <div className="mt-4 space-y-3 text-sm text-slate-400">
-              <p>Клиентский кабинет</p>
-              <p>База знаний</p>
-              <p>AI-консультант</p>
-              <p>Поддержка</p>
-            </div>
-          </div>
+          <div><p className="font-black text-white">Решения</p><div className="mt-4 space-y-3 text-sm"><Link className="block hover:text-white" href="/solutions/1c">Внедрение 1С</Link><Link className="block hover:text-white" href="/solutions/ai">AI для бизнеса</Link><Link className="block hover:text-white" href="/solutions/agent-plus">Agent+</Link></div></div>
+          <div><p className="font-black text-white">Компания</p><div className="mt-4 space-y-3 text-sm"><Link className="block hover:text-white" href="/knowledge">База знаний</Link><Link className="block hover:text-white" href="/assistant">AI-консультант</Link><Link className="block hover:text-white" href="/portal">Кабинет клиента</Link></div></div>
         </div>
-        <div className="border-t border-white/10">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-xs text-slate-500 sm:flex-row sm:justify-between">
-            <span>© 2026 Avantime. Первая демонстрационная версия.</span>
-            <span>Сайт · Клиентский портал · AI-платформа</span>
-          </div>
-        </div>
+        <div className="border-t border-white/10"><div className="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-6 text-xs sm:flex-row sm:justify-between"><span>© 2026 Avantime</span><span>1С · AI · Cloud · Integrations · Agent+</span></div></div>
       </footer>
     </main>
   );
