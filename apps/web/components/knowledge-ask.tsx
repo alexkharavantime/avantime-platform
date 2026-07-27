@@ -232,10 +232,7 @@ export function KnowledgeAsk() {
             question: normalizedQuestion,
             sources: foundSources.map((source) => ({
               documentId: source.documentId,
-              documentName: source.documentName,
               chunkId: source.chunkId,
-              snippet: source.snippet,
-              score: source.score,
             })),
           }),
         },

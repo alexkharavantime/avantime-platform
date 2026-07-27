@@ -1,1 +1,1 @@
-export default function SettingsPage(){return <main className="p-8"><h2 className="text-3xl font-black">Настройки</h2><p className="mt-3 text-slate-500">Настройки рабочего пространства будут добавлены позже.</p></main>}
+export default function SettingsPage(){return <main className="p-8"><p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">В разработке</p><h2 className="mt-2 text-3xl font-black">Настройки</h2><p className="mt-3 text-slate-500">Настройки рабочего пространства пока недоступны. Эта страница не сохраняет изменения.</p></main>}

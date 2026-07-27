@@ -6,9 +6,10 @@ type ApiAuthorization =
   | { session: AppSession; response?: never }
   | { session?: never; response: NextResponse };
 
-export async function authorizeApi(roles?: readonly UserRole[]): Promise<ApiAuthorization> {
-  const session = await getSession();
-
+export function authorizeSession(
+  session: AppSession | null,
+  roles?: readonly UserRole[],
+): ApiAuthorization {
   if (!session) {
     return {
       response: NextResponse.json({ error: 'Требуется авторизация.' }, { status: 401 }),
@@ -22,6 +23,10 @@ export async function authorizeApi(roles?: readonly UserRole[]): Promise<ApiAuth
   }
 
   return { session };
+}
+
+export async function authorizeApi(roles?: readonly UserRole[]): Promise<ApiAuthorization> {
+  return authorizeSession(await getSession(), roles);
 }
 
 export function canAccessCompany(session: AppSession, companyId?: string | null) {

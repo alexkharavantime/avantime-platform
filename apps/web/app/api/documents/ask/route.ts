@@ -1,25 +1,21 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
-import { authorizeApi } from '../../../../lib/authorization';
+import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import {
+  resolveDocumentSources,
+  type DocumentSourceReference,
+} from '../../../../lib/document-sources';
 
 export const runtime = 'nodejs';
 
-type SourceItem = {
-  documentId: string;
-  documentName: string;
-  chunkId: string;
-  snippet: string;
-  score: number;
-};
-
 type AskRequest = {
   question?: string;
-  sources?: SourceItem[];
+  sources?: DocumentSourceReference[];
 };
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     if (!process.env.OPENAI_API_KEY) {
@@ -37,20 +33,20 @@ export async function POST(request: Request) {
 
     const question = body.question?.trim() ?? '';
 
-    const sources = Array.isArray(body.sources)
-      ? body.sources.slice(0, 6)
-      : [];
-
-    if (question.length < 3) {
+    if (question.length < 3 || question.length > 4_000) {
       return NextResponse.json(
         {
-          error: 'Введите вопрос не короче трёх символов.',
+          error: 'Вопрос должен содержать от 3 до 4000 символов.',
         },
         {
           status: 400,
         },
       );
     }
+
+    const sources = await resolveDocumentSources(
+      Array.isArray(body.sources) ? body.sources : [],
+    );
 
     if (sources.length === 0) {
       return NextResponse.json(
@@ -114,7 +110,7 @@ export async function POST(request: Request) {
         documentId: source.documentId,
         documentName: source.documentName,
         chunkId: source.chunkId,
-        score: source.score,
+        score: 0,
       })),
     });
   } catch (error) {
@@ -122,10 +118,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Не удалось получить ответ AI.',
+        error: 'Не удалось получить ответ AI.',
       },
       {
         status: 500,

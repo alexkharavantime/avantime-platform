@@ -16,12 +16,31 @@ export type AppSession = {
   expiresAt: number;
 };
 
-function secret() {
-  return process.env.SESSION_SECRET || 'avantime-development-secret-change-me';
+export function getSessionSecret(
+  environment: Record<string, string | undefined> = process.env,
+) {
+  const value = environment.SESSION_SECRET?.trim();
+
+  if (!value) {
+    throw new Error(
+      'SESSION_SECRET is required. Configure a unique secret with at least 32 characters.',
+    );
+  }
+
+  if (value.length < 32) {
+    throw new Error('SESSION_SECRET must contain at least 32 characters.');
+  }
+
+  return value;
 }
 
+const productionSessionSecret =
+  process.env.NODE_ENV === 'production' ? getSessionSecret() : undefined;
+
 function sign(payload: string) {
-  return createHmac('sha256', secret()).update(payload).digest('base64url');
+  return createHmac('sha256', productionSessionSecret ?? getSessionSecret())
+    .update(payload)
+    .digest('base64url');
 }
 
 export function encodeSession(session: Omit<AppSession, 'expiresAt'>, maxAgeSeconds = 60 * 60 * 8) {

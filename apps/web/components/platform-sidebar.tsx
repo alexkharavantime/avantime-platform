@@ -8,36 +8,43 @@ const items = [
     href: '/dashboard',
     label: 'Главная',
     icon: '⌂',
+    available: true,
   },
   {
     href: '/dashboard/knowledge',
     label: 'База знаний',
     icon: '▤',
+    available: true,
   },
   {
     href: '/dashboard/ai',
     label: 'AI-консультант',
     icon: '✦',
+    available: false,
   },
   {
     href: '/dashboard/documents',
     label: 'Документы',
     icon: '▣',
+    available: false,
   },
   {
     href: '/dashboard/projects',
     label: 'Проекты',
     icon: '◇',
+    available: false,
   },
   {
     href: '/dashboard/support',
     label: 'Поддержка',
     icon: '◎',
+    available: true,
   },
   {
     href: '/dashboard/settings',
     label: 'Настройки',
     icon: '⚙',
+    available: false,
   },
 ];export function PlatformSidebar() {
   const pathname = usePathname();
@@ -53,11 +60,12 @@ const items = [
           return (
             <Link key={item.href} href={item.href} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${active ? 'bg-white text-slate-950' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}>
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 text-base">{item.icon}</span>{item.label}
+              {!item.available && <span className="ml-auto text-[10px] font-black uppercase tracking-wide text-slate-500">Скоро</span>}
             </Link>
           );
         })}
       </nav>
-      <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-sm font-bold">Sprint 1</p><p className="mt-1 text-xs leading-5 text-slate-400">Создаём Knowledge MVP и рабочее пространство клиента.</p></div>
+      <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-sm font-bold">PR #1 · MVP</p><p className="mt-1 text-xs leading-5 text-slate-400">Доступные и будущие разделы явно разделены.</p></div>
     </aside>
   );
 }

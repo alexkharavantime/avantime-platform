@@ -6,7 +6,7 @@ import {
 
 import path from 'node:path';
 import { NextResponse } from 'next/server';
-import { authorizeApi } from '../../../../lib/authorization';
+import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 
 export const runtime = 'nodejs';
 
@@ -75,7 +75,7 @@ async function saveHistory(
 
 export async function GET() {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const history = await readHistory();
@@ -103,7 +103,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const body =
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const url = new URL(request.url);

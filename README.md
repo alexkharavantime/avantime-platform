@@ -6,8 +6,13 @@ AI-first platform for 1C implementation, business automation, integrations, Agen
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
+
+Set a unique `SESSION_SECRET` with at least 32 characters in `.env.local`. To use
+the local demo accounts, explicitly set `ENABLE_DEMO_AUTH="true"`; this mode is
+always disabled when `NODE_ENV=production`.
 
 Open `http://localhost:3000`.
 
@@ -41,10 +46,11 @@ The demo records attachment metadata only. Actual binary persistence requires S3
 npm run db:generate
 npm run typecheck
 npm run lint
+npm run test
 npm run build
 ```
 
-Before production, set `SESSION_SECRET`, configure PostgreSQL and disable demo credentials.
+Production startup requires `SESSION_SECRET`; configure PostgreSQL before deployment.
 
 
 ## v1.2

@@ -8,7 +8,7 @@ import {
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { extractPdfText } from '../../../../lib/pdf-extractor';
-import { authorizeApi } from '../../../../lib/authorization';
+import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 
 export const runtime = 'nodejs';
 
@@ -92,7 +92,7 @@ async function saveDocuments(
 
 export async function GET() {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const documents = await readDocuments();
@@ -120,7 +120,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const formData = await request.formData();
@@ -266,7 +266,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const url = new URL(request.url);

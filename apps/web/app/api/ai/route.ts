@@ -23,10 +23,12 @@ export async function POST(req: Request) {
       prompt?: string;
     };
 
-    if (!prompt?.trim()) {
+    const normalizedPrompt = prompt?.trim() ?? '';
+
+    if (!normalizedPrompt || normalizedPrompt.length > 4_000) {
       return Response.json(
         {
-          text: 'Введите вопрос.',
+          text: 'Введите вопрос длиной до 4000 символов.',
         },
         {
           status: 400,
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
-      contents: prompt,
+      contents: normalizedPrompt,
     });
 
     return Response.json({
@@ -51,7 +53,7 @@ export async function POST(req: Request) {
 
     return Response.json(
       {
-        text: error instanceof Error ? error.message : 'Ошибка обращения к AI.',
+        text: 'Ошибка обращения к AI.',
       },
       {
         status: 500,

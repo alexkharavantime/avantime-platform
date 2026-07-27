@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
-import { authorizeApi } from '../../../../lib/authorization';
+import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 
 export const runtime = 'nodejs';
 
@@ -193,7 +193,7 @@ function createSnippet(
 
 export async function GET(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
     const url = new URL(request.url);
