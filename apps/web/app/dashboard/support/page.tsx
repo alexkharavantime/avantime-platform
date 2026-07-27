@@ -1,0 +1,1 @@
+export default function SupportPage(){return <main className="p-8"><h2 className="text-3xl font-black">Поддержка</h2><p className="mt-3 text-slate-500">Следующий этап — создание обращений и интеграция с Jira.</p></main>}

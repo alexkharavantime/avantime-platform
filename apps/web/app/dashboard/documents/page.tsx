@@ -1,0 +1,1 @@
+export default function DocumentsPage(){return <main className="p-8"><h2 className="text-3xl font-black">Документы</h2><p className="mt-3 text-slate-500">Раздел будет подключён к Knowledge Center на следующем этапе.</p></main>}

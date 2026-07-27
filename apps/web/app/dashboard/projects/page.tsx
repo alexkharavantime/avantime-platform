@@ -1,0 +1,1 @@
+export default function ProjectsPage(){return <main className="p-8"><h2 className="text-3xl font-black">Проекты</h2><p className="mt-3 text-slate-500">Здесь появятся проекты клиентов Avantime.</p></main>}
