@@ -262,7 +262,8 @@ export default function KnowledgePage() {
 
   const errorCount = documents.filter(
     (document) =>
-      document.status === 'Ошибка',
+      document.status === 'Ошибка' ||
+      document.status === 'Карантин',
   ).length;
 
   return (
@@ -481,7 +482,8 @@ export default function KnowledgePage() {
                   className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
                     document.status === 'Обработан'
                       ? 'bg-emerald-50 text-emerald-700'
-                      : document.status === 'Ошибка'
+                      : document.status === 'Ошибка' ||
+                          document.status === 'Карантин'
                         ? 'bg-red-50 text-red-700'
                         : 'bg-blue-50 text-blue-700'
                   }`}

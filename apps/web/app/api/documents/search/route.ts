@@ -166,7 +166,7 @@ export async function GET(request: Request) {
 
     for (const document of documents) {
       if (
-        document.status !== 'Обработан'
+        document.status !== 'COMPLETED'
       ) {
         continue;
       }

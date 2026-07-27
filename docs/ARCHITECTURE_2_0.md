@@ -272,6 +272,24 @@ Prisma-модель metadata использует составной перви�
 
 Legacy migration читает `.data`, вычисляет checksum, переносит metadata в PostgreSQL и объекты в S3. Поддерживаются dry-run и повторный запуск; локальные файлы не удаляются. Текущие тесты являются контрактными и используют изолированные fake/local adapters, поскольку реальная PostgreSQL/S3 infrastructure в CI ещё не подготовлена.
 
+### Третья итерация фоновой обработки
+
+TASK-002 отделяет resource-intensive PDF extraction от upload HTTP request следующими границами:
+
+- `DocumentProcessingQueue` управляет tenant-scoped enqueue, exclusive claim, acknowledge и delayed release;
+- `DocumentProcessingJob` содержит только безопасные внутренние идентификаторы и operational metadata;
+- `DocumentProcessingWorker` восстанавливает tenant из server-side configuration, читает оригинал через `DocumentStorage` и сохраняет derivatives через `DocumentProcessingRepository`;
+- `LocalDocumentProcessingQueue` является persistent development/test adapter;
+- `ExternalDocumentProcessingQueue` фиксирует production-контракт, но конкретный provider и infrastructure пока не выбраны.
+
+Metadata использует типобезопасные состояния `UPLOADED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `QUARANTINED` и `DELETED`. Переходы централизованы и выполняются repository как tenant-scoped conditional update. Lifecycle metadata хранит число попыток, безопасный код/сообщение ошибки, время начала/завершения, `nextRetryAt`, `quarantinedAt` и `workerId`.
+
+Upload сохраняет оригинал и metadata `UPLOADED`, затем идемпотентно ставит job и переводит документ в `QUEUED`. Worker получает эксклюзивный lease, переводит документ в `PROCESSING`, проверяет SHA-256 до extraction, сохраняет полный text/chunks и только затем ставит `COMPLETED`. Partial derivatives удаляются и не считаются завершённой обработкой.
+
+Временные ошибки получают exponential backoff до настраиваемого лимита. Постоянные ошибки переходят в `FAILED`, а исчерпавшие retry limit — в `QUARANTINED`. Tenant-aware `ADMIN`-only API поддерживает list, single-document retry, resolve при полном результате и permanently fail. Массовые destructive operations отсутствуют.
+
+Local queue сохраняет job и lease между перезапусками, но не гарантирует distributed locking между несколькими процессами или узлами. Production запрещает local queue и работает fail-fast без external adapter. Worker не запускается автоматически; provider, process manager, health checks, metrics и alerts требуют отдельного решения.
+
 ## Jira
 
 **Назначение:** внутренняя система управления задачами поддержки и реализации.
@@ -778,6 +796,8 @@ Production-файлы хранятся в приватном S3-совмести
 - экспериментальные загрузка PDF, извлечение текста, локальный поиск, OpenAI и Gemini.
 - tenant-aware контракты документов, локальный Storage Adapter и репозитории метаданных/обработки;
 - отрицательные тесты изоляции документов, удаления и защиты локальных путей.
+- queue/worker abstraction, persistent local queue, retries, quarantine и asynchronous PDF upload flow;
+- lifecycle, concurrency, restart и production fail-fast тесты обработки документов.
 
 ### Что необходимо сделать
 
@@ -788,7 +808,7 @@ Production-файлы хранятся в приватном S3-совмести
 - согласовать публичную и документную базы знаний;
 - стабилизировать аутентификацию, роли и границы организаций;
 - синхронизировать документацию и версии проекта;
-- добавить автоматические тесты и наблюдаемость.
+- подключить production external queue provider и наблюдаемость.
 
 **Приоритет:** критический.
 
@@ -803,6 +823,7 @@ Production-файлы хранятся в приватном S3-совмести
 - первые адаптеры Jira, Email, OpenAI и Gemini;
 - прототип обработки PDF и RAG-подобного ответа.
 - первая tenant-aware граница хранения документов с локальным адаптером и обязательным `companyId`.
+- отдельный PDF worker flow с идемпотентной local queue, retries и quarantine.
 
 ### Что необходимо сделать
 
@@ -810,6 +831,7 @@ Production-файлы хранятся в приватном S3-совмести
 - внедрить защищённый AI Gateway;
 - создать единый клиентский dashboard;
 - развернуть private S3 infrastructure и проверить перенос production-объектов через существующий адаптер;
+- выбрать и подключить production external queue adapter, process supervision и queue monitoring;
 - внедрить организационную изоляцию данных;
 - реализовать историю диалогов;
 - добавить `pgvector`, embeddings и гибридный поиск;
@@ -889,7 +911,7 @@ Production-файлы хранятся в приватном S3-совмести
 - защиту API — проверять роль, организацию и ресурс во всех маршрутах;
 - локальное хранение runtime-данных — сохранить только как development-реализацию репозиториев и адаптеров, а production перевести на PostgreSQL и object storage;
 - AI-маршруты — убрать прямые вызовы провайдеров и логирование частей ключей;
-- обработку документов — вынести тяжёлые операции из пользовательского запроса;
+- обработку документов — подключить к production external queue и наблюдаемости, сохранив реализованный worker contract;
 - обработку ошибок — ввести единый формат и корреляционные идентификаторы;
 - конфигурацию — централизовать проверку переменных окружения без раскрытия значений.
 

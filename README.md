@@ -52,6 +52,22 @@ npm run build
 
 Production startup requires `SESSION_SECRET`; configure PostgreSQL before deployment.
 
+## Document processing worker
+
+Development uses a persistent local queue and does not start a worker automatically.
+
+```bash
+npm run documents:worker -w @avantime/web
+npm run documents:process-one -w @avantime/web
+npm run documents:retry -w @avantime/web -- --document-id=<document-id> --dry-run
+```
+
+Set `DOCUMENT_WORKER_TENANT_ID` to the server-controlled tenant processed by the
+worker. Production requires an external `DocumentProcessingQueue` adapter; no
+provider is selected or connected in the current iteration.
+
+Lifecycle, retry, quarantine and configuration details are documented in
+[Document Processing](./docs/DOCUMENT_PROCESSING.md).
 
 ## v1.2
 
@@ -60,8 +76,8 @@ Production startup requires `SESSION_SECRET`; configure PostgreSQL before deploy
 - password reset tokens and pages
 - administrator system event journal
 
-
 ## v1.3
+
 - email queue and templates
 - Resend adapter with console fallback
 - notification preferences

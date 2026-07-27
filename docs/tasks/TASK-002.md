@@ -1,4 +1,4 @@
-# TASK-002. Tenant-aware хранение документов и границы RAG
+# TASK-002. Tenant-aware хранение и обработка документов
 
 ## Статус
 
@@ -6,7 +6,7 @@ In Progress
 
 ## Ветка
 
-`feature/task-002-storage-persistence`
+`feature/task-002-processing-queue`
 
 ## Цель
 
@@ -19,6 +19,8 @@ In Progress
 Первая итерация TASK-002 создаёт tenant-aware границы внутри существующего модульного монолита. Локальная файловая система остаётся development-реализацией, но доступ к ней выполняется только через адаптер и репозитории.
 
 Вторая итерация добавляет PostgreSQL-репозиторий метаданных, S3-compatible storage, soft delete и управляемую миграцию legacy-данных. Она не делает весь Document/RAG production-ready: реальная инфраструктурная интеграция, очередь, OCR, embeddings, полный RBAC, backup и эксплуатационная проверка остаются отдельными этапами.
+
+Третья итерация выносит PDF extraction из upload HTTP request в отдельный tenant-aware processing flow. Она добавляет статусную модель, queue/worker contracts, development local queue, retries и quarantine, но не выбирает и не подключает production queue provider.
 
 ## Scope первой итерации
 
@@ -71,6 +73,36 @@ In Progress
 - автоматическое удаление legacy-данных;
 - production backup/restore и disaster recovery rehearsal.
 
+## Scope третьей итерации
+
+- ввести статусы `UPLOADED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `QUARANTINED` и `DELETED`;
+- централизовать допустимые status transitions;
+- добавить processing attempts, безопасные ошибки, timestamps, retry и worker metadata;
+- определить `DocumentProcessingQueue`, `DocumentProcessingWorker` и `DocumentProcessingJob`;
+- реализовать persistent `LocalDocumentProcessingQueue` для development и тестов;
+- зафиксировать production-контракт `ExternalDocumentProcessingQueue` без выбора провайдера;
+- удалить PDF extraction из upload HTTP request;
+- реализовать exclusive worker claim, checksum verification и безопасное восстановление lease;
+- реализовать централизованные error classification, exponential backoff и retry limit;
+- добавить tenant-aware `ADMIN`-only quarantine API;
+- добавить worker, process-one и single-document retry commands;
+- минимально отобразить новые статусы в существующем Knowledge Center;
+- добавить Prisma migration и автоматические lifecycle/security tests;
+- синхронизировать архитектурную, статусную и эксплуатационную документацию.
+
+## Out of scope третьей итерации
+
+- выбор или подключение Redis, SQS, RabbitMQ, Kafka либо другого external queue provider;
+- Infrastructure as Code, production auto-start, autoscaling и process manager;
+- OCR, Word, Excel и другие форматы;
+- embeddings, `pgvector`, semantic или hybrid RAG;
+- AI Gateway и изменение OpenAI/Gemini;
+- объединение `/portal` и `/dashboard`;
+- расширение RBAC или клиентский доступ к Document API;
+- массовые destructive quarantine actions;
+- автоматическое удаление legacy-данных;
+- полноценная observability platform, distributed tracing и alerts.
+
 ## Требования безопасности
 
 - каждая операция с документом требует явный tenant-контекст;
@@ -88,6 +120,15 @@ In Progress
 - checksum оригинала хранится в metadata и проверяется сервером;
 - API soft-delete не удаляет объект немедленно, а cleanup сохраняет metadata при частичном сбое;
 - migration поддерживает dry-run, повторный запуск и не удаляет источник.
+- статус документа изменяется только через централизованно проверяемые переходы;
+- queue job содержит только безопасные внутренние идентификаторы и operational metadata;
+- enqueue идемпотентен внутри tenant;
+- worker получает tenant только из server-side configuration и не доверяет HTTP payload;
+- checksum оригинала проверяется перед extraction;
+- provider messages, stack traces, секреты и содержимое документа не возвращаются клиенту и не логируются;
+- один job не обрабатывается параллельно двумя local workers;
+- production запрещает local queue и работает fail-fast без внешнего adapter;
+- quarantine list/retry/resolve/fail остаются `ADMIN`-only и tenant-aware.
 
 ## Критерии готовности
 
@@ -123,6 +164,18 @@ In Progress
 6. Добавить dry-run/idempotent migration из local storage.
 7. Покрыть новые контракты тестами и обновить документацию.
 
+## План третьей итерации
+
+1. Расширить каноническую metadata-модель и Prisma enum/columns.
+2. Ввести централизованный transition validator и conditional repository transition.
+3. Определить queue/worker contracts и реализовать persistent local queue.
+4. Перевести upload на `UPLOADED` → idempotent enqueue → `QUEUED`.
+5. Реализовать worker lifecycle с checksum, exclusive claim и полной записью derivatives.
+6. Добавить error classifier, exponential backoff, retry limit и quarantine.
+7. Добавить `ADMIN`-only quarantine API и single-document operational commands.
+8. Покрыть lifecycle, tenant isolation, concurrency, restart и fail-fast тестами.
+9. Обновить эксплуатационную и проектную документацию.
+
 ## Критерии готовности второй итерации
 
 - [x] PostgreSQL repository фильтрует все операции по `companyId`.
@@ -136,18 +189,40 @@ In Progress
 - [x] Контрактные тесты и все обязательные проверки проходят успешно.
 - [x] Архитектурные, backlog, roadmap и status документы синхронизированы.
 
+## Критерии готовности третьей итерации
+
+- [x] Семь processing statuses типобезопасны и синхронизированы с Prisma.
+- [x] Недопустимые status transitions отклоняются централизованно.
+- [x] Upload route не импортирует и не вызывает PDF extractor.
+- [x] Enqueue идемпотентен, а API возвращает успех только после постановки job.
+- [x] Local queue сохраняет job, lease и не требует внешней инфраструктуры.
+- [x] Production configuration запрещает local queue и требует external adapter.
+- [x] Worker проверяет checksum, сохраняет полные text/chunks и только затем ставит `COMPLETED`.
+- [x] Два worker не обрабатывают один local job параллельно.
+- [x] Retry выполняется только для временных ошибок и использует exponential backoff.
+- [x] После лимита попыток документ получает `QUARANTINED`.
+- [x] Quarantine API поддерживает list/retry/resolve/fail и остаётся `ADMIN`-only.
+- [x] Добавлены worker, process-one и dry-run retry commands без production auto-start.
+- [x] Добавлены обязательные lifecycle, concurrency, tenant и configuration tests.
+- [ ] Все финальные проверки третьей итерации завершены успешно; repository-wide Prettier check остаётся красным из-за существующего форматинг-долга вне scope задачи.
+- [x] Документация queue/worker lifecycle и ограничений синхронизирована.
+
 ## Риски
 
 - существующие локальные записи не содержат tenant-полей и требуют ограниченной совместимой миграции в системный tenant Avantime;
 - JSON-репозиторий остаётся development-решением и не гарантирует безопасную конкурентную запись несколькими процессами;
 - системный `ADMIN` пока не имеет пользовательского выбора tenant, поэтому текущий Knowledge Center работает в tenant Avantime;
-- синхронная обработка PDF сохраняет риск долгого запроса;
+- production external queue adapter и конкретный provider ещё отсутствуют, поэтому production processing нельзя включить до отдельного инфраструктурного решения;
+- local queue гарантирует exclusive claim только внутри одного процесса и не подходит для нескольких узлов;
+- worker обрабатывает один server-configured tenant за процесс; модель безопасного multi-tenant worker требует отдельного решения;
+- lease позволяет восстановление после остановки, но heartbeat/lease extension для долгих PDF пока отсутствуют;
+- базовые статусы наблюдаемы через API, но централизованные metrics, dashboards и alerts ещё не реализованы;
+- quarantine flow доступен по API/CLI без отдельного сложного административного UI;
 - local adapters не подходят для горизонтального масштабирования и production backup;
 - migration и repository покрыты контрактными тестами, но не проверены против реальных PostgreSQL и S3 в CI;
 - приватность bucket, lifecycle, encryption и backup зависят от ещё не созданной production-инфраструктуры;
 - cleanup после физического удаления требует резервной копии для полного восстановления;
 - метаданные истории вопросов пока не перенесены в PostgreSQL и остаются объектом storage;
-- синхронная обработка PDF сохраняет риск долгого запроса.
 
 ## Результат выполнения
 
@@ -179,6 +254,18 @@ Metadata получила обязательный SHA-256 checksum и `deletedA
 
 Soft-deleted записи проверяются командой `npm run documents:cleanup -w @avantime/web -- --dry-run`. Запуск без `--dry-run` физически удаляет объекты и затем metadata; до него запись можно восстановить через управляемое изменение `deletedAt`. После cleanup восстановление возможно только из backup.
 
+### Третья итерация
+
+Upload flow сохраняет PDF и metadata со статусом `UPLOADED`, идемпотентно ставит job в queue и возвращает `202` после перехода в `QUEUED`. PDF extractor больше не вызывается внутри HTTP request.
+
+Добавлены queue/worker contracts, persistent `LocalDocumentProcessingQueue`, conditional status transitions, retries с exponential backoff и quarantine после лимита попыток. Worker эксклюзивно получает job, восстанавливает tenant из server-side configuration, проверяет SHA-256, сохраняет text/chunks и только затем переводит документ в `COMPLETED`.
+
+Quarantine API остаётся `ADMIN`-only и позволяет перечислить, повторно поставить, разрешить при полном результате или окончательно остановить один документ. Добавлены команды worker, process-one и retry с `--dry-run`. External provider и production auto-start намеренно не выбраны.
+
+Добавлена Prisma migration статусной и processing metadata-модели. Автоматические тесты покрывают отсутствие synchronous extraction, idempotent enqueue, exclusive workers, tenant isolation, checksum mismatch, lifecycle, retry, quarantine, invalid transitions, partial derivatives, restart и production fail-fast.
+
+`typecheck`, `lint`, 43 теста, Prisma Client generation, Prisma schema validation, production build, scoped formatting check для новых и основных изменённых файлов, `git diff --check`, static security checks и secret scan завершились успешно. Полный `npx prettier --check .` продолжает находить 97 ранее существовавших неотформатированных файлов вне scope TASK-002; массовое форматирование не выполнялось, чтобы не смешивать несвязанные изменения.
+
 ## Связанные документы
 
 - [AGENTS.md](../../AGENTS.md)
@@ -191,4 +278,5 @@ Soft-deleted записи проверяются командой `npm run docum
 - [Roadmap](../ROADMAP.md)
 - [Product Backlog](../PRODUCT_BACKLOG.md)
 - [Project Status](../PROJECT_STATUS.md)
+- [Document Processing](../DOCUMENT_PROCESSING.md)
 - [TASK-001](./TASK-001.md)

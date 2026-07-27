@@ -1,4 +1,5 @@
 import type { AppSession } from './session';
+import type { DocumentProcessingStatus } from './document-processing-state';
 
 export const AVANTIME_DOCUMENT_COMPANY_ID = 'avantime';
 export const UNVERIFIED_DOCUMENT_CHECKSUM = '0'.repeat(64);
@@ -8,7 +9,8 @@ export type DocumentTenantContext = {
   userId: string;
 };
 
-export type DocumentStatus = 'Обрабатывается' | 'Обработан' | 'Ошибка';
+export type DocumentApiStatus =
+  'Загружен' | 'В очереди' | 'Обрабатывается' | 'Обработан' | 'Ошибка' | 'Карантин' | 'Удалён';
 
 export type TextChunk = {
   id: string;
@@ -22,7 +24,7 @@ export type DocumentMetadata = {
   id: string;
   companyId: string;
   uploadedBy: string;
-  status: DocumentStatus;
+  status: DocumentProcessingStatus;
   originalName: string;
   storedName: string;
   mimeType: string;
@@ -31,11 +33,17 @@ export type DocumentMetadata = {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
-  pages?: number;
-  textLength?: number;
-  processedAt?: string;
-  errorMessage?: string;
-  chunksCount?: number;
+  processingAttempts: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  processingStartedAt: string | null;
+  processingCompletedAt: string | null;
+  nextRetryAt: string | null;
+  quarantinedAt: string | null;
+  workerId: string | null;
+  pages: number | null;
+  textLength: number | null;
+  chunksCount: number | null;
 };
 
 export type DocumentApiItem = {
@@ -46,7 +54,8 @@ export type DocumentApiItem = {
   type: string;
   mimeType: string;
   size: number;
-  status: DocumentStatus;
+  status: DocumentApiStatus;
+  processingStatus: DocumentProcessingStatus;
   uploadedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -59,6 +68,22 @@ export type DocumentApiItem = {
   errorMessage?: string;
   chunksFile?: string;
   chunksCount?: number;
+  processingAttempts: number;
+  lastErrorCode?: string;
+  processingStartedAt?: string;
+  nextRetryAt?: string;
+  quarantinedAt?: string;
+  workerId?: string;
+};
+
+const API_STATUS_LABELS: Record<DocumentProcessingStatus, DocumentApiStatus> = {
+  UPLOADED: 'Загружен',
+  QUEUED: 'В очереди',
+  PROCESSING: 'Обрабатывается',
+  COMPLETED: 'Обработан',
+  FAILED: 'Ошибка',
+  QUARANTINED: 'Карантин',
+  DELETED: 'Удалён',
 };
 
 export function getDocumentTenantContext(session: AppSession): DocumentTenantContext {
@@ -71,7 +96,7 @@ export function getDocumentTenantContext(session: AppSession): DocumentTenantCon
 }
 
 export function toDocumentApiItem(document: DocumentMetadata): DocumentApiItem {
-  const processed = document.status === 'Обработан';
+  const processed = document.status === 'COMPLETED';
 
   return {
     id: document.id,
@@ -81,18 +106,25 @@ export function toDocumentApiItem(document: DocumentMetadata): DocumentApiItem {
     type: document.mimeType === 'application/pdf' ? 'PDF' : document.mimeType,
     mimeType: document.mimeType,
     size: document.size,
-    status: document.status,
+    status: API_STATUS_LABELS[document.status],
+    processingStatus: document.status,
     uploadedAt: document.createdAt,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
     companyId: document.companyId,
     uploadedBy: document.uploadedBy,
     textFile: processed ? `${document.id}.txt` : undefined,
-    pages: document.pages,
-    textLength: document.textLength,
-    processedAt: document.processedAt,
-    errorMessage: document.errorMessage,
+    pages: document.pages ?? undefined,
+    textLength: document.textLength ?? undefined,
+    processedAt: document.processingCompletedAt ?? undefined,
+    errorMessage: document.lastErrorMessage ?? undefined,
     chunksFile: processed ? `${document.id}.json` : undefined,
-    chunksCount: document.chunksCount,
+    chunksCount: document.chunksCount ?? undefined,
+    processingAttempts: document.processingAttempts,
+    lastErrorCode: document.lastErrorCode ?? undefined,
+    processingStartedAt: document.processingStartedAt ?? undefined,
+    nextRetryAt: document.nextRetryAt ?? undefined,
+    quarantinedAt: document.quarantinedAt ?? undefined,
+    workerId: document.workerId ?? undefined,
   };
 }

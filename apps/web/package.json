@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "documents:migrate": "tsx scripts/migrate-documents.ts",
-    "documents:cleanup": "tsx scripts/cleanup-deleted-documents.ts"
+    "documents:cleanup": "tsx scripts/cleanup-deleted-documents.ts",
+    "documents:worker": "tsx scripts/run-document-worker.ts",
+    "documents:process-one": "tsx scripts/process-one-document-job.ts",
+    "documents:retry": "tsx scripts/retry-document-processing.ts"
   },
   "dependencies": {
     "@avantime/database": "*",

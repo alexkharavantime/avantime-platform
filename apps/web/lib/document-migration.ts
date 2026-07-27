@@ -1,6 +1,6 @@
 import type { DocumentMetadata, DocumentTenantContext } from './document-model';
 import type { CreateDocumentMetadata } from './document-repositories';
-import type { DocumentServices } from './document-services';
+import type { DocumentPersistenceServices } from './document-services';
 import { calculateDocumentChecksum, type DocumentObjectKind } from './document-storage';
 
 export type DocumentMigrationReport = {
@@ -13,8 +13,8 @@ export type DocumentMigrationReport = {
 
 type MigrationOptions = {
   tenant: DocumentTenantContext;
-  source: DocumentServices;
-  target: DocumentServices;
+  source: DocumentPersistenceServices;
+  target: DocumentPersistenceServices;
   dryRun: boolean;
 };
 
@@ -32,10 +32,16 @@ function createTargetMetadata(
     checksum,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
+    processingAttempts: document.processingAttempts,
+    lastErrorCode: document.lastErrorCode,
+    lastErrorMessage: document.lastErrorMessage,
+    processingStartedAt: document.processingStartedAt,
+    processingCompletedAt: document.processingCompletedAt,
+    nextRetryAt: document.nextRetryAt,
+    quarantinedAt: document.quarantinedAt,
+    workerId: null,
     pages: document.pages,
     textLength: document.textLength,
-    processedAt: document.processedAt,
-    errorMessage: document.errorMessage,
     chunksCount: document.chunksCount,
   };
 }
@@ -45,7 +51,7 @@ async function copyObject(
   kind: DocumentObjectKind,
   key: string,
   data: Buffer,
-  target: DocumentServices,
+  target: DocumentPersistenceServices,
   dryRun: boolean,
   contentType?: string,
 ) {
@@ -73,8 +79,8 @@ async function copyObject(
 async function migrateProcessingObjects(
   tenant: DocumentTenantContext,
   document: DocumentMetadata,
-  source: DocumentServices,
-  target: DocumentServices,
+  source: DocumentPersistenceServices,
+  target: DocumentPersistenceServices,
   dryRun: boolean,
 ) {
   let copied = 0;

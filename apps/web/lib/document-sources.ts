@@ -41,7 +41,7 @@ export async function resolveDocumentSources(
       tenant,
       reference.documentId,
     );
-    if (!document || document.status !== 'Обработан') continue;
+    if (!document || document.status !== 'COMPLETED') continue;
 
     const chunks = await services.processing.readChunks(tenant, document.id);
     const chunk = chunks.find(

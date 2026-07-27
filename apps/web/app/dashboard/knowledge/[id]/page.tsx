@@ -323,7 +323,8 @@ export default function DocumentPage() {
                   className={`rounded-full px-3 py-1 text-xs font-bold ${
                     isProcessed
                       ? 'bg-emerald-50 text-emerald-700'
-                      : document.status === 'Ошибка'
+                      : document.status === 'Ошибка' ||
+                          document.status === 'Карантин'
                         ? 'bg-red-50 text-red-700'
                         : 'bg-blue-50 text-blue-700'
                   }`}

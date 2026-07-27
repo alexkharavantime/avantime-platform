@@ -122,7 +122,9 @@
 - прототипы PDF, локального поиска, OpenAI и Gemini;
 - tenant-aware метаданные документов, локальный Storage Adapter и репозиторные границы;
 - PostgreSQL metadata repository, S3-compatible adapter, checksum, soft delete и migration/cleanup commands;
+- queue/worker abstraction, persistent local development queue, asynchronous PDF extraction, retries и quarantine;
 - автоматические отрицательные тесты авторизации и изоляции документов;
+- lifecycle, concurrency, restart и production queue fail-fast тесты;
 - базовые интеграции Jira и Resend.
 
 **Что ещё необходимо сделать:**
@@ -130,8 +132,8 @@
 - консолидировать параллельные реализации;
 - закрыть пробелы безопасности;
 - внедрить AI Gateway и развернуть/проверить production PostgreSQL/S3 infrastructure для реализованных границ хранения;
-- перенести обработку документов в фоновые задачи;
-- добавить тесты и наблюдаемость;
+- подключить production external queue adapter, process supervision и queue monitoring;
+- добавить реальную PostgreSQL/S3/queue integration environment и наблюдаемость;
 - синхронизировать документацию.
 
 **Приоритет:** критический, первый обязательный этап.
@@ -144,7 +146,7 @@
 - production PostgreSQL;
 - объектное хранилище;
 - менеджер секретов;
-- выбранный механизм очередей и фоновых задач;
+- выбранный external queue provider и production adapter поверх принятого worker contract;
 - продуктовые решения по объединению портала и dashboard.
 
 **Риски:**
@@ -417,7 +419,7 @@
 **Что уже реализовано:**
 
 - статьи, категории, теги, статусы и административная публикация;
-- прототип загрузки PDF и извлечения текста;
+- загрузка PDF с отдельным worker flow, retries и quarantine;
 - локальный полнотекстовый поиск;
 - ответы OpenAI по фрагментам документов;
 - история вопросов в локальных данных.
@@ -440,7 +442,7 @@
 - AI Gateway;
 - объектное хранилище;
 - `pgvector` или согласованная векторная база;
-- фоновые задачи;
+- production external queue provider поверх существующего background worker contract;
 - RBAC и организационная изоляция;
 - Integration Hub для внешних источников;
 - владельцы контента и редакционный процесс.
