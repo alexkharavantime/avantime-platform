@@ -1,102 +1,37 @@
-import {
-  mkdir,
-  readFile,
-  writeFile,
-} from 'node:fs/promises';
-
-import path from 'node:path';
 import { NextResponse } from 'next/server';
+
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { getDocumentTenantContext } from '../../../../lib/document-model';
+import type { DocumentHistoryItem } from '../../../../lib/document-repositories';
+import { getDocumentServices } from '../../../../lib/document-services';
+import {
+  resolveDocumentSources,
+  type DocumentSourceReference,
+} from '../../../../lib/document-sources';
 
 export const runtime = 'nodejs';
-
-type HistorySource = {
-  number: number;
-  documentId: string;
-  documentName: string;
-  chunkId: string;
-  score: number;
-};
-
-type HistoryItem = {
-  id: string;
-  question: string;
-  answer: string;
-  sources: HistorySource[];
-  createdAt: string;
-};
 
 type CreateHistoryRequest = {
   question?: string;
   answer?: string;
-  sources?: HistorySource[];
+  sources?: DocumentSourceReference[];
 };
-
-const dataDirectory = path.join(
-  process.cwd(),
-  '.data',
-);
-
-const historyFile = path.join(
-  dataDirectory,
-  'knowledge-history.json',
-);
-
-async function readHistory(): Promise<HistoryItem[]> {
-  try {
-    const content = await readFile(
-      historyFile,
-      'utf-8',
-    );
-
-    const parsed: unknown = JSON.parse(content);
-
-    return Array.isArray(parsed)
-      ? (parsed as HistoryItem[])
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveHistory(
-  history: HistoryItem[],
-) {
-  await mkdir(dataDirectory, {
-    recursive: true,
-  });
-
-  await writeFile(
-    historyFile,
-    JSON.stringify(history, null, 2),
-    'utf-8',
-  );
-}
 
 export async function GET() {
   try {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
-    const history = await readHistory();
+    const tenant = getDocumentTenantContext(authorization.session);
+    const history = await getDocumentServices().history.list(tenant);
 
-    return NextResponse.json({
-      history,
-    });
+    return NextResponse.json({ history });
   } catch (error) {
-    console.error(
-      'Knowledge history read error:',
-      error,
-    );
+    console.error('Knowledge history read error:', error);
 
     return NextResponse.json(
-      {
-        error:
-          'Не удалось получить историю вопросов.',
-      },
-      {
-        status: 500,
-      },
+      { error: 'Не удалось получить историю вопросов.' },
+      { status: 500 },
     );
   }
 }
@@ -106,60 +41,48 @@ export async function POST(request: Request) {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
-    const body =
-      (await request.json()) as CreateHistoryRequest;
-
+    const tenant = getDocumentTenantContext(authorization.session);
+    const body = (await request.json()) as CreateHistoryRequest;
     const question = body.question?.trim() ?? '';
     const answer = body.answer?.trim() ?? '';
 
-    if (!question || !answer) {
+    if (!question || !answer || question.length > 4_000 || answer.length > 40_000) {
       return NextResponse.json(
-        {
-          error:
-            'Вопрос и ответ обязательны.',
-        },
-        {
-          status: 400,
-        },
+        { error: 'Вопрос и ответ обязательны и не должны превышать лимит.' },
+        { status: 400 },
       );
     }
 
-    const history = await readHistory();
-
-    const item: HistoryItem = {
+    const resolvedSources = await resolveDocumentSources(
+      tenant,
+      Array.isArray(body.sources) ? body.sources : [],
+    );
+    const services = getDocumentServices();
+    const history = await services.history.list(tenant);
+    const item: DocumentHistoryItem = {
       id: crypto.randomUUID(),
       question,
       answer,
-      sources: Array.isArray(body.sources)
-        ? body.sources
-        : [],
+      sources: resolvedSources.map((source, index) => ({
+        number: index + 1,
+        documentId: source.documentId,
+        documentName: source.documentName,
+        chunkId: source.chunkId,
+        score: 0,
+      })),
       createdAt: new Date().toISOString(),
     };
 
     history.unshift(item);
+    await services.history.save(tenant, history.slice(0, 100));
 
-    // Пока храним последние 100 вопросов.
-    const limitedHistory = history.slice(0, 100);
-
-    await saveHistory(limitedHistory);
-
-    return NextResponse.json({
-      item,
-    });
+    return NextResponse.json({ item });
   } catch (error) {
-    console.error(
-      'Knowledge history save error:',
-      error,
-    );
+    console.error('Knowledge history save error:', error);
 
     return NextResponse.json(
-      {
-        error:
-          'Не удалось сохранить вопрос.',
-      },
-      {
-        status: 500,
-      },
+      { error: 'Не удалось сохранить вопрос.' },
+      { status: 500 },
     );
   }
 }
@@ -169,58 +92,32 @@ export async function DELETE(request: Request) {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
-    const url = new URL(request.url);
-    const id = url.searchParams.get('id');
-
-    const history = await readHistory();
+    const tenant = getDocumentTenantContext(authorization.session);
+    const id = new URL(request.url).searchParams.get('id');
+    const services = getDocumentServices();
+    const history = await services.history.list(tenant);
 
     if (!id) {
-      await saveHistory([]);
-
-      return NextResponse.json({
-        success: true,
-        cleared: true,
-      });
+      await services.history.save(tenant, []);
+      return NextResponse.json({ success: true, cleared: true });
     }
 
-    const updatedHistory = history.filter(
-      (item) => item.id !== id,
-    );
-
-    if (
-      updatedHistory.length === history.length
-    ) {
+    const updatedHistory = history.filter((item) => item.id !== id);
+    if (updatedHistory.length === history.length) {
       return NextResponse.json(
-        {
-          error:
-            'Запись истории не найдена.',
-        },
-        {
-          status: 404,
-        },
+        { error: 'Запись истории не найдена.' },
+        { status: 404 },
       );
     }
 
-    await saveHistory(updatedHistory);
-
-    return NextResponse.json({
-      success: true,
-      id,
-    });
+    await services.history.save(tenant, updatedHistory);
+    return NextResponse.json({ success: true, id });
   } catch (error) {
-    console.error(
-      'Knowledge history delete error:',
-      error,
-    );
+    console.error('Knowledge history delete error:', error);
 
     return NextResponse.json(
-      {
-        error:
-          'Не удалось удалить запись истории.',
-      },
-      {
-        status: 500,
-      },
+      { error: 'Не удалось удалить запись истории.' },
+      { status: 500 },
     );
   }
 }

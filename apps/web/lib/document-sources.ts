@@ -1,17 +1,8 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-
-type DocumentItem = {
-  id: string;
-  name: string;
-  status: string;
-  chunksFile?: string;
-};
-
-type TextChunk = {
-  id: string;
-  text: string;
-};
+import type { DocumentTenantContext } from './document-model';
+import {
+  getDocumentServices,
+  type DocumentServices,
+} from './document-services';
 
 export type DocumentSourceReference = {
   documentId?: unknown;
@@ -25,23 +16,11 @@ export type ResolvedDocumentSource = {
   snippet: string;
 };
 
-const dataDirectory = path.join(process.cwd(), '.data');
-const documentsFile = path.join(dataDirectory, 'documents.json');
-const chunksDirectory = path.join(dataDirectory, 'chunks');
-
-async function readJsonArray<T>(filePath: string): Promise<T[]> {
-  try {
-    const parsed: unknown = JSON.parse(await readFile(filePath, 'utf8'));
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function resolveDocumentSources(
+  tenant: DocumentTenantContext,
   references: DocumentSourceReference[],
+  services: DocumentServices = getDocumentServices(),
 ): Promise<ResolvedDocumentSource[]> {
-  const documents = await readJsonArray<DocumentItem>(documentsFile);
   const resolved: ResolvedDocumentSource[] = [];
   const seen = new Set<string>();
 
@@ -58,16 +37,13 @@ export async function resolveDocumentSources(
     const key = `${reference.documentId}:${reference.chunkId}`;
     if (seen.has(key)) continue;
 
-    const document = documents.find(
-      (item) =>
-        item.id === reference.documentId &&
-        item.status === 'Обработан' &&
-        item.chunksFile,
+    const document = await services.metadata.findById(
+      tenant,
+      reference.documentId,
     );
-    if (!document?.chunksFile) continue;
+    if (!document || document.status !== 'Обработан') continue;
 
-    const chunksFile = path.basename(document.chunksFile);
-    const chunks = await readJsonArray<TextChunk>(path.join(chunksDirectory, chunksFile));
+    const chunks = await services.processing.readChunks(tenant, document.id);
     const chunk = chunks.find(
       (item) => item.id === reference.chunkId && typeof item.text === 'string',
     );
@@ -76,7 +52,7 @@ export async function resolveDocumentSources(
     seen.add(key);
     resolved.push({
       documentId: document.id,
-      documentName: document.name,
+      documentName: document.originalName,
       chunkId: chunk.id,
       snippet: chunk.text.slice(0, 4_000),
     });

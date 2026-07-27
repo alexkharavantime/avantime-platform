@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { getDocumentTenantContext } from '../../../../lib/document-model';
 import {
   resolveDocumentSources,
   type DocumentSourceReference,
@@ -17,6 +18,8 @@ export async function POST(request: Request) {
   try {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
+
+    const tenant = getDocumentTenantContext(authorization.session);
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
@@ -45,6 +48,7 @@ export async function POST(request: Request) {
     }
 
     const sources = await resolveDocumentSources(
+      tenant,
       Array.isArray(body.sources) ? body.sources : [],
     );
 
