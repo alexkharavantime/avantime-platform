@@ -17,7 +17,7 @@ const variants: Record<ButtonVariant, string> = {
     'border border-transparent bg-transparent text-[var(--primary-dark)] hover:bg-white/70',
 };
 
-export function Button({ children, href, variant = 'primary' }: ButtonProps) {
+export default function Button({ children, href, variant = 'primary' }: ButtonProps) {
   return (
     <a
       href={href}

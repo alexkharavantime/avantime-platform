@@ -12,9 +12,10 @@ const statusLabel = { NEW: 'Новое', IN_PROGRESS: 'В работе', WAITING
 const priorityLabel = { LOW: 'Низкий', NORMAL: 'Обычный', HIGH: 'Высокий', CRITICAL: 'Критический' } as const;
 
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
-  if (!(await getSession())) redirect('/portal/login');
+  const session = await getSession();
+  if (!session) redirect('/portal/login');
   const { id } = await params;
-  const item = await getRequest(id);
+  const item = await getRequest(id, session);
   if (!item) notFound();
 
   return <PageShell><section className="bg-slate-50 py-16"><div className="mx-auto max-w-4xl px-6">

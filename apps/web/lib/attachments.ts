@@ -3,6 +3,9 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getPrisma } from '@avantime/database';
 import { recordSystemEvent } from './system-events';
+import { canAccessCompany } from './authorization';
+import type { AppSession } from './session';
+import { getRequest } from './requests-store';
 
 export type RequestAttachment = { id: string; name: string; mimeType: string; size: number; createdAt: string; downloadUrl?: string };
 const demoAttachments = new Map<string, (RequestAttachment & { storageKey: string })[]>();
@@ -42,17 +45,17 @@ export async function addAttachment(publicId: string, file: File) {
   return item;
 }
 
-export async function getAttachmentFile(id: string) {
+export async function getAttachmentFile(id: string, session: AppSession) {
   if (process.env.DATABASE_URL) {
     try {
       const prisma = await getPrisma();
-      const item = await prisma?.requestAttachment.findUnique({ where: { id } });
-      if (item) return { name: item.name, mimeType: item.mimeType, data: await readFile(path.join(uploadRoot(), item.storageKey)) };
+      const item = await prisma?.requestAttachment.findUnique({ where: { id }, include: { request: true } });
+      if (item && canAccessCompany(session, item.request.companyId)) return { name: item.name, mimeType: item.mimeType, data: await readFile(path.join(uploadRoot(), item.storageKey)) };
     } catch (error) { console.warn('Cannot read database attachment.', error); }
   }
-  for (const items of demoAttachments.values()) {
+  for (const [publicId, items] of demoAttachments.entries()) {
     const item = items.find((entry) => entry.id === id);
-    if (item) return { name: item.name, mimeType: item.mimeType, data: await readFile(path.join(uploadRoot(), item.storageKey)) };
+    if (item && (await getRequest(publicId, session))) return { name: item.name, mimeType: item.mimeType, data: await readFile(path.join(uploadRoot(), item.storageKey)) };
   }
   return null;
 }

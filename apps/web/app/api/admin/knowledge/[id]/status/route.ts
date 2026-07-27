@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { setKnowledgeArticleStatus, type KnowledgeStatus } from '../../../../../../lib/knowledge-store';
-import { getSession } from '../../../../../../lib/session';
+import { authorizeApi } from '../../../../../../lib/authorization';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getSession();
-  if (!session || session.role !== 'ADMIN') return NextResponse.json({ error: 'Недостаточно прав' }, { status: 403 });
+  const authorization = await authorizeApi(['ADMIN']);
+  if (authorization.response) return authorization.response;
   const { id } = await params;
   const form = await request.formData();
   const status = String(form.get('status')) as KnowledgeStatus;

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 const navigation = [
-  { label: 'Решения', href: '/solutions' },
-  { label: 'Отрасли', href: '/#industries' },
+  { label: '1С', href: '/solutions/1c' },
+  { label: 'Решения', href: '/#solutions' },
   { label: 'Подход', href: '/#approach' },
   { label: 'База знаний', href: '/knowledge' },
   { label: 'AI-консультант', href: '/assistant' },
@@ -15,7 +15,7 @@ export function SiteHeader() {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-3" aria-label="Avantime — на главную">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-lg font-black text-white shadow-lg shadow-blue-600/20">
@@ -46,7 +46,7 @@ export function SiteHeader() {
             Кабинет
           </Link>
           <Link
-            href="/contacts"
+            href="/#contact"
             className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-blue-600"
           >
             Обсудить задачу
@@ -85,7 +85,7 @@ export function SiteHeader() {
               Кабинет клиента
             </Link>
             <Link
-              href="/contacts"
+              href="/#contact"
               onClick={() => setIsOpen(false)}
               className="mt-3 rounded-xl bg-blue-600 px-4 py-3 text-center font-bold text-white"
             >

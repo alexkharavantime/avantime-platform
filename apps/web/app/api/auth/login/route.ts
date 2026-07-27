@@ -1,5 +1,6 @@
 import { getPrisma } from '@avantime/database';
 import { NextResponse } from 'next/server';
+import { getDemoIdentity } from '../../../../lib/demo-auth';
 import { verifyPassword } from '../../../../lib/password';
 import { encodeSession, SESSION_COOKIE } from '../../../../lib/session';
 
@@ -34,13 +35,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (!identity) {
-    if (email === 'admin@avantime.lv' && password === 'admin') {
-      identity = { userId: 'demo-admin', name: 'Администратор Avantime', company: 'Avantime', email, role: 'ADMIN' };
-    } else if (email === 'demo@avantime.lv' && password === 'avantime') {
-      identity = { userId: 'demo-user', name: 'Александр', company: 'Demo Company', companyId: 'demo-company', email, role: 'CLIENT' };
-    }
-  }
+  identity ??= getDemoIdentity(email, password);
 
   if (!identity) {
     return NextResponse.json({ error: 'Неверный email или пароль.' }, { status: 401 });

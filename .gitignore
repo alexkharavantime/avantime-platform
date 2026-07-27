@@ -7,3 +7,14 @@ coverage
 .env.local
 .DS_Store
 *.log
+
+# TypeScript incremental build data
+*.tsbuildinfo
+
+# Local application runtime data
+**/.data/
+**/uploads/
+
+# Environment variants
+.env.*
+!.env.example
