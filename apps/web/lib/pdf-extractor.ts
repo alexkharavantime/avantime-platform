@@ -1,26 +1,13 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { PDFParse } from 'pdf-parse';
 
-type TextChunk = {
-  id: string;
-  index: number;
-  text: string;
-  start: number;
-  end: number;
-};
+import type { TextChunk } from './document-model';
 
 type ExtractPdfResult = {
   text: string;
   pages: number;
-  textFile: string;
-  chunksFile: string;
+  chunks: TextChunk[];
   chunksCount: number;
 };
-
-const dataDirectory = path.join(process.cwd(), '.data');
-const textDirectory = path.join(dataDirectory, 'text');
-const chunksDirectory = path.join(dataDirectory, 'chunks');
 
 function splitTextIntoChunks(
   sourceText: string,
@@ -86,7 +73,6 @@ function splitTextIntoChunks(
 
 export async function extractPdfText(
   pdfBuffer: Buffer,
-  documentId: string,
 ): Promise<ExtractPdfResult> {
   const parser = new PDFParse({
     data: pdfBuffer,
@@ -96,31 +82,12 @@ export async function extractPdfText(
     const result = await parser.getText();
     const text = result.text?.trim() ?? '';
 
-    await mkdir(textDirectory, { recursive: true });
-    await mkdir(chunksDirectory, { recursive: true });
-
-    const textFile = `${documentId}.txt`;
-    const chunksFile = `${documentId}.json`;
-
-    await writeFile(
-      path.join(textDirectory, textFile),
-      text,
-      'utf-8',
-    );
-
     const chunks = splitTextIntoChunks(text);
-
-    await writeFile(
-      path.join(chunksDirectory, chunksFile),
-      JSON.stringify(chunks, null, 2),
-      'utf-8',
-    );
 
     return {
       text,
       pages: result.total ?? 0,
-      textFile,
-      chunksFile,
+      chunks,
       chunksCount: chunks.length,
     };
   } finally {

@@ -1,73 +1,33 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { NextResponse } from 'next/server';
+
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
-
-type DocumentItem = {
-  id: string;
-  name: string;
-  textFile?: string;
-};
-
-const dataDirectory = path.join(process.cwd(), '.data');
-
-const documentsFile = path.join(
-  dataDirectory,
-  'documents.json',
-);
-
-const textDirectory = path.join(
-  dataDirectory,
-  'text',
-);
-
-async function readDocuments(): Promise<DocumentItem[]> {
-  try {
-    const content = await readFile(documentsFile, 'utf-8');
-    const documents = JSON.parse(content);
-
-    return Array.isArray(documents) ? documents : [];
-  } catch {
-    return [];
-  }
-}
+import { getDocumentTenantContext } from '../../../../lib/document-model';
+import { getDocumentServices } from '../../../../lib/document-services';
 
 export async function GET(request: Request) {
   try {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
-    const url = new URL(request.url);
-    const id = url.searchParams.get('id');
-
+    const tenant = getDocumentTenantContext(authorization.session);
+    const id = new URL(request.url).searchParams.get('id');
     if (!id) {
-      return NextResponse.json(
-        { error: 'Не указан документ.' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Не указан документ.' }, { status: 400 });
     }
 
-    const documents = await readDocuments();
-    const document = documents.find((item) => item.id === id);
-
+    const services = getDocumentServices();
+    const document = await services.metadata.findById(tenant, id);
     if (!document) {
-      return NextResponse.json(
-        { error: 'Документ не найден.' },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'Документ не найден.' }, { status: 404 });
     }
 
-    if (!document.textFile) {
+    const text = await services.processing.readText(tenant, document.id);
+    if (text === null) {
       return NextResponse.json(
         { error: 'Текст документа ещё не извлечён.' },
         { status: 404 },
       );
     }
-
-    const text = await readFile(
-      path.join(textDirectory, document.textFile),
-      'utf-8',
-    );
 
     return NextResponse.json({ text });
   } catch (error) {

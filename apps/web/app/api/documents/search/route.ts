@@ -1,24 +1,9 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { getDocumentTenantContext } from '../../../../lib/document-model';
+import { getDocumentServices } from '../../../../lib/document-services';
 
 export const runtime = 'nodejs';
-
-type DocumentItem = {
-  id: string;
-  name: string;
-  status: string;
-  chunksFile?: string;
-};
-
-type TextChunk = {
-  id: string;
-  index: number;
-  text: string;
-  start: number;
-  end: number;
-};
 
 type SearchResult = {
   documentId: string;
@@ -29,42 +14,6 @@ type SearchResult = {
   matches: number;
   score: number;
 };
-
-const dataDirectory = path.join(process.cwd(), '.data');
-const documentsFile = path.join(dataDirectory, 'documents.json');
-const chunksDirectory = path.join(dataDirectory, 'chunks');
-
-async function readDocuments(): Promise<DocumentItem[]> {
-  try {
-    const content = await readFile(documentsFile, 'utf-8');
-    const parsed: unknown = JSON.parse(content);
-
-    return Array.isArray(parsed)
-      ? (parsed as DocumentItem[])
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-async function readChunks(
-  chunksFile: string,
-): Promise<TextChunk[]> {
-  try {
-    const content = await readFile(
-      path.join(chunksDirectory, chunksFile),
-      'utf-8',
-    );
-
-    const parsed: unknown = JSON.parse(content);
-
-    return Array.isArray(parsed)
-      ? (parsed as TextChunk[])
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 function normalize(value: string) {
   return value
@@ -196,6 +145,7 @@ export async function GET(request: Request) {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
 
+    const tenant = getDocumentTenantContext(authorization.session);
     const url = new URL(request.url);
     const query = url.searchParams.get('q')?.trim() ?? '';
 
@@ -210,20 +160,18 @@ export async function GET(request: Request) {
       );
     }
 
-    const documents = await readDocuments();
+    const services = getDocumentServices();
+    const documents = await services.metadata.list(tenant);
     const results: SearchResult[] = [];
 
     for (const document of documents) {
       if (
-        document.status !== 'Обработан' ||
-        !document.chunksFile
+        document.status !== 'Обработан'
       ) {
         continue;
       }
 
-      const chunks = await readChunks(
-        document.chunksFile,
-      );
+      const chunks = await services.processing.readChunks(tenant, document.id);
 
       for (const chunk of chunks) {
         const evaluation = calculateScore(
@@ -237,7 +185,7 @@ export async function GET(request: Request) {
 
         results.push({
           documentId: document.id,
-          documentName: document.name,
+          documentName: document.originalName,
           chunkId: chunk.id,
           chunkIndex: chunk.index,
           snippet: createSnippet(
