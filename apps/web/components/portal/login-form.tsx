@@ -1,10 +1,10 @@
-import Link from 'next/link';
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export function LoginForm() {
+export function LoginForm({ returnTo }: { returnTo?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState('demo@avantime.lv');
   const [password, setPassword] = useState('avantime');
@@ -23,7 +23,7 @@ export function LoginForm() {
     const data = (await response.json()) as { error?: string; role?: 'CLIENT' | 'ADMIN' };
     setPending(false);
     if (!response.ok) return setError(data.error ?? 'Не удалось войти.');
-    router.push(data.role === 'ADMIN' ? '/admin' : '/portal');
+    router.push(returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'));
     router.refresh();
   }
 

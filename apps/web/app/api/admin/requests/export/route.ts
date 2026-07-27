@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
 import { listRequests } from '../../../../../lib/requests-store';
-import { getSession } from '../../../../../lib/session';
+import { authorizeApi } from '../../../../../lib/authorization';
 
 function csvCell(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
 export async function GET() {
-  const session = await getSession();
-  if (!session || session.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const authorization = await authorizeApi(['ADMIN']);
+  if (authorization.response) return authorization.response;
 
   const requests = await listRequests();
   const rows = [
