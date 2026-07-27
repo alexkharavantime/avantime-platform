@@ -18,21 +18,21 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. введены tenant-aware контракты хранения, метаданных и результатов обработки документов;
-2. Document API переведён с прямой работы с JSON и файловой системой на адаптеры и репозитории;
-3. добавлены отрицательные тесты межкорпоративной изоляции, удаления, обязательного tenant-контекста и path traversal.
+1. добавлены PostgreSQL metadata repository и migration-ready Prisma/SQL schema;
+2. реализованы S3-compatible adapter, checksum, soft delete и управляемые migration/cleanup commands;
+3. persistence contracts покрыты изолированными тестами без изменения Knowledge Center UI.
 
 ### 🚧 Три главных риска
 
-1. tenant-aware модель документов введена только для локального хранилища; Document API остаётся `ADMIN`-only, а production PostgreSQL/S3 и клиентские разрешения ещё не реализованы;
+1. PostgreSQL/S3 adapters реализованы, но ещё не проверены против реальной production infrastructure; Document API остаётся `ADMIN`-only;
 2. параллельные `/portal` и `/dashboard`, две базы знаний и несколько независимых AI-маршрутов увеличивают архитектурный долг;
 3. production-хранение, очереди, мониторинг и достаточное автоматическое тестирование ещё не реализованы.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. **SEC-002:** утвердить RBAC и правила выбора tenant системным администратором;
-2. **DOC-001:** реализовать production-репозиторий метаданных и S3-адаптер после выбора хранилища;
-3. **DOC-002:** спроектировать асинхронную обработку документов после выбора очереди.
+1. **INFRA-001/SEC-006:** выбрать S3-провайдера, bucket policy, encryption, versioning и backup;
+2. **DOC-001:** провести integration migration rehearsal на изолированных PostgreSQL/S3;
+3. **SEC-002:** утвердить RBAC и правила выбора tenant системным администратором.
 
 ---
 
@@ -41,11 +41,11 @@
 | Поле | Значение |
 |---|---|
 | Проект | Avantime Platform |
-| Версия документа | 1.4 |
+| Версия документа | 1.5 |
 | Дата последнего обновления | 2026-07-27 |
 | Ответственный | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git | `feature/task-002-document-rag` |
-| Последний commit | `1bb2053 Avantime Platform v2: public site, secure dashboard, Knowledge Center and security hardening (#1)` |
+| Текущая ветка Git | `feature/task-002-storage-persistence` |
+| Последний commit | `34111ce feat(documents): add tenant-aware storage boundaries (#2)` |
 | Последний стабильный релиз | Version 1.5 по истории проекта; Git tag релиза отсутствует |
 | Текущая версия разработки | Version 2.0, подготовка и консолидация |
 | Общий процент готовности проекта | 30% — экспертная оценка относительно целевого объёма Version 4.0 |
@@ -80,7 +80,24 @@ Avantime находится на переходе от демонстрацио�
 
 Оригиналы, извлечённый текст, chunks, metadata и история изолированы по `companyId`. Доступ без tenant-контекста отклоняется, ключи локального хранилища защищены от path traversal, а удаление ограничено текущим tenant. Для прежних development-данных предусмотрена совместимая нормализация в системный tenant `avantime`.
 
-Текущие ограничения сохраняются: API доступен только `ADMIN`, PDF обрабатывается синхронно, поиск остаётся лексическим, а S3, очередь, OCR, embeddings и AI Gateway не реализованы.
+На завершении первой итерации API оставался доступен только `ADMIN`, PDF обрабатывался синхронно, поиск оставался лексическим, а S3, очередь, OCR, embeddings и AI Gateway не были реализованы.
+
+## Вторая итерация TASK-002
+
+В ветке `feature/task-002-storage-persistence` добавлены `PostgreSQLDocumentMetadataRepository`, Prisma-модель и SQL migration, `S3DocumentStorage` и централизованный configuration registry. Production defaults допускают только PostgreSQL/S3 и fail-fast при неполной конфигурации; development сохраняет local adapters.
+
+Metadata содержит SHA-256 checksum и `deletedAt`. API выполняет soft delete, а физическое удаление вынесено в отдельную повторяемую cleanup command. Dry-run/idempotent migration переносит legacy metadata и объекты из `.data`, проверяет checksum и не удаляет локальный источник.
+
+Реализация не означает готовность production infrastructure: конкретный S3-провайдер, private bucket policy, encryption, versioning, backup/restore и реальные PostgreSQL/S3 integration tests ещё не выполнены. Document API остаётся `ADMIN`-only; UI, PDF pipeline, lexical search, OpenAI и Gemini не менялись.
+
+Проверки второй итерации TASK-002:
+
+- `npm run typecheck` — успешно для четырёх workspace-пакетов;
+- `npm run lint` — успешно; database/shared/ui пока используют placeholder lint scripts;
+- `npm run test` — успешно, 24 из 24 тестов;
+- `npm run db:generate` — Prisma schema валидна, client generation успешно;
+- `npm run build` — успешно с одноразовым `SESSION_SECRET`, 53 из 53 static entries;
+- formatting, `git diff --check`, configuration/security static checks и поиск распространённых форматов секретов — успешно.
 
 Проверки первой итерации TASK-002:
 
@@ -99,7 +116,7 @@ Avantime находится на переходе от демонстрацио�
 
 | Направление | Статус | Готовность | Комментарий |
 |---|---|---:|---|
-| Документация | Review | 80% | Созданы Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и ADR; документы ещё не утверждены и не все добавлены в Git |
+| Документация | Review | 80% | Созданы и добавлены в Git Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и ADR; формальное утверждение ещё не завершено |
 | Публичный сайт | In Progress | 65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности |
 | Личный кабинет | In Progress | 65% | Обращения изолированы по компании, dashboard требует сессию; требуется объединение двух оболочек |
 | Административная панель | In Progress | 55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI |
@@ -110,10 +127,10 @@ Avantime находится на переходе от демонстрацио�
 | 1С | Planned | 10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован |
 | Agent+ | Planned | 15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован |
 | API | In Progress | 45% | 25 route handlers; нет внешней версионируемой API Platform и единых контрактов |
-| Безопасность | In Progress | 55% | Dashboard и внутренние AI/document API закрыты; обращения, вложения и локальные документы изолированы по компании, но полная RBAC-модель отсутствует |
+| Безопасность | In Progress | 60% | Dashboard и внутренние API закрыты; document persistence tenant-aware и fail-fast в production, но полная RBAC и инфраструктурная проверка отсутствуют |
 | UI/UX | In Progress | 50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована |
-| Инфраструктура | Planned | 25% | Есть Docker Compose для PostgreSQL и CI-файл; нет production-контура, очередей и наблюдаемости |
-| Тестирование | In Progress | 25% | Security-тесты покрывают авторизацию, компании, документы, удаление и path traversal; формальная стратегия и достаточное интеграционное покрытие отсутствуют |
+| Инфраструктура | Planned | 30% | Добавлены production persistence contracts и migration SQL; нет развёрнутого object storage, backup, очередей и наблюдаемости |
+| Тестирование | In Progress | 30% | 24 теста покрывают security и persistence contracts; реальные PostgreSQL/S3 integration tests отсутствуют |
 | Развёртывание | Planned | 15% | Локальный запуск описан частично; production deployment и rollback не формализованы |
 
 ---
@@ -138,12 +155,12 @@ Avantime находится на переходе от демонстрацио�
 | WEB-003 | Каталог решений | P1 | 65% | Масштабируемый каталог на едином шаблоне |
 | PORTAL-001 | Единый Dashboard | P0 | 35% | Один защищённый клиентский кабинет вместо параллельных оболочек |
 | PORTAL-002 | Обращения | P0 | 70% | Надёжные обращения, сообщения, статусы, SLA и вложения |
-| PORTAL-003 | Документы | P0 | 45% | Tenant-aware локальное хранение; production storage и клиентский доступ ещё не реализованы |
+| PORTAL-003 | Документы | P0 | 55% | Production persistence adapters готовы; deployment, клиентский доступ и async pipeline ещё не реализованы |
 | AI-002 | Адаптер OpenAI | P0 | 30% | OpenAI работает через общий AI Gateway |
 | AI-003 | Адаптер Gemini | P1 | 25% | Gemini работает через общий контракт без утечки ключа |
 | AI-007 | Защищённый RAG | P0 | 25% | Ответы по разрешённым знаниям с проверяемыми источниками |
 | KB-001 | Объединение двух баз знаний | P0 | 30% | Единый домен статей и документов |
-| DOC-001 | Единое файловое хранилище | P0 | 45% | Контракты и Local Storage готовы; S3 и объединение вложений остаются |
+| DOC-001 | Единое файловое хранилище | P0 | 65% | Local/S3 adapters, PostgreSQL metadata и migration готовы; infrastructure, signed URLs, backup и вложения остаются |
 | UX-001 | Единая дизайн-система | P1 | 45% | Общие tokens и интерфейсные паттерны |
 | UX-002 | Библиотека компонентов | P1 | 45% | Стабильные exports и повторно используемые компоненты |
 | DOCS-001–DOCS-004 | Vision, Master Specification, Architecture и Roadmap | P0–P1 | 85% | Утверждённая согласованная документационная основа |
@@ -186,7 +203,7 @@ Avantime находится на переходе от демонстрацио�
 - реализована управляемая база статей со статусами и поиском;
 - создан прототип загрузки PDF, извлечения текста, поиска и ответов OpenAI;
 - добавлен отдельный прототип Gemini;
-- сформированы Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и 15 ADR;
+- сформированы Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и 16 ADR;
 - создана feature branch `feature/avantime-platform-v2`;
 - локальные runtime-данные и TypeScript build data исключены из Git.
 
@@ -197,7 +214,7 @@ Avantime находится на переходе от демонстрацио�
 | Категория | Риск | Возможное снижение |
 |---|---|---|
 | Технический | Локальные документы имеют tenant-контекст, но системный `ADMIN` пока работает только в tenant `avantime` без выбора организации | Следующая итерация SEC-002 и явная модель административного tenant-доступа |
-| Технический | `LocalDocumentStorage` непригоден для горизонтального production-масштабирования | Реализация S3-контракта, PostgreSQL metadata и migration plan |
+| Технический | S3/PostgreSQL contracts не проверены на реальной production-like infrastructure | Integration environment, migration rehearsal, backup/restore test |
 | Технический | Тяжёлая обработка PDF выполняется в пользовательском запросе | INFRA-003 и асинхронный pipeline |
 | Архитектурный | `/portal` и `/dashboard` развиваются параллельно | Утвердить ADR-0009 и выполнить PORTAL-001 |
 | Архитектурный | Существуют две базы знаний | KB-001, единая модель прав и lifecycle |
@@ -217,7 +234,7 @@ Avantime находится на переходе от демонстрацио�
 - объединение `/portal` и `/dashboard`;
 - объединение управляемых статей и локального Knowledge Center;
 - единый AI Gateway вместо прямых provider calls;
-- production-реализация существующего Storage Adapter;
+- production deployment и эксплуатационная проверка существующего Storage Adapter;
 - распространение tenant-контекста на полный RBAC и остальные домены;
 - фоновые очереди для документов, Email и интеграций;
 - единый аудит, технические логи и корреляционные идентификаторы.
@@ -249,7 +266,7 @@ Avantime находится на переходе от демонстрацио�
 ## Известные проблемы
 
 - Document API имеет tenant-метаданные, но временно закрыт для всех ролей, кроме `ADMIN`;
-- локальное хранение документов и истории не подходит для горизонтального production-развёртывания;
+- production persistence adapters не проверены против реальных PostgreSQL/S3, а история AI всё ещё хранится как объект;
 - прямые маршруты OpenAI и Gemini не объединены общими политиками, rate limiting и аудитом;
 - `/portal` и `/dashboard`, а также две реализации базы знаний пока существуют параллельно;
 - demo fallback хранилищ при недоступной production-базе требует отдельного fail-fast режима;
@@ -308,7 +325,7 @@ Avantime находится на переходе от демонстрацио�
 
 **Оценка:** 4/10.
 
-**Комментарий:** dashboard и внутренние AI/document routes требуют серверную сессию; document API временно ограничен `ADMIN`, а обращения, вложения и локальные документы изолированы по `companyId`. Небезопасный `returnTo` отклоняется, отсутствие `SESSION_SECRET` приводит к понятной ошибке. Полная ролевая модель и клиентский доступ к документам отсутствуют.
+**Комментарий:** dashboard и внутренние AI/document routes требуют серверную сессию; document API временно ограничен `ADMIN`, а обращения, вложения и document persistence adapters изолированы по `companyId`. Небезопасный `returnTo` отклоняется, отсутствие обязательной production storage configuration приводит к понятной ошибке. Полная ролевая модель и клиентский доступ к документам отсутствуют.
 
 **Рекомендации:** SEC-001, SEC-002, SEC-004 и SEC-005 выполнить до расширения AI и документов.
 
@@ -324,7 +341,7 @@ Avantime находится на переходе от демонстрацио�
 
 **Оценка:** 4/10.
 
-**Комментарий:** 13 автоматических тестов проверяют базовую авторизацию, различие 401/403, межкорпоративный доступ к обращениям, вложениям и документам, обязательный `companyId`, tenant-scoped удаление, отсутствие доступа без tenant-контекста и path traversal. Формальная стратегия и широкое интеграционное покрытие отсутствуют.
+**Комментарий:** 24 автоматических теста проверяют авторизацию, межкорпоративный доступ, tenant-aware PostgreSQL queries, S3 keys/delete, checksum, soft delete, cleanup recovery, migration idempotency, dry-run и configuration fail-fast. Реальные PostgreSQL/S3 integration tests отсутствуют.
 
 **Рекомендации:** начать с auth/RBAC, обращений, документов, RAG permissions, Jira idempotency и migration tests.
 
@@ -344,7 +361,7 @@ Avantime находится на переходе от демонстрацио�
 | Количество интеграций | 4 реализованных или частичных | Jira, Resend Email, OpenAI и Gemini; 1С и Agent+ пока не являются production-интеграциями |
 | Количество открытых задач | 83 | 52 `Planned`, 27 `In Progress`, 4 `Review` |
 | Количество завершённых задач | 0 | В Product Backlog нет статуса `Done` |
-| Количество ADR | 15 | 8 `Accepted`, 7 `Proposed` |
+| Количество ADR | 16 | 9 `Accepted`, 7 `Proposed` |
 | Количество известных ограничений | 6 | Явно перечисленные ограничения в разделе «Технический долг» |
 
 ---
@@ -353,7 +370,7 @@ Avantime находится на переходе от демонстрацио�
 
 | Версия | Готовность | Основные оставшиеся задачи |
 |---|---:|---|
-| Version 2.0 | 30% | Security foundation, AI Gateway, единый портал, production-реализации Storage Adapter, PostgreSQL-only production, RAG, очереди, мониторинг и тесты |
+| Version 2.0 | 30% | Security foundation, AI Gateway, единый портал, deployment/backup Storage Adapter, PostgreSQL-only production, RAG, очереди, мониторинг и тесты |
 | Version 2.1 | 10% | Integration Hub, двусторонняя Jira, production-интеграции 1С и Agent+, кабинет сотрудников и мониторинг обменов |
 | Version 2.2 | 10% | Knowledge Center 2.0, новые форматы, версии, AI Agents, новости, вебинары, аналитика и User Guide |
 | Version 3.0 | 5% | Мультитенантность, SSO/MFA, API Platform, Developer Platform, плагины, Claude, локальные LLM и marketplace |
@@ -372,7 +389,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 6. Утвердить ADR-0013: роли, разрешения и tenant-контекст.
 7. Утвердить ADR-0014: базовая ветка и переход к классическому GitHub Flow.
 8. Выбрать очередь и механизм фоновых задач.
-9. Выбрать S3-совместимое объектное хранилище.
+9. Выбрать конкретного S3-провайдера и утвердить private bucket policy.
 10. Выбрать платформу логирования, traces и мониторинга.
 11. Определить production identity: серверные сессии, MFA и SSO roadmap.
 12. Назначить персональных владельцев Product Backlog, ADR и Project Status.
@@ -385,8 +402,8 @@ Version 2.0 не готова к production-релизу. Процент отр�
 |---:|---|---|---|---|
 | 1 | Завершить review и сохранить стратегические документы отдельным PR | P0 | Единый утверждённый источник требований | Низкая |
 | 2 | Утвердить RBAC и правила выбора tenant системным администратором | P0 | Основа безопасного клиентского доступа к документам | Высокая |
-| 3 | Реализовать S3DocumentStorage и PostgreSQL metadata | P0 | Production-хранение и горизонтальное масштабирование | Высокая |
-| 4 | Подготовить проверяемую миграцию локальных документов | P0 | Безопасный переход без потери tenant-принадлежности | Средняя |
+| 3 | Развернуть private S3 bucket и PostgreSQL migration environment | P0 | Проверяемое production-хранение | Высокая |
+| 4 | Провести migration rehearsal и backup/restore test | P0 | Безопасный переход без потери tenant-принадлежности | Средняя |
 | 5 | Создать внутренний AI Gateway | P0 | Единые политики, стоимость, аудит и модели | Высокая |
 | 6 | Объединить `/portal` и `/dashboard` по этапам | P0 | Цельный UX и устранение дублирования | Высокая |
 | 7 | Внедрить очереди, мониторинг и корреляционные ID | P0 | Надёжная обработка и диагностика | Высокая |
@@ -398,6 +415,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата | Версия | Автор | Изменения |
 |---|---|---|---|
+| 2026-07-27 | 1.5 | Codex, по поручению владельца проекта | Зафиксирована вторая итерация TASK-002: PostgreSQL/S3 persistence, checksum, soft delete, migration/cleanup и контрактные тесты |
 | 2026-07-27 | 1.4 | Codex, по поручению владельца проекта | Зафиксирована первая итерация TASK-002: tenant-aware metadata, локальный Storage Adapter, репозитории Document/RAG и пять новых security-тестов |
 | 2026-07-27 | 1.3 | Codex, по поручению владельца проекта | Актуализированы 32 страницы и 25 API-маршрутов; отделён scope PR #1 от TASK-002; зафиксированы ограничения Document/RAG и AI; удалена устаревшая рекомендация о маршруте статьи |
 | 2026-07-27 | 1.2 | Codex, по поручению владельца проекта | Зафиксирован базовый этап защиты Dashboard и внутренних API, организационная изоляция обращений и вложений, результаты lint/typecheck/build и оставшийся риск tenant-модели документов |

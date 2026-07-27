@@ -164,7 +164,12 @@ model EmailMessage {
   @@index([status, scheduledAt])
 }
 
-enum EmailStatus { PENDING SENDING SENT FAILED }
+enum EmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
 
 
 model KnowledgeArticle {
@@ -189,4 +194,36 @@ enum ArticleStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
+}
+
+model DocumentMetadata {
+  id           String                   @db.VarChar(200)
+  companyId    String                   @db.VarChar(200)
+  uploadedBy   String                   @db.VarChar(200)
+  originalName String
+  storedName   String                   @db.VarChar(255)
+  mimeType     String                   @db.VarChar(255)
+  size         Int
+  status       DocumentProcessingStatus @default(PROCESSING)
+  checksum     String                   @db.VarChar(64)
+  pages        Int?
+  textLength   Int?
+  processedAt  DateTime?
+  errorMessage String?
+  chunksCount  Int?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  deletedAt    DateTime?
+
+  @@id([companyId, id])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+enum DocumentProcessingStatus {
+  PROCESSING
+  PROCESSED
+  FAILED
 }

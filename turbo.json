@@ -1,6 +1,18 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["SESSION_SECRET"],
+  "globalEnv": [
+    "SESSION_SECRET",
+    "DATABASE_URL",
+    "DOCUMENT_STORAGE_DRIVER",
+    "DOCUMENT_METADATA_DRIVER",
+    "DOCUMENT_DATA_DIR",
+    "OBJECT_STORAGE_ENDPOINT",
+    "OBJECT_STORAGE_REGION",
+    "OBJECT_STORAGE_BUCKET",
+    "OBJECT_STORAGE_ACCESS_KEY",
+    "OBJECT_STORAGE_SECRET_KEY",
+    "OBJECT_STORAGE_FORCE_PATH_STYLE"
+  ],
   "tasks": {
     "dev": {
       "cache": false,

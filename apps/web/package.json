@@ -8,11 +8,14 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "documents:migrate": "tsx scripts/migrate-documents.ts",
+    "documents:cleanup": "tsx scripts/cleanup-deleted-documents.ts"
   },
   "dependencies": {
     "@avantime/database": "*",
     "@avantime/ui": "*",
+    "@aws-sdk/client-s3": "^3.1095.0",
     "@google/genai": "^2.13.0",
     "next": "^15.0.0",
     "openai": "^6.49.0",

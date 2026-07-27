@@ -4,19 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import type {
-  DocumentMetadata,
-  DocumentTenantContext,
-} from '../lib/document-model';
+import type { DocumentMetadata, DocumentTenantContext } from '../lib/document-model';
 import {
   LocalDocumentHistoryRepository,
   LocalDocumentMetadataRepository,
   LocalDocumentProcessingRepository,
 } from '../lib/document-repositories';
-import {
-  deleteDocument,
-  type DocumentServices,
-} from '../lib/document-services';
+import { deleteDocument, type DocumentServices } from '../lib/document-services';
 import { LocalDocumentStorage } from '../lib/document-storage';
 
 const companyA: DocumentTenantContext = {
@@ -48,7 +42,7 @@ async function createFixture() {
 function metadata(
   id: string,
   storedName = `${id}.pdf`,
-): Omit<DocumentMetadata, 'companyId' | 'uploadedBy'> {
+): Omit<DocumentMetadata, 'companyId' | 'uploadedBy' | 'deletedAt'> {
   const now = new Date().toISOString();
 
   return {
@@ -58,6 +52,7 @@ function metadata(
     storedName,
     mimeType: 'application/pdf',
     size: 12,
+    checksum: '9e244f28c5b80c7ac58255d4a9888d4b9454068ac7c8e2779236c6095fa8b8b5',
     createdAt: now,
     updatedAt: now,
     pages: 1,
@@ -95,22 +90,10 @@ test('a document owned by company A is unavailable to company B', async () => {
       (await fixture.services.metadata.findById(companyA, 'document-a'))?.companyId,
       'company-a',
     );
-    assert.equal(
-      await fixture.services.metadata.findById(companyB, 'document-a'),
-      null,
-    );
-    assert.equal(
-      await fixture.services.storage.read(companyB, 'original', 'document-a.pdf'),
-      null,
-    );
-    assert.equal(
-      await fixture.services.processing.readText(companyB, 'document-a'),
-      null,
-    );
-    assert.deepEqual(
-      await fixture.services.processing.readChunks(companyB, 'document-a'),
-      [],
-    );
+    assert.equal(await fixture.services.metadata.findById(companyB, 'document-a'), null);
+    assert.equal(await fixture.services.storage.read(companyB, 'original', 'document-a.pdf'), null);
+    assert.equal(await fixture.services.processing.readText(companyB, 'document-a'), null);
+    assert.deepEqual(await fixture.services.processing.readChunks(companyB, 'document-a'), []);
   } finally {
     await fixture.cleanup();
   }
@@ -120,10 +103,7 @@ test('created document metadata always contains companyId from tenant context', 
   const fixture = await createFixture();
 
   try {
-    const created = await fixture.services.metadata.create(
-      companyA,
-      metadata('metadata-company'),
-    );
+    const created = await fixture.services.metadata.create(companyA, metadata('metadata-company'));
     const listed = await fixture.services.metadata.list(companyA);
 
     assert.equal(created.companyId, 'company-a');
@@ -152,17 +132,14 @@ test('a file cannot be read without tenant context', async () => {
   }
 });
 
-test('deleting a document removes resources only for the current tenant', async () => {
+test('soft-deleting a document hides only metadata for the current tenant', async () => {
   const fixture = await createFixture();
   const documentId = 'shared-document';
   const storedName = 'shared-document.pdf';
 
   try {
     for (const tenant of [companyA, companyB]) {
-      await fixture.services.metadata.create(
-        tenant,
-        metadata(documentId, storedName),
-      );
+      await fixture.services.metadata.create(tenant, metadata(documentId, storedName));
       await fixture.services.storage.write(
         tenant,
         'original',
@@ -185,28 +162,24 @@ test('deleting a document removes resources only for the current tenant', async 
 
     await deleteDocument(companyA, documentId, fixture.services);
 
+    assert.equal(await fixture.services.metadata.findById(companyA, documentId), null);
     assert.equal(
-      await fixture.services.metadata.findById(companyA, documentId),
-      null,
+      (await fixture.services.metadata.findDeletedById(companyA, documentId))?.companyId,
+      'company-a',
     );
     assert.equal(
-      await fixture.services.storage.read(companyA, 'original', storedName),
-      null,
+      (await fixture.services.storage.read(companyA, 'original', storedName))?.toString('utf8'),
+      'company-a',
     );
     assert.equal(
       (await fixture.services.metadata.findById(companyB, documentId))?.companyId,
       'company-b',
     );
     assert.equal(
-      (
-        await fixture.services.storage.read(companyB, 'original', storedName)
-      )?.toString('utf8'),
+      (await fixture.services.storage.read(companyB, 'original', storedName))?.toString('utf8'),
       'company-b',
     );
-    assert.equal(
-      await fixture.services.processing.readText(companyB, documentId),
-      'company-b',
-    );
+    assert.equal(await fixture.services.processing.readText(companyB, documentId), 'company-b');
     assert.equal(
       (await fixture.services.processing.readChunks(companyB, documentId))[0]?.text,
       'company-b',
