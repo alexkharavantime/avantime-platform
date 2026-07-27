@@ -27,5 +27,8 @@
   ],
   "overrides": {
     "esbuild": "0.26.0"
+  },
+  "dependencies": {
+    "openai": "^6.49.0"
   }
 }
