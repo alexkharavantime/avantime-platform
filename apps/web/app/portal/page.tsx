@@ -10,7 +10,7 @@ const labels = { NEW: 'Новое', IN_PROGRESS: 'В работе', WAITING_CUST
 
 export default async function PortalPage() {
   const session = await getSession(); if (!session) redirect('/portal/login');
-  const requests = await listRequests();
+  const requests = await listRequests(session);
   const open = requests.filter((r)=>r.status !== 'RESOLVED').length;
   const waiting = requests.filter((r)=>r.status === 'WAITING_CUSTOMER').length;
   return <PageShell><section className="bg-slate-50 py-16 sm:py-20"><div className="mx-auto max-w-7xl px-6">
