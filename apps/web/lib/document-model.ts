@@ -6,6 +6,7 @@ import type {
   DocumentTextExtractionMethod,
   DocumentType,
 } from './document-intelligence-model';
+import type { DocumentEmbeddingStatus } from './document-embedding-model';
 
 export const AVANTIME_DOCUMENT_COMPANY_ID = 'avantime';
 export const UNVERIFIED_DOCUMENT_CHECKSUM = '0'.repeat(64);
@@ -50,6 +51,14 @@ export type DocumentMetadata = DocumentIntelligenceMetadata & {
   pages: number | null;
   textLength: number | null;
   chunksCount: number | null;
+  embeddingStatus: DocumentEmbeddingStatus;
+  embeddingModel: string | null;
+  embeddingDimensions: number | null;
+  embeddingVersion: string | null;
+  embeddedAt: string | null;
+  embeddingAttempts: number;
+  lastEmbeddingErrorCode: string | null;
+  embeddingContentHash: string | null;
 };
 
 export type DocumentApiItem = {
@@ -92,6 +101,13 @@ export type DocumentApiItem = {
   extractedCharacterCount?: number;
   requiresManualReview: boolean;
   intelligenceVersion: string;
+  embeddingStatus: DocumentEmbeddingStatus;
+  embeddingModel?: string;
+  embeddingDimensions?: number;
+  embeddingVersion?: string;
+  embeddedAt?: string;
+  embeddingAttempts: number;
+  lastEmbeddingErrorCode?: string;
 };
 
 const API_STATUS_LABELS: Record<DocumentProcessingStatus, DocumentApiStatus> = {
@@ -156,5 +172,12 @@ export function toDocumentApiItem(document: DocumentMetadata): DocumentApiItem {
     extractedCharacterCount: document.extractedCharacterCount ?? undefined,
     requiresManualReview: document.requiresManualReview,
     intelligenceVersion: document.intelligenceVersion,
+    embeddingStatus: document.embeddingStatus,
+    embeddingModel: document.embeddingModel ?? undefined,
+    embeddingDimensions: document.embeddingDimensions ?? undefined,
+    embeddingVersion: document.embeddingVersion ?? undefined,
+    embeddedAt: document.embeddedAt ?? undefined,
+    embeddingAttempts: document.embeddingAttempts,
+    lastEmbeddingErrorCode: document.lastEmbeddingErrorCode ?? undefined,
   };
 }

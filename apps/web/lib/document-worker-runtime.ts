@@ -1,4 +1,16 @@
-import type { DocumentProcessingWorker } from './document-processing-worker';
+type WorkerRunResult = {
+  outcome: string;
+};
+
+type Worker<T extends WorkerRunResult> = {
+  runOnce(
+    tenant: {
+      companyId: string;
+      userId: string;
+    },
+    workerId: string,
+  ): Promise<T>;
+};
 
 export class DocumentWorkerShutdown {
   private requested = false;
@@ -33,8 +45,8 @@ export class DocumentWorkerShutdown {
   }
 }
 
-export async function runDocumentWorkerLoop(options: {
-  worker: DocumentProcessingWorker;
+export async function runDocumentWorkerLoop<T extends WorkerRunResult>(options: {
+  worker: Worker<T>;
   tenant: {
     companyId: string;
     userId: string;
@@ -42,9 +54,7 @@ export async function runDocumentWorkerLoop(options: {
   workerId: string;
   pollIntervalMs: number;
   shutdown: DocumentWorkerShutdown;
-  onResult?: (
-    result: Awaited<ReturnType<DocumentProcessingWorker['runOnce']>>,
-  ) => void | Promise<void>;
+  onResult?: (result: T) => void | Promise<void>;
 }) {
   while (!options.shutdown.isRequested) {
     const result = await options.worker.runOnce(options.tenant, options.workerId);

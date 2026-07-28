@@ -1,132 +1,69 @@
-import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
+
+import { AiGatewayError } from '../../../../lib/ai-gateway';
+import { assertApiRateLimit, ApiRateLimitError } from '../../../../lib/api-rate-limit';
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
-import {
-  resolveDocumentSources,
-  type DocumentSourceReference,
-} from '../../../../lib/document-sources';
+import { getDocumentServices } from '../../../../lib/document-services';
 
 export const runtime = 'nodejs';
 
 type AskRequest = {
-  question?: string;
-  sources?: DocumentSourceReference[];
+  question?: unknown;
+  companyId?: unknown;
 };
 
 export async function POST(request: Request) {
   try {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
-
     const tenant = getDocumentTenantContext(authorization.session);
-
-    if (!process.env.OPENAI_API_KEY) {
+    const services = getDocumentServices();
+    if (!services.rag) {
       return NextResponse.json(
-        {
-          error: 'Не задан OPENAI_API_KEY.',
-        },
-        {
-          status: 500,
-        },
+        { error: 'RAG временно недоступен.', code: 'RAG_UNAVAILABLE' },
+        { status: 503 },
       );
     }
-
+    assertApiRateLimit(tenant, services.rag.configuration.limits.rateLimitPerMinute);
     const body = (await request.json()) as AskRequest;
-
-    const question = body.question?.trim() ?? '';
-
-    if (question.length < 3 || question.length > 4_000) {
+    if (body.companyId !== undefined) {
       return NextResponse.json(
-        {
-          error: 'Вопрос должен содержать от 3 до 4000 символов.',
-        },
-        {
-          status: 400,
-        },
+        { error: 'Поле companyId не поддерживается.', code: 'TENANT_INPUT_REJECTED' },
+        { status: 400 },
       );
     }
-
-    const sources = await resolveDocumentSources(
+    const question = typeof body.question === 'string' ? body.question.trim() : '';
+    if (
+      question.length < 3 ||
+      question.length > services.rag.configuration.limits.queryMaximumCharacters
+    ) {
+      return NextResponse.json(
+        { error: 'Некорректная длина вопроса.', code: 'RAG_INVALID_QUESTION' },
+        { status: 400 },
+      );
+    }
+    const result = await services.rag.answers.answer({
       tenant,
-      Array.isArray(body.sources) ? body.sources : [],
-    );
-
-    if (sources.length === 0) {
+      question,
+      correlationId: crypto.randomUUID(),
+    });
+    return NextResponse.json(result);
+  } catch (error) {
+    if (error instanceof ApiRateLimitError || error instanceof AiGatewayError) {
+      const status =
+        error instanceof ApiRateLimitError || error.code === 'AI_RATE_LIMITED' ? 429 : 503;
       return NextResponse.json(
         {
-          error:
-            'В базе знаний не найдены подходящие фрагменты.',
+          error: status === 429 ? 'Слишком много запросов.' : 'Не удалось получить ответ AI.',
+          code: error.code,
         },
-        {
-          status: 400,
-        },
+        { status },
       );
     }
-
-    const context = sources
-      .map((source, index) => {
-        return [
-          `[Источник ${index + 1}]`,
-          `Документ: ${source.documentName}`,
-          `Фрагмент: ${source.snippet}`,
-        ].join('\n');
-      })
-      .join('\n\n');
-
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    const response = await client.responses.create({
-      model:
-        process.env.OPENAI_MODEL || 'gpt-5',
-
-      store: false,
-
-      instructions: [
-        'Ты AI-консультант Avantime.',
-        'Отвечай только на основании переданных источников.',
-        'Если информации недостаточно, прямо сообщи об этом.',
-        'Не придумывай факты.',
-        'В ответе ставь ссылки вида [Источник 1], [Источник 2].',
-        'Отвечай на русском языке.',
-      ].join(' '),
-
-      input: [
-        `Вопрос пользователя:\n${question}`,
-        `\nИсточники:\n${context}`,
-      ].join('\n'),
-    });
-
-    const answer = response.output_text?.trim();
-
-    if (!answer) {
-      throw new Error(
-        'AI не вернул текст ответа.',
-      );
-    }
-
-    return NextResponse.json({
-      answer,
-      sources: sources.map((source, index) => ({
-        number: index + 1,
-        documentId: source.documentId,
-        documentName: source.documentName,
-        chunkId: source.chunkId,
-        score: 0,
-      })),
-    });
-  } catch (error) {
-    console.error('Knowledge AI error:', error);
-
     return NextResponse.json(
-      {
-        error: 'Не удалось получить ответ AI.',
-      },
-      {
-        status: 500,
-      },
+      { error: 'Не удалось получить ответ AI.', code: 'RAG_UNAVAILABLE' },
+      { status: 503 },
     );
   }
 }

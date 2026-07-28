@@ -15,11 +15,11 @@
 cp .env.integration.example .env.integration
 ```
 
-`.env.integration` исключён из Git. Guard требует `RUN_DOCUMENT_INTEGRATION_TESTS=1`, `NODE_ENV` не равный `production`, локальные PostgreSQL/MinIO endpoints, database и bucket с маркером `integration`, а также drivers `s3`, `postgresql` и `local`. OCR в обычном integration environment отключён и не требует Tesseract/Poppler.
+`.env.integration` исключён из Git. Guard требует `RUN_DOCUMENT_INTEGRATION_TESTS=1`, `NODE_ENV` не равный `production`, локальные PostgreSQL/MinIO endpoints, database и bucket с маркером `integration`, drivers `s3`/`postgresql`/`local`, deterministic fake AI, `pgvector` и PostgreSQL embedding jobs. OCR в обычном integration environment отключён и не требует Tesseract/Poppler.
 
 ## Integration infrastructure
 
-Запустить изолированные PostgreSQL 16 и MinIO:
+Запустить изолированные PostgreSQL 16 с `pgvector` и MinIO:
 
 ```bash
 npm run integration:up
@@ -34,7 +34,7 @@ npm run documents:worker-check:integration
 npm run documents:health-check:integration
 ```
 
-Запустить реальные repository, storage и end-to-end tests:
+Запустить реальные repository, storage, pgvector, embedding worker и RAG end-to-end tests:
 
 ```bash
 npm run test:integration
@@ -52,7 +52,7 @@ npm run documents:migration-rehearsal
 
 1. создаёт две временные локальные базы с суффиксами `_rehearsal_empty` и `_rehearsal_legacy`;
 2. применяет миграции к пустой базе дважды;
-3. подготавливает legacy fixture и проверяет преобразование статусов, defaults, nullable fields, индексы и constraint;
+3. подготавливает legacy fixture и проверяет преобразование статусов, defaults, embedding metadata, `pgvector`, tenant indexes и dimension constraints;
 4. повторно применяет миграции для проверки идемпотентности;
 5. удаляет только созданные rehearsal databases.
 
@@ -96,8 +96,10 @@ Readiness проверяет:
 - `core`: application/worker configuration, metadata repository, object storage и processing queue;
 - `documentIntelligence`: text quality, type detection и отдельный OCR component;
 - OCR runtime, выбранные language data и Poppler PDF support без сокрытия `disabled`/`unavailable`.
+- `embeddingVector`: provider configuration/availability, vector storage, `pgvector`, dimensions и embedding worker;
+- `rag`: configuration, AI Gateway и answer provider.
 
-Overall readiness требует готовый core pipeline. OCR влияет на него только при явной политике `DOCUMENT_OCR_REQUIRED_FOR_READINESS=true`; production принудительно использует эту политику и завершается ошибкой конфигурации при попытке отключить provider или сделать OCR optional.
+Overall readiness требует готовый core pipeline. OCR и RAG влияют на него согласно отдельным required-for-readiness policies; production принудительно требует оба настроенных boundaries и отклоняет optional/disabled configuration.
 
 Ответы не содержат connection strings, bucket names, credentials, stack traces и provider messages. Check выполняет только read/list operations и не создаёт probe objects.
 
@@ -106,6 +108,38 @@ Server-side CLI:
 ```bash
 npm run documents:health-check
 ```
+
+## Embedding, vector и RAG operations
+
+```bash
+npm run documents:embedding-check
+npm run documents:vector-check
+npm run documents:rag-health-check
+npm run documents:rag-evaluate
+npm run test:rag-integration
+```
+
+Для проверки integration PostgreSQL/pgvector используются явные варианты:
+
+```bash
+npm run documents:embedding-check:integration
+npm run documents:vector-check:integration
+```
+
+Embedding worker запускается явно:
+
+```bash
+npm run documents:embedding-worker
+```
+
+Single-document reindex является dry-run по умолчанию:
+
+```bash
+npm run documents:reindex -- --document-id=<id> --dry-run
+npm run documents:reindex -- --document-id=<id> --execute
+```
+
+Execute против production/remote database блокируется без отдельных `ALLOW_*` flags. Команда не поддерживает массовый reindex и не выводит document content или vectors.
 
 ## Cleanup и остановка
 
@@ -140,4 +174,14 @@ S3 object key имеет формат `documents/{companyId}/{kind}/{key}`. Ме
 - metrics, SLO, dashboards, alerts и централизованные audit logs;
 - distributed heartbeat/fencing для долгих jobs.
 
-Локальный OCR завершённой TASK-003 описан в [Document Intelligence](./DOCUMENT_INTELLIGENCE.md). Он проверяется отдельными `documents:ocr-check`, `test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; real OCR test не входит в обычные unit или PostgreSQL/MinIO integration tests. AI Gateway, embeddings, vector storage, semantic/hybrid RAG и citations перенесены в [TASK-004](tasks/TASK-004.md).
+Локальный OCR завершённой TASK-003 проверяется отдельными `documents:ocr-check`, `test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; real OCR test не входит в обычные unit или PostgreSQL/MinIO integration tests.
+
+## Связанные документы
+
+- [Document Processing](./DOCUMENT_PROCESSING.md)
+- [Document Intelligence](./DOCUMENT_INTELLIGENCE.md)
+- [AI Gateway](./AI_GATEWAY.md)
+- [Hybrid RAG](./HYBRID_RAG.md)
+- [TASK-002](./tasks/TASK-002.md)
+- [TASK-003](./tasks/TASK-003.md)
+- [TASK-004](./tasks/TASK-004.md)

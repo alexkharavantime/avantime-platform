@@ -22,7 +22,15 @@
     "test:ocr-integration": "RUN_DOCUMENT_OCR_INTEGRATION_TESTS=1 tsx --test tests/integration/document-ocr.integration.test.ts",
     "documents:ocr-check": "tsx scripts/check-document-ocr.ts",
     "documents:intelligence-health": "tsx scripts/check-document-health.ts",
-    "documents:reprocess": "tsx scripts/reprocess-document.ts"
+    "documents:reprocess": "tsx scripts/reprocess-document.ts",
+    "documents:embedding-worker": "tsx scripts/run-document-embedding-worker.ts",
+    "documents:embedding-process-one": "tsx scripts/process-one-embedding-job.ts",
+    "documents:embedding-check": "tsx scripts/check-document-embedding.ts",
+    "documents:vector-check": "tsx scripts/check-document-vector.ts",
+    "documents:reindex": "tsx scripts/reindex-document.ts",
+    "documents:rag-evaluate": "tsx scripts/evaluate-document-rag.ts",
+    "documents:rag-health-check": "tsx scripts/check-document-health.ts",
+    "test:rag-integration": "tsx scripts/run-rag-integration-tests.ts"
   },
   "dependencies": {
     "@avantime/database": "*",

@@ -423,7 +423,7 @@ Prisma уже используется, хорошо интегрирован с
 
 **Название:** Использование AI Gateway вместо прямого обращения к моделям
 
-**Статус:** `Proposed`
+**Статус:** `Accepted`
 
 **Дата:** 2026-07-27
 
@@ -487,7 +487,7 @@ Prisma уже используется, хорошо интегрирован с
 
 **Название:** Поддержка нескольких AI-провайдеров
 
-**Статус:** `Proposed`
+**Статус:** `Accepted`
 
 **Дата:** 2026-07-27
 
@@ -551,7 +551,7 @@ Prisma уже используется, хорошо интегрирован с
 
 **Название:** Использование RAG для базы знаний
 
-**Статус:** `Proposed`
+**Статус:** `Accepted`
 
 **Дата:** 2026-07-27
 
@@ -1425,6 +1425,96 @@ Worker может вернуться к прежнему extractor через с
 
 ---
 
+## ADR-0020
+
+**Название:** PostgreSQL/pgvector, deterministic hybrid ranking и server-generated citations
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+TASK-004 требует tenant-aware semantic retrieval без отдельной vector infrastructure, безопасную смену embedding model/version и проверяемые citations. Существующий lexical search должен сохраниться, а retrieval и provider calls не могут доверять client-supplied tenant или citation IDs.
+
+### Варианты
+
+- оставить только lexical search;
+- использовать отдельную vector database;
+- хранить vectors в PostgreSQL/pgvector;
+- заменить lexical search semantic retrieval;
+- применить детерминированное weighted merge или отдельный neural reranker;
+- принимать citations из ответа модели или строить их server-side.
+
+### Принятое решение
+
+Использовать `pgvector` в существующем PostgreSQL. Vector record имеет составную tenant/document/chunk/model/version identity и переменную dimension с SQL constraint. Поиск всегда фильтрует tenant, document lifecycle, active embedding model/version/dimensions до выдачи результата.
+
+Сохранить lexical и semantic retrievers как независимые contracts. Первая hybrid-реализация нормализует их scores, применяет конфигурируемые weights, deduplicate и ограничение chunks на документ. Neural reranker не добавляется до получения production measurements.
+
+Citation IDs создаёт сервер после повторной проверки metadata и chunk в текущем tenant. Модель получает только immutable source IDs и недоверенные excerpts; неизвестные markers удаляются.
+
+### Причины выбора
+
+- PostgreSQL уже является system of record и прошёл integration/migration gates;
+- `pgvector` сохраняет транзакционную и tenant-aware модель без нового operational boundary;
+- deterministic merge воспроизводим в regression/evaluation tests;
+- server-generated citations не позволяют модели или клиенту подменить источник.
+
+### Преимущества
+
+- одна backup/access-control boundary;
+- безопасная совместимость model/version/dimensions;
+- lexical fallback и объяснимые score components;
+- идемпотентная индексация changed chunks;
+- проверяемая tenant isolation и citation provenance.
+
+### Недостатки
+
+- variable-dimension storage пока не использует ANN index;
+- PostgreSQL принимает дополнительную retrieval load;
+- качество weighted merge ограничено без production relevance data;
+- page range зависит от provenance upstream extractor.
+
+### Последствия
+
+- integration PostgreSQL использует image с `pgvector`;
+- migration rehearsal проверяет extension, tables, indexes и dimension constraint;
+- production требует `pgvector`, PostgreSQL embedding jobs и настроенные AI providers;
+- отдельная vector database, ANN strategy и neural reranker требуют нового решения на основании load/evaluation data;
+- reindex ограничен одним tenant/document и является dry-run по умолчанию.
+
+### Альтернативы, которые были отклонены
+
+- отдельная vector database отклонена как преждевременная инфраструктурная сложность;
+- semantic-only retrieval отклонён из-за потери точных терминов и существующего lexical поведения;
+- client/model-generated citations отклонены из-за риска forgery и cross-tenant references;
+- массовый destructive reindex отклонён из-за операционного риска;
+- neural reranker отложен до измеримого качества baseline.
+
+### Влияние на архитектуру
+
+Затрагивает Document metadata/migrations, AI Gateway, background jobs, Knowledge Center, health, operations и evaluation. TASK-002/TASK-003 processing и OCR boundaries остаются независимыми.
+
+### Связанные документы
+
+- `docs/AI_GATEWAY.md`;
+- `docs/HYBRID_RAG.md`;
+- `docs/ARCHITECTURE_2_0.md`;
+- `docs/DOCUMENT_PROCESSING.md`;
+- `docs/DOCUMENT_OPERATIONS.md`;
+- `docs/tasks/TASK-004.md`.
+
+### Связанные задачи Product Backlog
+
+- AI-001;
+- AI-007;
+- AI-008;
+- AI-009;
+- DOC-002;
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1433,7 +1523,6 @@ Worker может вернуться к прежнему extractor через с
 | ------------------------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------- |
 | Выбор конкретного external queue provider                    | Version 2.0              | Queue/worker contract принят в ADR-0017; требуется distributed adapter, deployment и operational policy |
 | Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0              | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup           |
-| Использование `pgvector` и стратегия векторного поиска       | Version 2.0              | Требуется подтвердить объём, индексы и порядок миграции                                                 |
 | Модель сессий, MFA и корпоративного входа                    | Version 2.0–3.0          | Требуется определить жизненный цикл identity                                                            |
 | Выбор системы кэша и rate limit                              | Version 2.0              | Требуется распределённая координация                                                                    |
 | Выбор платформы мониторинга и трассировки                    | Version 2.0              | Нужна единая наблюдаемость                                                                              |
@@ -1444,7 +1533,7 @@ Worker может вернуться к прежнему extractor через с
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                                       |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                           |
 
-Следующий свободный номер: `ADR-0020`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0021`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 
@@ -1471,8 +1560,6 @@ Worker может вернуться к прежнему extractor через с
 
 В первую очередь требуется утвердить:
 
-- AI Gateway и контракт провайдеров;
-- защищённый RAG и `pgvector`;
 - единую архитектуру клиентского кабинета;
 - RBAC и tenant-контекст;
 - механизм очередей;

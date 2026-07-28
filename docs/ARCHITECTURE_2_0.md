@@ -369,6 +369,8 @@ AI Gateway является единственной точкой доступа
 
 Пользовательские и административные интерфейсы не должны напрямую вызывать SDK поставщиков моделей.
 
+В TASK-004 граница реализована как внутренний модуль монолита с контрактами `AiGateway`, `EmbeddingProvider` и `RagAnswerProvider`. Fake/OpenAI/Gemini adapters выбираются централизованно; document/query embeddings, RAG generation и прежний административный AI route больше не создают provider SDK напрямую. Production configuration работает fail-fast.
+
 ## Провайдеры моделей
 
 Все провайдеры реализуют общий контракт:
@@ -427,15 +429,21 @@ AI Gateway является единственной точкой доступа
 
 Ответ не должен использовать документ, который пользователь не имеет права открыть напрямую.
 
+Первая реализация TASK-004 сохраняет lexical retrieval, добавляет semantic retrieval и детерминированный weighted hybrid merge без neural reranker. `companyId` берётся только из ADMIN session. Citations строятся сервером после повторной проверки document/chunk, а retrieved excerpts передаются модели как недоверенные данные.
+
 ## Embeddings
 
 Embeddings создаются асинхронно после обработки и разбиения содержимого. Для каждого вектора сохраняются версия модели, идентификатор фрагмента, организация, права доступа, язык и контрольная сумма исходного текста.
 
 При смене модели переиндексация выполняется версионированно без остановки поиска.
 
+Embedding lifecycle отделён от processing lifecycle. PostgreSQL/local queue поддерживает lease, recovery, retry/backoff и quarantine; content hash исключает повторную векторизацию неизменившихся chunks. Новая версия заменяет старую только после успешного завершения.
+
 ## Vector Database
 
 Для версии 2.0 рационально использовать расширение `pgvector` в PostgreSQL, чтобы не вводить отдельную инфраструктуру раньше необходимости. Отдельная векторная база рассматривается при доказанных ограничениях по объёму, скорости или независимому масштабированию.
+
+ADR-0020 закрепляет `pgvector` как реализацию TASK-004. Vector rows используют tenant/document/chunk/model/version identity и dimension constraint; integration environment проверяет extension, реальные insert/search, tenant isolation и migration rehearsal. ANN index откладывается до production load measurements.
 
 ## AI Cache
 
@@ -844,17 +852,18 @@ Production-файлы хранятся в приватном S3-совмести
 - первая tenant-aware граница хранения документов с локальным адаптером и обязательным `companyId`.
 - отдельный PDF worker flow с идемпотентной local queue, retries и quarantine.
 - изолированный PostgreSQL/MinIO integration boundary, health/readiness и migration rehearsal automation.
+- provider-neutral OCR и раздельные core/OCR readiness components TASK-003;
+- единый AI Gateway, tenant-aware embeddings, PostgreSQL/pgvector, embedding worker, lexical/semantic/hybrid retrieval, server citations и synthetic evaluation TASK-004.
 
 ### Что необходимо сделать
 
 - сформировать модульный монолит с явными доменами;
-- внедрить защищённый AI Gateway;
 - создать единый клиентский dashboard;
 - развернуть private S3 infrastructure и проверить перенос production-объектов через существующий адаптер;
 - выбрать и подключить production external queue adapter, process supervision и queue monitoring;
 - внедрить организационную изоляцию данных;
 - реализовать историю диалогов;
-- использовать завершённый foundation [TASK-003](./tasks/TASK-003.md): OCR/runtime validation и Document Intelligence metadata; AI Gateway, embeddings, vector storage, hybrid retrieval и citations выполнять в [TASK-004](./tasks/TASK-004.md);
+- расширить завершённые [TASK-003](./tasks/TASK-003.md) и [TASK-004](./tasks/TASK-004.md) production infrastructure, distributed monitoring и разрешёнными knowledge sources;
 - унифицировать аудит, ошибки и логи;
 - покрыть критические сценарии тестами.
 
@@ -930,7 +939,7 @@ Production-файлы хранятся в приватном S3-совмести
 - аутентификацию и сессии — убрать демонстрационные секреты и обеспечить отзыв сессий;
 - защиту API — проверять роль, организацию и ресурс во всех маршрутах;
 - локальное хранение runtime-данных — сохранить только как development-реализацию репозиториев и адаптеров, а production перевести на PostgreSQL и object storage;
-- AI-маршруты — убрать прямые вызовы провайдеров и логирование частей ключей;
+- AI-маршруты — сохранять единый Gateway boundary и не допускать возврата прямых provider calls;
 - обработку документов — подключить к production external queue и наблюдаемости, сохранив реализованный worker contract;
 - обработку ошибок — ввести единый формат и корреляционные идентификаторы;
 - конфигурацию — централизовать проверку переменных окружения без раскрытия значений.
@@ -1009,16 +1018,16 @@ PostgreSQL и объектное хранилище являются самос�
    - закрыть все пользовательские и документные маршруты авторизацией;
    - определить организационную принадлежность каждого ресурса;
    - внедрить единый Storage Adapter;
-   - убрать прямые вызовы моделей из прикладных маршрутов;
+   - расширить реализованный AI Gateway на последующие AI-сценарии;
    - восстановить целостность существующих публичных страниц и API;
    - добавить тесты критических сценариев.
 
 2. **Следующие 6–12 месяцев — версия 2.0.**
-   - создать AI Gateway с OpenAI и Gemini;
+   - развить AI Gateway с OpenAI и Gemini production policies;
    - объединить портал и dashboard;
    - объединить статьи и документы в Knowledge Center;
    - внедрить PostgreSQL как обязательный production-источник данных;
-   - добавить `pgvector`, гибридный поиск, источники и историю диалогов;
+   - масштабировать `pgvector`, гибридный поиск и источники; добавить историю диалогов;
    - перенести тяжёлую обработку в фоновые задачи;
    - внедрить аудит и базовую наблюдаемость.
 

@@ -14,7 +14,7 @@
     "db:generate": "npm run db:generate -w @avantime/database",
     "db:migrate": "npm run db:migrate -w @avantime/database",
     "db:seed": "npm run db:seed -w @avantime/database",
-    "integration:up": "docker compose --env-file .env.integration -p avantime-integration -f docker-compose.integration.yml up -d --wait",
+    "integration:up": "docker compose --env-file .env.integration -p avantime-integration -f docker-compose.integration.yml up -d --wait postgres minio && docker compose --env-file .env.integration -p avantime-integration -f docker-compose.integration.yml run --rm minio-init",
     "integration:down": "docker compose --env-file .env.integration -p avantime-integration -f docker-compose.integration.yml down --volumes --remove-orphans",
     "integration:clean": "npm run documents:integration-clean -w @avantime/web",
     "documents:migration-rehearsal": "npm run documents:migration-rehearsal -w @avantime/web",
@@ -26,7 +26,17 @@
     "documents:intelligence-health": "npm run documents:intelligence-health -w @avantime/web",
     "documents:reprocess": "npm run documents:reprocess -w @avantime/web --",
     "test:ocr-integration": "npm run test:ocr-integration -w @avantime/web",
-    "test:ocr-integration:docker": "docker build -f docker/ocr-integration.Dockerfile -t avantime-ocr-integration . && docker run --rm avantime-ocr-integration"
+    "test:ocr-integration:docker": "docker build -f docker/ocr-integration.Dockerfile -t avantime-ocr-integration . && docker run --rm avantime-ocr-integration",
+    "documents:embedding-check": "npm run documents:embedding-check -w @avantime/web --",
+    "documents:embedding-check:integration": "npm run documents:embedding-check -- --integration",
+    "documents:vector-check": "npm run documents:vector-check -w @avantime/web --",
+    "documents:vector-check:integration": "npm run documents:vector-check -- --integration",
+    "documents:reindex": "npm run documents:reindex -w @avantime/web --",
+    "documents:embedding-worker": "npm run documents:embedding-worker -w @avantime/web",
+    "documents:embedding-process-one": "npm run documents:embedding-process-one -w @avantime/web",
+    "documents:rag-evaluate": "npm run documents:rag-evaluate -w @avantime/web",
+    "documents:rag-health-check": "npm run documents:rag-health-check -w @avantime/web",
+    "test:rag-integration": "npm run test:rag-integration -w @avantime/web"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

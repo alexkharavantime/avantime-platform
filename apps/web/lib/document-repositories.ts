@@ -16,6 +16,7 @@ import {
   isDocumentTextExtractionMethod,
   isDocumentType,
 } from './document-intelligence-model';
+import { isDocumentEmbeddingStatus } from './document-embedding-model';
 import {
   assertDocumentProcessingStatus,
   assertDocumentStatusTransition,
@@ -58,6 +59,14 @@ export type CreateDocumentMetadata = Omit<
   | 'extractedCharacterCount'
   | 'requiresManualReview'
   | 'intelligenceVersion'
+  | 'embeddingStatus'
+  | 'embeddingModel'
+  | 'embeddingDimensions'
+  | 'embeddingVersion'
+  | 'embeddedAt'
+  | 'embeddingAttempts'
+  | 'lastEmbeddingErrorCode'
+  | 'embeddingContentHash'
 > &
   Partial<
     Pick<
@@ -86,6 +95,14 @@ export type CreateDocumentMetadata = Omit<
       | 'extractedCharacterCount'
       | 'requiresManualReview'
       | 'intelligenceVersion'
+      | 'embeddingStatus'
+      | 'embeddingModel'
+      | 'embeddingDimensions'
+      | 'embeddingVersion'
+      | 'embeddedAt'
+      | 'embeddingAttempts'
+      | 'lastEmbeddingErrorCode'
+      | 'embeddingContentHash'
     >
   >;
 export type UpdateDocumentMetadata = Partial<
@@ -202,6 +219,14 @@ type LegacyDocument = {
   extractedCharacterCount?: unknown;
   requiresManualReview?: unknown;
   intelligenceVersion?: unknown;
+  embeddingStatus?: unknown;
+  embeddingModel?: unknown;
+  embeddingDimensions?: unknown;
+  embeddingVersion?: unknown;
+  embeddedAt?: unknown;
+  embeddingAttempts?: unknown;
+  lastEmbeddingErrorCode?: unknown;
+  embeddingContentHash?: unknown;
 };
 
 function isMissingFile(error: unknown) {
@@ -308,6 +333,28 @@ function validateDocumentMetadata(document: DocumentMetadata) {
   if (!document.intelligenceVersion.trim() || document.intelligenceVersion.length > 100) {
     throw new Error('intelligenceVersion is required and must not exceed 100 characters.');
   }
+  if (!isDocumentEmbeddingStatus(document.embeddingStatus)) {
+    throw new Error('Invalid document embedding status.');
+  }
+  if (
+    document.embeddingDimensions !== null &&
+    (!Number.isSafeInteger(document.embeddingDimensions) || document.embeddingDimensions <= 0)
+  ) {
+    throw new Error('embeddingDimensions must be a positive safe integer.');
+  }
+  if (!Number.isSafeInteger(document.embeddingAttempts) || document.embeddingAttempts < 0) {
+    throw new Error('embeddingAttempts must be a non-negative safe integer.');
+  }
+  if (
+    document.lastEmbeddingErrorCode &&
+    !/^[A-Z0-9_]{1,100}$/.test(document.lastEmbeddingErrorCode)
+  ) {
+    throw new Error('lastEmbeddingErrorCode has an invalid format.');
+  }
+  if (document.embeddingContentHash && !/^[a-f0-9]{64}$/.test(document.embeddingContentHash)) {
+    throw new Error('embeddingContentHash has an invalid format.');
+  }
+  if (document.embeddedAt) parseDocumentDate(document.embeddedAt, 'embeddedAt');
 }
 
 function withProcessingDefaults(
@@ -346,6 +393,14 @@ function withProcessingDefaults(
       metadata.extractedCharacterCount ?? intelligence.extractedCharacterCount,
     requiresManualReview: metadata.requiresManualReview ?? intelligence.requiresManualReview,
     intelligenceVersion: metadata.intelligenceVersion ?? intelligence.intelligenceVersion,
+    embeddingStatus: metadata.embeddingStatus ?? 'PENDING',
+    embeddingModel: metadata.embeddingModel ?? null,
+    embeddingDimensions: metadata.embeddingDimensions ?? null,
+    embeddingVersion: metadata.embeddingVersion ?? null,
+    embeddedAt: metadata.embeddedAt ?? null,
+    embeddingAttempts: metadata.embeddingAttempts ?? 0,
+    lastEmbeddingErrorCode: metadata.lastEmbeddingErrorCode ?? null,
+    embeddingContentHash: metadata.embeddingContentHash ?? null,
   };
 }
 
@@ -443,6 +498,26 @@ function normalizeLegacyDocument(
     requiresManualReview:
       typeof item.requiresManualReview === 'boolean' ? item.requiresManualReview : true,
     intelligenceVersion: asString(item.intelligenceVersion) ?? 'legacy-task-002',
+    embeddingStatus: isDocumentEmbeddingStatus(item.embeddingStatus)
+      ? item.embeddingStatus
+      : 'PENDING',
+    embeddingModel: asNullableString(item.embeddingModel),
+    embeddingDimensions:
+      typeof item.embeddingDimensions === 'number' && item.embeddingDimensions > 0
+        ? item.embeddingDimensions
+        : null,
+    embeddingVersion: asNullableString(item.embeddingVersion),
+    embeddedAt: asNullableString(item.embeddedAt),
+    embeddingAttempts:
+      typeof item.embeddingAttempts === 'number' && item.embeddingAttempts >= 0
+        ? item.embeddingAttempts
+        : 0,
+    lastEmbeddingErrorCode: asNullableString(item.lastEmbeddingErrorCode),
+    embeddingContentHash:
+      typeof item.embeddingContentHash === 'string' &&
+      /^[a-f0-9]{64}$/.test(item.embeddingContentHash)
+        ? item.embeddingContentHash
+        : null,
   };
 }
 
@@ -668,6 +743,14 @@ type DatabaseDocumentRecord = {
   extractedCharacterCount: number | null;
   requiresManualReview: boolean;
   intelligenceVersion: string;
+  embeddingStatus: string;
+  embeddingModel: string | null;
+  embeddingDimensions: number | null;
+  embeddingVersion: string | null;
+  embeddedAt: Date | null;
+  embeddingAttempts: number;
+  lastEmbeddingErrorCode: string | null;
+  embeddingContentHash: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -732,6 +815,19 @@ function mapDatabaseDocument(record: DatabaseDocumentRecord): DocumentMetadata {
     extractedCharacterCount: record.extractedCharacterCount,
     requiresManualReview: record.requiresManualReview,
     intelligenceVersion: record.intelligenceVersion,
+    embeddingStatus: isDocumentEmbeddingStatus(record.embeddingStatus)
+      ? record.embeddingStatus
+      : 'PENDING',
+    embeddingModel: record.embeddingModel ?? null,
+    embeddingDimensions: record.embeddingDimensions ?? null,
+    embeddingVersion: record.embeddingVersion ?? null,
+    embeddedAt: record.embeddedAt?.toISOString() ?? null,
+    embeddingAttempts:
+      Number.isSafeInteger(record.embeddingAttempts) && record.embeddingAttempts >= 0
+        ? record.embeddingAttempts
+        : 0,
+    lastEmbeddingErrorCode: record.lastEmbeddingErrorCode ?? null,
+    embeddingContentHash: record.embeddingContentHash ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     deletedAt: record.deletedAt?.toISOString() ?? null,
@@ -825,6 +921,16 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
         extractedCharacterCount: document.extractedCharacterCount,
         requiresManualReview: document.requiresManualReview,
         intelligenceVersion: document.intelligenceVersion,
+        embeddingStatus: document.embeddingStatus,
+        embeddingModel: document.embeddingModel,
+        embeddingDimensions: document.embeddingDimensions,
+        embeddingVersion: document.embeddingVersion,
+        embeddedAt: document.embeddedAt
+          ? parseDocumentDate(document.embeddedAt, 'embeddedAt')
+          : null,
+        embeddingAttempts: document.embeddingAttempts,
+        lastEmbeddingErrorCode: document.lastEmbeddingErrorCode,
+        embeddingContentHash: document.embeddingContentHash,
         createdAt: parseDocumentDate(document.createdAt, 'createdAt'),
         updatedAt: parseDocumentDate(document.updatedAt, 'updatedAt'),
         deletedAt: null,
@@ -1064,6 +1170,26 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
     }
     if (changes.intelligenceVersion !== undefined) {
       data.intelligenceVersion = changes.intelligenceVersion;
+    }
+    if (changes.embeddingStatus !== undefined) data.embeddingStatus = changes.embeddingStatus;
+    if (changes.embeddingModel !== undefined) data.embeddingModel = changes.embeddingModel;
+    if (changes.embeddingDimensions !== undefined) {
+      data.embeddingDimensions = changes.embeddingDimensions;
+    }
+    if (changes.embeddingVersion !== undefined) data.embeddingVersion = changes.embeddingVersion;
+    if (changes.embeddedAt !== undefined) {
+      data.embeddedAt = changes.embeddedAt
+        ? parseDocumentDate(changes.embeddedAt, 'embeddedAt')
+        : null;
+    }
+    if (changes.embeddingAttempts !== undefined) {
+      data.embeddingAttempts = changes.embeddingAttempts;
+    }
+    if (changes.lastEmbeddingErrorCode !== undefined) {
+      data.lastEmbeddingErrorCode = changes.lastEmbeddingErrorCode;
+    }
+    if (changes.embeddingContentHash !== undefined) {
+      data.embeddingContentHash = changes.embeddingContentHash;
     }
   }
 }
