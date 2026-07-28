@@ -384,8 +384,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-004 AI Platform
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Создать единую точку авторизации, маршрутизации, журналирования и контроля AI-запросов в рамках [TASK-004](./tasks/TASK-004.md).
+- **Статус:** Done
+- **Описание:** [TASK-004](./tasks/TASK-004.md) реализовала единую server-side точку provider routing, rate/budget limits, usage events и безопасной нормализации ошибок.
 - **Критерии готовности:** все модели вызываются через Gateway; единый контракт; rate limit; бюджет; аудит; нормализованные ошибки.
 - **Зависимости:** SEC-001, SEC-004, SEC-005.
 
@@ -397,7 +397,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Перенести существующий OpenAI-вызов в провайдерный адаптер.
+- **Описание:** TASK-004 перенесла document embeddings/RAG и существующий OpenAI route в adapter. Streaming и production provider validation остаются.
 - **Критерии готовности:** модель конфигурируется; поддержаны streaming и ошибки; ключ не логируется; метрики записываются.
 - **Зависимости:** AI-001, SEC-005.
 
@@ -409,7 +409,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Перенести Gemini в общий контракт провайдеров и убрать вывод части API-ключа.
+- **Описание:** TASK-004 перенесла Gemini в общий adapter без вывода ключа. Policy-driven fallback и production provider validation остаются.
 - **Критерии готовности:** нет утечки ключа; модель конфигурируется; ошибки нормализованы; настроен fallback по политике.
 - **Зависимости:** AI-001, SEC-005.
 
@@ -457,7 +457,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Создать конвейер поиска контекста и генерации ответа с учётом прав в рамках [TASK-004](./tasks/TASK-004.md).
+- **Описание:** TASK-004 реализовала ADMIN-only tenant-aware document RAG, hybrid retrieval, context limits и server-generated citations. Расширение на статьи, клиентские роли и единую permission model остаётся.
 - **Критерии готовности:** права до поиска; гибридный retrieval; источники; ограниченный контекст; оценка ответа.
 - **Зависимости:** KB-001, AI-008, AI-009, SEC-002.
 
@@ -468,8 +468,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-004 AI Platform
 - **Приоритет:** P1
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Асинхронно создавать версионированные tenant-aware embeddings документов и статей в рамках [TASK-004](./tasks/TASK-004.md).
+- **Статус:** In Progress
+- **Описание:** TASK-004 реализовала асинхронные версионированные tenant-aware embeddings document chunks. Индексация статей и production distributed supervision остаются.
 - **Критерии готовности:** модель и версия сохранены; tenant-контекст; контрольная сумма; повторная индексация; очередь.
 - **Зависимости:** DOC-002, INFRA-003, AI-009.
 
@@ -480,8 +480,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-004 AI Platform
 - **Приоритет:** P1
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Выбрать и проверить tenant-aware vector storage для [TASK-004](./tasks/TASK-004.md); `pgvector` остаётся исходной гипотезой, а не внедрённым решением.
+- **Статус:** In Progress
+- **Описание:** ADR-0020 и TASK-004 выбрали и integration-проверили tenant-aware PostgreSQL/pgvector. Production backup/load test и ANN index strategy остаются.
 - **Критерии готовности:** миграция; индексы; фильтрация по организации; резервное копирование; нагрузочный тест.
 - **Зависимости:** INFRA-001, SEC-006.
 
@@ -677,7 +677,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Асинхронно проверять, извлекать текст, разбивать и индексировать документы. TASK-002 добавила status transitions, provider-neutral queue/worker contracts, persistent local queue, checksum verification, retries и quarantine; TASK-003 завершила OCR/type detection и Document Intelligence metadata. Production external adapter, observability и indexing остаются.
+- **Описание:** Асинхронно проверять, извлекать текст, разбивать и индексировать документы. TASK-002 добавила processing queue/retries/quarantine, TASK-003 — OCR/type detection, TASK-004 — отдельную embedding queue, pgvector и reindex. Production external document queue, distributed observability и deployment остаются.
 - **Критерии готовности:** production external queue; типобезопасные статусы; PDF; ограничения; exclusive claim; quarantine; повторная обработка; ошибки не теряются; monitoring.
 - **Зависимости:** DOC-001, INFRA-003.
 
@@ -693,7 +693,7 @@ Product Backlog — основной управляемый перечень п�
 - **Критерии готовности:** безопасный parser; таблицы и листы; лимиты; тестовые документы; поиск и preview.
 - **Зависимости:** DOC-002, KB-007.
 
-Завершённая [TASK-003](./tasks/TASK-003.md) реализует OCR/type detection, Document Intelligence metadata и раздельные core/OCR readiness components. AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation перенесены в [TASK-004](./tasks/TASK-004.md) и не входят в инфраструктурное завершение TASK-002.
+Завершённые [TASK-003](./tasks/TASK-003.md) и [TASK-004](./tasks/TASK-004.md) последовательно реализуют OCR/Document Intelligence, AI Gateway, document embeddings, pgvector, semantic/hybrid retrieval, citations и evaluation. Production providers, external processing queue и единая knowledge permission model остаются отдельными backlog boundaries.
 
 ## EPIC-007 Интеграция Jira
 
@@ -1227,14 +1227,14 @@ Product Backlog — основной управляемый перечень п�
 - существуют параллельные `/portal` и `/dashboard`;
 - публичная и документная базы знаний остаются раздельными реализациями;
 - production adapters PostgreSQL/S3 и document worker contracts реализованы; local PostgreSQL/MinIO и OCR Docker gates выполнены, но обязательный CI gate, production infrastructure, external queue и backup ещё не завершены;
-- OpenAI и Gemini вызываются напрямую без общего AI Gateway;
+- document/RAG/OpenAI/Gemini calls объединены AI Gateway; streaming, fallback policy и production provider validation ещё не завершены;
 - версии README, корневого приложения, web workspace и архитектурной документации расходятся;
 - production и demo fallback могут скрывать ошибки PostgreSQL;
 - integration strategy для Document subsystem сформирована, но общепроектная test strategy остаётся неполной.
 
 ## Архитектурный долг
 
-- несколько независимых способов доступа к AI;
+- единый Gateway внедрён для текущих AI routes; будущие tools/agents должны использовать тот же boundary;
 - две несогласованные базы знаний;
 - несколько способов хранения файлов;
 - прикладная логика размещена непосредственно в API routes и компонентах;
@@ -1246,7 +1246,7 @@ Product Backlog — основной управляемый перечень п�
 ## Технический долг
 
 - UI-компоненты требуют дальнейшей стабилизации API и тестовых состояний;
-- прямые AI-провайдеры ещё не перенесены в общий Gateway;
+- distributed rate limit, durable cost ledger и production metrics sink для AI Gateway отсутствуют;
 - generated-файлы ранее отображались в Git;
 - конфигурация среды не валидируется централизованно;
 - есть security, contract и Document integration suites, но нет достаточного покрытия остальных доменов и Docker-enabled CI gate;
@@ -1259,7 +1259,7 @@ Product Backlog — основной управляемый перечень п�
 
 1. Сначала закрыть SEC-001, SEC-002 и SEC-005.
 2. Объединить портал и dashboard через PORTAL-001.
-3. Создать AI Gateway в AI-001 и перенести AI-002/AI-003.
+3. Завершить production validation, streaming и fallback policies AI-002/AI-003 поверх готового AI Gateway.
 4. Ввести единое файловое хранилище DOC-001.
 5. Объединить базы знаний в KB-001.
 6. Завершить production external queue и observability в INFRA-003 и DOC-002.
@@ -1284,8 +1284,8 @@ Product Backlog — основной управляемый перечень п�
 4. INFRA-001 — production-инфраструктура.
 5. PORTAL-001 — единый Dashboard.
 6. DOC-001 — единое файловое хранилище.
-7. AI-001 — AI Gateway.
-8. KB-001 — объединение баз знаний.
+7. KB-001 — объединение баз знаний.
+8. AI-002/AI-003 — production validation и provider policies.
 9. INFRA-002 и INFRA-003 — наблюдаемость и фоновые задачи.
 10. SEC-003, SEC-004 и SEC-006 — аудит, лимиты и восстановление.
 

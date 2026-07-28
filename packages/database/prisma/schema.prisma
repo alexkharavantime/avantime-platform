@@ -229,9 +229,19 @@ model DocumentMetadata {
   extractedCharacterCount Int?
   requiresManualReview    Boolean                      @default(true)
   intelligenceVersion     String                       @default("document-intelligence-v1") @db.VarChar(100)
+  embeddingStatus         DocumentEmbeddingStatus      @default(PENDING)
+  embeddingModel          String?                      @db.VarChar(200)
+  embeddingDimensions     Int?
+  embeddingVersion        String?                      @db.VarChar(100)
+  embeddedAt              DateTime?
+  embeddingAttempts       Int                          @default(0)
+  lastEmbeddingErrorCode  String?                      @db.VarChar(100)
+  embeddingContentHash    String?                      @db.VarChar(64)
   createdAt               DateTime                     @default(now())
   updatedAt               DateTime                     @updatedAt
   deletedAt               DateTime?
+  chunkEmbeddings         DocumentChunkEmbedding[]
+  embeddingJob            DocumentEmbeddingJob?
 
   @@id([companyId, id])
   @@index([companyId, status])
@@ -240,6 +250,7 @@ model DocumentMetadata {
   @@index([companyId, createdAt])
   @@index([companyId, detectedDocumentType])
   @@index([companyId, requiresManualReview])
+  @@index([companyId, embeddingStatus])
   @@index([createdAt])
   @@index([deletedAt])
 }
@@ -282,4 +293,59 @@ enum DocumentOcrStatus {
   COMPLETED
   FAILED
   UNAVAILABLE
+}
+
+enum DocumentEmbeddingStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  QUARANTINED
+  DISABLED
+}
+
+enum DocumentEmbeddingJobStatus {
+  QUEUED
+  PROCESSING
+}
+
+model DocumentChunkEmbedding {
+  companyId        String   @db.VarChar(200)
+  documentId       String   @db.VarChar(200)
+  chunkId          String   @db.VarChar(200)
+  chunkIndex       Int
+  contentHash      String   @db.VarChar(64)
+  contentPreview   String
+  pageStart        Int?
+  pageEnd          Int?
+  embeddingModel   String   @db.VarChar(200)
+  embeddingVersion String   @db.VarChar(100)
+  dimensions       Int
+  embedding        Unsupported("vector")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  document         DocumentMetadata @relation(fields: [companyId, documentId], references: [companyId, id], onDelete: Cascade)
+
+  @@id([companyId, documentId, chunkId, embeddingModel, embeddingVersion])
+  @@index([companyId, embeddingModel, embeddingVersion])
+  @@index([companyId, documentId])
+}
+
+model DocumentEmbeddingJob {
+  id          String                     @id @default(cuid()) @db.VarChar(200)
+  companyId   String                     @db.VarChar(200)
+  documentId  String                     @db.VarChar(200)
+  status      DocumentEmbeddingJobStatus @default(QUEUED)
+  attempts    Int                        @default(0)
+  availableAt DateTime                   @default(now())
+  leaseOwner  String?                    @db.VarChar(200)
+  leaseUntil  DateTime?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  document    DocumentMetadata           @relation(fields: [companyId, documentId], references: [companyId, id], onDelete: Cascade)
+
+  @@unique([companyId, documentId])
+  @@index([companyId, status, availableAt])
+  @@index([leaseUntil])
 }

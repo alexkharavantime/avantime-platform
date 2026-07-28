@@ -57,7 +57,7 @@
 | [TASK-001](TASK-001.md) | Первая реализация Avantime Platform v2 и страницы Agent+ | Done   |
 | [TASK-002](TASK-002.md) | Tenant-aware хранение и обработка документов             | Done   |
 | [TASK-003](TASK-003.md) | Document Intelligence и OCR                              | Done   |
-| [TASK-004](TASK-004.md) | AI Gateway, Embeddings и Hybrid RAG                      | Draft  |
+| [TASK-004](TASK-004.md) | AI Gateway, Embeddings и Hybrid RAG                      | Done   |
 
 ## Связанные документы
 

@@ -133,7 +133,7 @@
 
 - консолидировать параллельные реализации;
 - закрыть пробелы безопасности;
-- внедрить AI Gateway и развернуть/проверить production PostgreSQL/S3 infrastructure для реализованных границ хранения;
+- развернуть/проверить production AI providers и PostgreSQL/S3 infrastructure для реализованных Gateway/storage boundaries;
 - подключить production external queue adapter, process supervision и queue monitoring;
 - выполнить подготовленные PostgreSQL/MinIO integration tests и migration rehearsal в Docker-enabled CI;
 - внедрить production observability, backup/restore и disaster recovery rehearsal;
@@ -317,7 +317,7 @@
 
 ## Version 2.2 — Knowledge Center и управляемый AI
 
-[TASK-003](./tasks/TASK-003.md) завершила OCR, document type detection, intelligence metadata и раздельные core/OCR readiness components после infrastructure gate TASK-002. AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation перенесены в [TASK-004](./tasks/TASK-004.md).
+[TASK-003](./tasks/TASK-003.md) завершила OCR и Document Intelligence. [TASK-004](./tasks/TASK-004.md) завершила следующий документный этап: единый AI Gateway, асинхронные embeddings, PostgreSQL/pgvector, lexical/semantic/hybrid retrieval, server-generated citations и synthetic evaluation. Все компоненты имеют раздельную readiness, а production requirements не ослаблены.
 
 ### Основная цель
 
@@ -428,11 +428,14 @@
 - локальный полнотекстовый поиск;
 - ответы OpenAI по фрагментам документов;
 - история вопросов в локальных данных.
+- ADMIN-only tenant-aware semantic/hybrid document search и RAG;
+- server-generated citations, safe no-answer и prompt-injection boundary;
+- embedding worker, pgvector integration и multilingual synthetic evaluation.
 
 **Что ещё необходимо сделать:**
 
 - перенести прототип в production-хранилища;
-- развивать завершённый OCR/Document Intelligence foundation TASK-003 и выполнить TASK-004: AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation;
+- развернуть production providers/workers и расширить завершённый TASK-004 на единую knowledge permission model и статьи;
 - внедрить права на всех уровнях;
 - поддержать дополнительные форматы;
 - создать версии, редакционный процесс и аналитику;
@@ -444,9 +447,9 @@
 
 **Зависимости:**
 
-- AI Gateway;
+- production AI provider policies и distributed cost control;
 - объектное хранилище;
-- `pgvector` или согласованная векторная база;
+- production PostgreSQL/pgvector capacity, backup и ANN index strategy;
 - production external queue provider поверх существующего background worker contract;
 - RBAC и организационная изоляция;
 - Integration Hub для внешних источников;

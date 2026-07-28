@@ -94,4 +94,14 @@ Document health возвращает отдельные `core` и `documentIntel
 
 ## Ограничения
 
-Поиск остаётся лексическим. AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation перенесены в [TASK-004](./tasks/TASK-004.md). Cloud OCR требует отдельного решения и не входит в TASK-004.
+Завершённая [TASK-004](./tasks/TASK-004.md) использует актуальные chunks этого pipeline для tenant-aware embeddings, `pgvector`, semantic/hybrid retrieval и server-generated citations. Embedding/RAG readiness отделён от core и OCR readiness; сбой индексации не меняет завершённый processing/OCR result. Cloud OCR по-прежнему требует отдельного решения.
+
+## Связанные документы
+
+- [Document Processing](./DOCUMENT_PROCESSING.md)
+- [Document Operations](./DOCUMENT_OPERATIONS.md)
+- [AI Gateway](./AI_GATEWAY.md)
+- [Hybrid RAG](./HYBRID_RAG.md)
+- [TASK-002](./tasks/TASK-002.md)
+- [TASK-003](./tasks/TASK-003.md)
+- [TASK-004](./tasks/TASK-004.md)

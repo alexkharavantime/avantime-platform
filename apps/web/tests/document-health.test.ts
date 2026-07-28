@@ -8,6 +8,7 @@ import { loadDocumentConfiguration } from '../lib/document-configuration';
 import { checkDocumentReadiness } from '../lib/document-health';
 import type { DocumentOcrAvailability } from '../lib/document-ocr';
 import { createDocumentServices } from '../lib/document-services';
+import { loadRagConfiguration } from '../lib/rag-configuration';
 import { DocumentWorkerShutdown, runDocumentWorkerLoop } from '../lib/document-worker-runtime';
 import { assertSafeDocumentIntegrationEnvironment } from '../scripts/document-integration-environment';
 
@@ -21,7 +22,13 @@ async function createHealthFixture(
     DOCUMENT_DATA_DIR: dataDirectory,
     ...environment,
   });
-  const services = createDocumentServices(configuration);
+  const services = createDocumentServices(configuration, {
+    ragConfiguration: loadRagConfiguration({
+      NODE_ENV: 'test',
+      DOCUMENT_DATA_DIR: dataDirectory,
+      ...environment,
+    }),
+  });
   if (availability) {
     services.ocr = {
       checkAvailability: async () => availability,
@@ -67,31 +74,21 @@ test('document readiness reports separate core and document intelligence states'
   try {
     const readiness = await fixture.check();
 
-    assert.deepEqual(readiness, {
+    assert.equal(readiness.status, 'ready');
+    assert.deepEqual(readiness.components.core, {
       status: 'ready',
-      components: {
-        core: {
-          status: 'ready',
-          configuration: 'ready',
-          worker: 'ready',
-          metadata: 'ready',
-          storage: 'ready',
-          queue: 'ready',
-        },
-        documentIntelligence: {
-          status: 'ready',
-          requiredForReadiness: true,
-          textQuality: 'ready',
-          typeDetection: 'ready',
-          ocr: {
-            status: 'ready',
-            runtime: 'ready',
-            languages: 'ready',
-            pdfSupport: 'ready',
-          },
-        },
-      },
+      configuration: 'ready',
+      worker: 'ready',
+      metadata: 'ready',
+      storage: 'ready',
+      queue: 'ready',
     });
+    assert.equal(readiness.components.documentIntelligence.status, 'ready');
+    assert.equal(readiness.components.embeddingVector.status, 'ready');
+    assert.equal(readiness.components.embeddingVector.providerConfigured, 'ready');
+    assert.equal(readiness.components.embeddingVector.providerAvailable, 'ready');
+    assert.equal(readiness.components.embeddingVector.pgvectorExtension, 'disabled');
+    assert.equal(readiness.components.rag.status, 'ready');
     assert.equal(JSON.stringify(readiness).includes(fixture.dataDirectory), false);
   } finally {
     await fixture.cleanup();
@@ -250,29 +247,48 @@ test('document readiness is deny-by-default when configuration is invalid', asyn
   });
 
   assert.equal(readiness.status, 'unavailable');
-  assert.deepEqual(readiness.components, {
-    core: {
-      status: 'unavailable',
-      configuration: 'unavailable',
-      worker: 'unavailable',
-      metadata: 'unavailable',
-      storage: 'unavailable',
-      queue: 'unavailable',
-    },
-    documentIntelligence: {
-      status: 'unavailable',
-      requiredForReadiness: true,
-      textQuality: 'unavailable',
-      typeDetection: 'unavailable',
-      ocr: {
-        status: 'unavailable',
-        runtime: 'unavailable',
-        languages: 'unavailable',
-        pdfSupport: 'unavailable',
-      },
-    },
-  });
+  assert.equal(readiness.components.core.status, 'unavailable');
+  assert.equal(readiness.components.documentIntelligence.status, 'unavailable');
+  assert.equal(readiness.components.embeddingVector.status, 'unavailable');
+  assert.equal(readiness.components.rag.status, 'unavailable');
   assert.equal(JSON.stringify(readiness).includes('secret'), false);
+});
+
+test('required RAG makes overall readiness unavailable while preserving core readiness', async () => {
+  const fixture = await createHealthFixture({
+    DOCUMENT_OCR_DRIVER: 'disabled',
+    DOCUMENT_EMBEDDING_DRIVER: 'disabled',
+    RAG_ANSWER_DRIVER: 'disabled',
+    DOCUMENT_RAG_REQUIRED_FOR_READINESS: 'true',
+  });
+  try {
+    const readiness = await fixture.check();
+    assert.equal(readiness.components.core.status, 'ready');
+    assert.equal(readiness.components.embeddingVector.status, 'disabled');
+    assert.equal(readiness.components.rag.status, 'disabled');
+    assert.equal(readiness.components.rag.requiredForReadiness, true);
+    assert.equal(readiness.status, 'unavailable');
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('optional disabled RAG keeps core ready and remains visible in diagnostics', async () => {
+  const fixture = await createHealthFixture({
+    DOCUMENT_OCR_DRIVER: 'disabled',
+    DOCUMENT_EMBEDDING_DRIVER: 'disabled',
+    RAG_ANSWER_DRIVER: 'disabled',
+    DOCUMENT_RAG_REQUIRED_FOR_READINESS: 'false',
+  });
+  try {
+    const readiness = await fixture.check();
+    assert.equal(readiness.components.core.status, 'ready');
+    assert.equal(readiness.components.embeddingVector.status, 'disabled');
+    assert.equal(readiness.components.rag.status, 'disabled');
+    assert.equal(readiness.status, 'ready');
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 test('document health route keeps detailed diagnostics behind ADMIN authorization', async () => {
@@ -387,6 +403,10 @@ test('integration operations reject production and non-local targets', () => {
     DOCUMENT_STORAGE_DRIVER: 's3',
     DOCUMENT_METADATA_DRIVER: 'postgresql',
     DOCUMENT_PROCESSING_QUEUE_DRIVER: 'local',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_VECTOR_DRIVER: 'pgvector',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'postgresql',
+    RAG_ANSWER_DRIVER: 'fake',
   };
   assert.doesNotThrow(() => assertSafeDocumentIntegrationEnvironment(safeEnvironment));
   assert.throws(

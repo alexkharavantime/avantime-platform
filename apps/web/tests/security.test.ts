@@ -93,6 +93,21 @@ test('document reprocess route derives tenant server-side and rejects client com
   assert.doesNotMatch(route, /companyId/);
 });
 
+test('RAG APIs derive tenant server-side and explicitly reject client companyId', async () => {
+  const routes = await Promise.all(
+    ['search', 'ask', 'indexing', 'reindex'].map((name) =>
+      import('node:fs/promises').then(({ readFile }) =>
+        readFile(path.join(process.cwd(), `app/api/documents/${name}/route.ts`), 'utf8'),
+      ),
+    ),
+  );
+  for (const route of routes) {
+    assert.match(route, /authorizeDocumentApi/);
+    assert.match(route, /getDocumentTenantContext/);
+    assert.match(route, /TENANT_INPUT_REJECTED/);
+  }
+});
+
 test('a client cannot read a request owned by another company', async () => {
   const sameCompany = await getRequest('AV-1042', session({ companyId: 'demo-company' }));
   const otherCompany = await getRequest('AV-1042', session({ companyId: 'other-company' }));

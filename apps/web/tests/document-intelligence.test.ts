@@ -75,6 +75,14 @@ function metadata(overrides: Partial<DocumentMetadata> = {}): DocumentMetadata {
     pages: null,
     textLength: null,
     chunksCount: null,
+    embeddingStatus: 'PENDING',
+    embeddingModel: null,
+    embeddingDimensions: null,
+    embeddingVersion: null,
+    embeddedAt: null,
+    embeddingAttempts: 0,
+    lastEmbeddingErrorCode: null,
+    embeddingContentHash: null,
     ...overrides,
   };
 }

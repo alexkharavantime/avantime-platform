@@ -40,6 +40,7 @@ export type DocumentProcessingWorkerDependencies = {
   intelligence?: DocumentIntelligenceService;
   now?: () => Date;
   leaseDurationMs?: number;
+  afterCompleted?: (tenant: DocumentTenantContext, documentId: string) => Promise<void>;
 };
 
 export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker {
@@ -186,6 +187,11 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
       }
 
       completedSuccessfully = true;
+      try {
+        await this.dependencies.afterCompleted?.(tenant, completed.id);
+      } catch {
+        // Indexing has its own lifecycle and must not roll back completed extraction.
+      }
       await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
       return {
         outcome: 'COMPLETED',

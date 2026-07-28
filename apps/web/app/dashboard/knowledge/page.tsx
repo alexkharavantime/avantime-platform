@@ -19,6 +19,7 @@ type DocumentItem = {
   textLength?: number;
   processedAt?: string;
   errorMessage?: string;
+  embeddingStatus?: string;
 };
 
 type SearchResult = {
@@ -26,10 +27,13 @@ type SearchResult = {
   documentName: string;
   chunkId: string;
   chunkIndex: number;
-  snippet: string;
-  matches: number;
+  preview: string;
   score: number;
-  chunksFound: number;
+  scoreComponents: {
+    lexical: number;
+    semantic: number;
+    hybrid: number;
+  };
 };
 
 function formatSize(bytes: number) {
@@ -64,6 +68,7 @@ export default function KnowledgePage() {
   const [loadError, setLoadError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<'lexical' | 'semantic' | 'hybrid'>('hybrid');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -154,9 +159,12 @@ export default function KnowledgePage() {
       setSearchError('');
       setSearchPerformed(true);
 
-      const response = await fetch(`/api/documents/search?q=${encodeURIComponent(query)}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(
+        `/api/documents/search?q=${encodeURIComponent(query)}&mode=${searchMode}`,
+        {
+          cache: 'no-store',
+        },
+      );
 
       const responseText = await response.text();
 
@@ -196,6 +204,9 @@ export default function KnowledgePage() {
   const errorCount = documents.filter(
     (document) => document.status === 'Ошибка' || document.status === 'Карантин',
   ).length;
+  const indexedCount = documents.filter(
+    (document) => document.embeddingStatus === 'COMPLETED',
+  ).length;
 
   return (
     <main className="p-6 lg:p-8">
@@ -215,10 +226,15 @@ export default function KnowledgePage() {
         <DocumentUpload onUploaded={handleUploaded} />
       </div>
 
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
+      <div className="mt-8 grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-3xl font-black text-slate-950">{documents.length}</p>
           <p className="mt-1 text-sm text-slate-500">документов</p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-3xl font-black text-slate-950">{indexedCount}</p>
+          <p className="mt-1 text-sm text-slate-500">в vector index</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -238,7 +254,7 @@ export default function KnowledgePage() {
         <h3 className="font-black text-slate-950">Поиск по документам</h3>
 
         <p className="mt-1 text-sm text-slate-500">
-          Поиск выполняется по извлечённому тексту обработанных PDF.
+          Выберите lexical, semantic или hybrid retrieval по обработанным документам.
         </p>
 
         <form onSubmit={handleSearch} className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -248,6 +264,19 @@ export default function KnowledgePage() {
             placeholder="Введите слово или фразу"
             className="min-h-12 flex-1 rounded-xl border border-slate-300 px-4 outline-none ring-blue-200 focus:ring-4"
           />
+
+          <select
+            value={searchMode}
+            onChange={(event) =>
+              setSearchMode(event.target.value as 'lexical' | 'semantic' | 'hybrid')
+            }
+            className="min-h-12 rounded-xl border border-slate-300 bg-white px-4 font-semibold text-slate-700"
+            aria-label="Режим поиска"
+          >
+            <option value="lexical">Lexical</option>
+            <option value="semantic">Semantic</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
 
           <button
             type="submit"
@@ -291,11 +320,11 @@ export default function KnowledgePage() {
 
                       <div className="flex flex-wrap gap-2">
                         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                          Совпадений: {result.matches}
+                          Lexical: {result.scoreComponents.lexical.toFixed(2)}
                         </span>
 
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                          Фрагментов: {result.chunksFound}
+                          Semantic: {result.scoreComponents.semantic.toFixed(2)}
                         </span>
 
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
@@ -304,7 +333,7 @@ export default function KnowledgePage() {
                       </div>
                     </div>
 
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{result.snippet}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{result.preview}</p>
                   </Link>
                 ))}
               </div>
@@ -354,6 +383,9 @@ export default function KnowledgePage() {
                   <p className="mt-1 text-xs text-slate-500">
                     {document.type}
                     {document.pages ? ` · ${document.pages} стр.` : ''}
+                    {document.embeddingStatus
+                      ? ` · index: ${document.embeddingStatus.toLowerCase()}`
+                      : ''}
                   </p>
                 </div>
 

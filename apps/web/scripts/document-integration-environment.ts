@@ -78,6 +78,16 @@ export function assertSafeDocumentIntegrationEnvironment(
   ) {
     throw new Error('Integration drivers must be s3, postgresql and local queue.');
   }
+  if (
+    environment.DOCUMENT_EMBEDDING_DRIVER !== 'fake' ||
+    environment.DOCUMENT_VECTOR_DRIVER !== 'pgvector' ||
+    environment.DOCUMENT_EMBEDDING_QUEUE_DRIVER !== 'postgresql' ||
+    environment.RAG_ANSWER_DRIVER !== 'fake'
+  ) {
+    throw new Error(
+      'Integration RAG drivers must use deterministic fake AI, pgvector and PostgreSQL jobs.',
+    );
+  }
 
   return {
     databaseUrl,
@@ -92,8 +102,16 @@ export async function loadDocumentIntegrationEnvironment() {
     process.env.DOCUMENT_INTEGRATION_ENV_FILE || '.env.integration',
   );
   const fileEnvironment = parseEnvironmentFile(await readFile(environmentFile, 'utf8'));
-  const environment = {
+  const environment: NodeJS.ProcessEnv = {
     ...process.env,
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_EMBEDDING_MODEL: 'deterministic-hash-integration-v1',
+    DOCUMENT_EMBEDDING_DIMENSIONS: '32',
+    DOCUMENT_EMBEDDING_VERSION: 'embedding-integration-v1',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'postgresql',
+    DOCUMENT_VECTOR_DRIVER: 'pgvector',
+    RAG_ANSWER_DRIVER: 'fake',
+    DOCUMENT_RAG_REQUIRED_FOR_READINESS: 'true',
     ...fileEnvironment,
   };
   assertSafeDocumentIntegrationEnvironment(environment);

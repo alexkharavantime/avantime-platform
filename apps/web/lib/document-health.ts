@@ -31,6 +31,23 @@ export type DocumentReadiness = {
         pdfSupport: DocumentComponentStatus;
       };
     };
+    embeddingVector: {
+      status: DocumentComponentStatus;
+      requiredForReadiness: boolean;
+      providerConfigured: DocumentComponentStatus;
+      providerAvailable: DocumentComponentStatus;
+      vectorRepository: DocumentComponentStatus;
+      pgvectorExtension: DocumentComponentStatus;
+      dimensionsCompatible: DocumentComponentStatus;
+      worker: DocumentComponentStatus;
+    };
+    rag: {
+      status: DocumentComponentStatus;
+      requiredForReadiness: boolean;
+      configuration: DocumentComponentStatus;
+      aiGateway: DocumentComponentStatus;
+      answerProvider: DocumentComponentStatus;
+    };
   };
 };
 
@@ -73,9 +90,26 @@ export async function checkDocumentReadiness(
           pdfSupport: 'unavailable',
         },
       },
+      embeddingVector: {
+        status: 'unavailable',
+        requiredForReadiness: true,
+        providerConfigured: 'unavailable',
+        providerAvailable: 'unavailable',
+        vectorRepository: 'unavailable',
+        pgvectorExtension: 'unavailable',
+        dimensionsCompatible: 'unavailable',
+        worker: 'unavailable',
+      },
+      rag: {
+        status: 'unavailable',
+        requiredForReadiness: true,
+        configuration: 'unavailable',
+        aiGateway: 'unavailable',
+        answerProvider: 'unavailable',
+      },
     },
   };
-  const { core, documentIntelligence } = readiness.components;
+  const { core, documentIntelligence, embeddingVector, rag } = readiness.components;
   const configurationLoader = dependencies.loadConfiguration ?? loadDocumentConfiguration;
   const workerConfigurationLoader =
     dependencies.loadWorkerConfiguration ?? loadDocumentWorkerConfiguration;
@@ -137,6 +171,76 @@ export async function checkDocumentReadiness(
     ? 'ready'
     : 'unavailable';
 
+  if (services.rag) {
+    embeddingVector.requiredForReadiness = services.rag.configuration.requiredForReadiness;
+    rag.requiredForReadiness = services.rag.configuration.requiredForReadiness;
+    rag.configuration = 'ready';
+    if (services.rag.configuration.embedding.driver === 'disabled') {
+      embeddingVector.status = 'disabled';
+      embeddingVector.providerConfigured = 'disabled';
+      embeddingVector.providerAvailable = 'disabled';
+      embeddingVector.vectorRepository =
+        services.rag.configuration.vector.driver === 'memory' ? 'disabled' : 'unavailable';
+      embeddingVector.pgvectorExtension =
+        services.rag.configuration.vector.driver === 'memory' ? 'disabled' : 'unavailable';
+      embeddingVector.dimensionsCompatible =
+        services.rag.configuration.vector.driver === 'memory' ? 'disabled' : 'unavailable';
+      embeddingVector.worker = 'disabled';
+    } else {
+      try {
+        const [gateway, vector, worker] = await Promise.all([
+          services.rag.gateway.checkReadiness(),
+          services.rag.vectors.checkReadiness({
+            dimensions: services.rag.configuration.embedding.dimensions,
+            embeddingModel: services.rag.configuration.embedding.model,
+            embeddingVersion: services.rag.configuration.embedding.version,
+          }),
+          services.rag.embeddingQueue.checkReadiness(),
+        ]);
+        embeddingVector.providerConfigured = gateway.embedding.configured ? 'ready' : 'unavailable';
+        embeddingVector.providerAvailable = gateway.embedding.available ? 'ready' : 'unavailable';
+        embeddingVector.vectorRepository = vector.storage ? 'ready' : 'unavailable';
+        embeddingVector.pgvectorExtension =
+          services.rag.configuration.vector.driver === 'pgvector'
+            ? vector.extension
+              ? 'ready'
+              : 'unavailable'
+            : 'disabled';
+        embeddingVector.dimensionsCompatible = vector.dimensionsCompatible
+          ? 'ready'
+          : 'unavailable';
+        embeddingVector.worker = worker ? 'ready' : 'unavailable';
+        embeddingVector.status = [
+          embeddingVector.providerConfigured,
+          embeddingVector.providerAvailable,
+          embeddingVector.vectorRepository,
+          embeddingVector.dimensionsCompatible,
+          embeddingVector.worker,
+        ].every((status) => status === 'ready')
+          ? 'ready'
+          : 'unavailable';
+        rag.aiGateway =
+          gateway.embedding.configured && gateway.answer.configured ? 'ready' : 'unavailable';
+        rag.answerProvider = gateway.answer.available ? 'ready' : 'unavailable';
+      } catch {
+        embeddingVector.status = 'unavailable';
+      }
+    }
+    if (services.rag.configuration.answer.driver === 'disabled') {
+      rag.status = 'disabled';
+      rag.aiGateway = 'disabled';
+      rag.answerProvider = 'disabled';
+    } else {
+      rag.status =
+        rag.configuration === 'ready' &&
+        rag.aiGateway === 'ready' &&
+        rag.answerProvider === 'ready' &&
+        embeddingVector.status === 'ready'
+          ? 'ready'
+          : 'unavailable';
+    }
+  }
+
   if (configuration.ocr.driver !== 'disabled' && services.ocr) {
     try {
       const ocr = await services.ocr.checkAvailability();
@@ -172,7 +276,9 @@ export async function checkDocumentReadiness(
     core.status === 'ready' &&
     documentIntelligence.textQuality === 'ready' &&
     documentIntelligence.typeDetection === 'ready' &&
-    (!documentIntelligence.requiredForReadiness || documentIntelligence.status === 'ready')
+    (!documentIntelligence.requiredForReadiness || documentIntelligence.status === 'ready') &&
+    (!embeddingVector.requiredForReadiness || embeddingVector.status === 'ready') &&
+    (!rag.requiredForReadiness || rag.status === 'ready')
       ? 'ready'
       : 'unavailable';
   return readiness;

@@ -38,6 +38,9 @@ import {
 } from './document-ocr';
 import { DefaultDocumentTextQualityService } from './document-text-quality';
 import { DefaultDocumentTypeDetector } from './document-type-detection';
+import { loadRagConfiguration, type RagConfiguration } from './rag-configuration';
+import { createRagServices, type RagServiceDependencies, type RagServices } from './rag-services';
+import { enqueueDocumentEmbedding } from './document-embedding';
 
 export type DocumentPersistenceServices = {
   storage: DocumentStorage;
@@ -53,6 +56,7 @@ export type DocumentServices = DocumentPersistenceServices & {
   workerPollIntervalMs: number;
   ocr?: DocumentOcrService;
   intelligence?: DocumentIntelligenceService;
+  rag?: RagServices;
 };
 
 export type DocumentServiceDependencies = {
@@ -60,6 +64,8 @@ export type DocumentServiceDependencies = {
   s3Client?: S3DocumentStorageClient;
   processingQueue?: DocumentProcessingQueue;
   ocrProvider?: DocumentOcrProvider;
+  ragConfiguration?: RagConfiguration;
+  rag?: RagServiceDependencies;
 };
 
 let configuredServices: DocumentServices | undefined;
@@ -126,7 +132,7 @@ export function createDocumentServices(
     version: configuration.intelligenceVersion,
   });
 
-  return {
+  const documentServices = {
     ...persistence,
     queue,
     retryPolicy: configuration.retryPolicy,
@@ -134,6 +140,16 @@ export function createDocumentServices(
     workerPollIntervalMs: configuration.workerPollIntervalMs,
     ocr,
     intelligence,
+  } as Omit<DocumentServices, 'rag'>;
+  const baseRagConfiguration = dependencies.ragConfiguration ?? loadRagConfiguration();
+  const ragConfiguration = {
+    ...baseRagConfiguration,
+    dataDirectory: configuration.dataDirectory,
+  };
+  const rag = createRagServices(ragConfiguration, documentServices, dependencies.rag);
+  return {
+    ...documentServices,
+    rag,
   };
 }
 
@@ -147,6 +163,7 @@ export function createDocumentProcessingWorker(
   dependencies: {
     extractor?: DocumentExtractor;
     now?: () => Date;
+    afterCompleted?: (tenant: DocumentTenantContext, documentId: string) => Promise<void>;
   } = {},
 ) {
   return new DefaultDocumentProcessingWorker({
@@ -157,6 +174,20 @@ export function createDocumentProcessingWorker(
     retryPolicy: documentServices.retryPolicy,
     leaseDurationMs: documentServices.queueLeaseDurationMs,
     intelligence: dependencies.extractor ? undefined : documentServices.intelligence,
+    afterCompleted:
+      dependencies.afterCompleted ??
+      (documentServices.rag
+        ? async (tenant, documentId) => {
+            try {
+              await enqueueDocumentEmbedding(tenant, documentId, documentServices.rag!.embedding);
+            } catch {
+              await documentServices.metadata.update(tenant, documentId, {
+                embeddingStatus: 'FAILED',
+                lastEmbeddingErrorCode: 'EMBEDDING_ENQUEUE_FAILED',
+              });
+            }
+          }
+        : undefined),
     ...dependencies,
   });
 }
@@ -169,6 +200,8 @@ export async function deleteDocument(
   const document = await documentServices.metadata.delete(tenant, documentId);
   if (document) {
     await documentServices.queue.removeForDocument(tenant, documentId);
+    await documentServices.rag?.embeddingQueue.removeForDocument(tenant, documentId);
+    await documentServices.rag?.vectors.deleteDocument(tenant, documentId);
   }
   return document;
 }
@@ -261,6 +294,8 @@ export async function reprocessDocument(
   }
 
   const queued = await documentServices.queue.enqueue(tenant, documentId);
+  await documentServices.rag?.embeddingQueue.removeForDocument(tenant, documentId);
+  await documentServices.rag?.vectors.deleteDocument(tenant, documentId);
   const reset = await documentServices.metadata.transitionStatus(
     tenant,
     documentId,
@@ -285,6 +320,14 @@ export async function reprocessDocument(
       nextRetryAt: null,
       quarantinedAt: null,
       workerId: null,
+      embeddingStatus: 'PENDING',
+      embeddingModel: null,
+      embeddingDimensions: null,
+      embeddingVersion: null,
+      embeddedAt: null,
+      embeddingAttempts: 0,
+      lastEmbeddingErrorCode: null,
+      embeddingContentHash: null,
     },
   );
   if (!reset) {
@@ -318,6 +361,8 @@ export async function cleanupDeletedDocuments(
     try {
       await documentServices.storage.delete(tenant, 'original', document.storedName);
       await documentServices.processing.delete(tenant, document.id);
+      await documentServices.rag?.embeddingQueue.removeForDocument(tenant, document.id);
+      await documentServices.rag?.vectors.deleteDocument(tenant, document.id);
       const deleted = await documentServices.metadata.hardDelete(tenant, document.id);
       if (!deleted) throw new Error('Deleted document metadata was not found.');
       result.cleaned.push(document.id);

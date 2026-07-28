@@ -1,6 +1,6 @@
 # Обработка документов
 
-Документ описывает tenant-aware очередь, отдельный worker, retries, quarantine и инфраструктурную валидацию pipeline TASK-002. Первая итерация TASK-003 добавляет format detection, text-quality gate и OCR fallback; embeddings, hybrid RAG и внешний queue provider по-прежнему не входят.
+Документ описывает tenant-aware очередь, отдельный worker, retries, quarantine и инфраструктурную валидацию pipeline TASK-002/TASK-003. TASK-004 добавляет отдельный embedding lifecycle после успешного сохранения chunks, не смешивая его с processing status. Production external document-processing queue по-прежнему не входит.
 
 ## Статусная модель
 
@@ -58,6 +58,8 @@ Worker запускается отдельным процессом и обра�
 6. сохраняет text и chunks через `DocumentProcessingRepository`;
 7. только после полного сохранения переводит metadata в `COMPLETED`;
 8. подтверждает job в очереди.
+
+После `COMPLETED` worker идемпотентно ставит отдельный embedding job. Ошибка enqueue/indexing не откатывает уже корректный core processing result: она отражается в `embeddingStatus` и отдельных embedding/vector readiness diagnostics.
 
 При частичной записи производные объекты удаляются, а документ не получает статус `COMPLETED`. Если worker остановился после claim, lease позволяет следующему запуску безопасно восстановить job. Повторный job для уже терминального документа подтверждается без повторной обработки.
 
@@ -133,9 +135,25 @@ npm run integration:down
 
 Обычный `npm test` не требует Docker.
 
+Embedding worker запускается отдельно:
+
+```bash
+npm run documents:embedding-worker
+npm run documents:embedding-process-one
+```
+
+Он использует собственные PostgreSQL/local job contracts, lease, retry/backoff и quarantine. Подробности retrieval, vector lifecycle и reindex описаны в [Hybrid RAG](./HYBRID_RAG.md).
+
 ## Health model
 
-`/api/health/documents?mode=liveness` сообщает только о доступности процесса. Readiness отдельно показывает core document processing (configuration, worker configuration, metadata repository, storage и queue) и Document Intelligence/OCR. OCR diagnostics содержат runtime, languages и PDF support; optional OCR не понижает core status, а required OCR участвует в общем status. Публичный ответ минимален; component statuses с `details=true` доступны только `ADMIN`.
+`/api/health/documents?mode=liveness` сообщает только о доступности процесса. Readiness отдельно показывает:
+
+- core document processing;
+- Document Intelligence/OCR;
+- embedding provider/vector repository/worker;
+- RAG configuration/AI Gateway/answer provider.
+
+OCR или RAG могут быть optional/disabled вне production: состояние остаётся видимым, но не понижает готовый core. Production принудительно требует настроенные OCR и RAG boundaries. Публичный ответ минимален; component statuses с `details=true` доступны только `ADMIN`.
 
 Health не создаёт probe objects и не возвращает bucket names, credentials, connection strings, stack traces или provider errors.
 
@@ -166,7 +184,7 @@ Production требует PostgreSQL metadata, S3 storage, external queue config
 - production auto-start, process manager, metrics и alerts не реализованы;
 - PostgreSQL/MinIO integration tests реализованы, но требуют отдельного Docker-запуска;
 - обработка ограничена PDF и существующим extractor;
-- OCR fallback для PDF/PNG/JPEG реализован через provider-neutral boundary; embeddings, `pgvector`, semantic/hybrid RAG и AI Gateway не менялись;
+- OCR fallback для PDF/PNG/JPEG и отдельный TASK-004 embedding/pgvector/hybrid RAG lifecycle реализованы; page provenance для chunks пока nullable;
 - Document API остаётся `ADMIN`-only;
 - worker обрабатывает один явно настроенный tenant за процесс.
 
@@ -174,8 +192,11 @@ Production требует PostgreSQL metadata, S3 storage, external queue config
 
 - [TASK-002](./tasks/TASK-002.md)
 - [TASK-003](./tasks/TASK-003.md)
+- [TASK-004](./tasks/TASK-004.md)
 - [Document Operations](./DOCUMENT_OPERATIONS.md)
 - [Document Intelligence](./DOCUMENT_INTELLIGENCE.md)
+- [AI Gateway](./AI_GATEWAY.md)
+- [Hybrid RAG](./HYBRID_RAG.md)
 - [Architecture 2.0](./ARCHITECTURE_2_0.md)
 - [Architecture Decisions](./DECISIONS.md)
 - [Project Status](./PROJECT_STATUS.md)

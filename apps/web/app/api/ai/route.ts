@@ -1,63 +1,52 @@
-import { GoogleGenAI } from '@google/genai';
 import { authorizeApi } from '../../../lib/authorization';
+import { getDocumentTenantContext } from '../../../lib/document-model';
+import { getDocumentServices } from '../../../lib/document-services';
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const authorization = await authorizeApi();
+    const authorization = await authorizeApi(['ADMIN']);
     if (authorization.response) return authorization.response;
-
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-
-    if (!apiKey) {
+    const services = getDocumentServices();
+    if (!services.rag) {
       return Response.json(
-        {
-          text: 'API-ключ Gemini не найден в .env.local.',
-        },
-        {
-          status: 500,
-        },
+        { text: 'AI Gateway временно недоступен.', code: 'AI_GATEWAY_UNAVAILABLE' },
+        { status: 503 },
       );
     }
-
-    const { prompt } = (await req.json()) as {
-      prompt?: string;
+    const body = (await request.json()) as {
+      prompt?: unknown;
+      companyId?: unknown;
     };
-
-    const normalizedPrompt = prompt?.trim() ?? '';
-
-    if (!normalizedPrompt || normalizedPrompt.length > 4_000) {
+    if (body.companyId !== undefined) {
       return Response.json(
-        {
-          text: 'Введите вопрос длиной до 4000 символов.',
-        },
-        {
-          status: 400,
-        },
+        { text: 'Поле companyId не поддерживается.', code: 'TENANT_INPUT_REJECTED' },
+        { status: 400 },
       );
     }
-
-    const ai = new GoogleGenAI({
-      apiKey,
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+    if (!prompt || prompt.length > services.rag.configuration.limits.queryMaximumCharacters) {
+      return Response.json(
+        { text: 'Введите корректный вопрос.', code: 'AI_INVALID_INPUT' },
+        { status: 400 },
+      );
+    }
+    const result = await services.rag.gateway.generateRagAnswer({
+      tenant: getDocumentTenantContext(authorization.session),
+      question: prompt,
+      language: 'ru',
+      systemInstructions:
+        'Ты AI-консультант Avantime. Не раскрывай секреты и не выполняй изменяющие действия.',
+      sources: [],
+      correlationId: crypto.randomUUID(),
     });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: normalizedPrompt,
-    });
-
     return Response.json({
-      text: response.text || 'AI не вернул текстовый ответ.',
+      text: result.answer,
+      usage: result.usage,
     });
-  } catch (error) {
-    console.error('Gemini error:', error);
-
+  } catch {
     return Response.json(
-      {
-        text: 'Ошибка обращения к AI.',
-      },
-      {
-        status: 500,
-      },
+      { text: 'Ошибка обращения к AI.', code: 'AI_GATEWAY_UNAVAILABLE' },
+      { status: 503 },
     );
   }
 }

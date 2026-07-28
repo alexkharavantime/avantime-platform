@@ -1,212 +1,104 @@
 import { NextResponse } from 'next/server';
+
+import { assertApiRateLimit, ApiRateLimitError } from '../../../../lib/api-rate-limit';
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { isDocumentType } from '../../../../lib/document-intelligence-model';
+import type { DocumentType } from '../../../../lib/document-intelligence-model';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
+import { RetrievalInputError, type RetrievalMode } from '../../../../lib/retrieval';
 
 export const runtime = 'nodejs';
 
-type SearchResult = {
-  documentId: string;
-  documentName: string;
-  chunkId: string;
-  chunkIndex: number;
-  snippet: string;
-  matches: number;
-  score: number;
-};
-
-function normalize(value: string) {
-  return value
-    .toLocaleLowerCase('ru-RU')
-    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function tokenize(value: string) {
-  return normalize(value)
-    .split(' ')
-    .filter((token) => token.length >= 2);
-}
-
-function countOccurrences(source: string, query: string) {
-  if (!query) {
-    return 0;
-  }
-
-  let count = 0;
-  let position = 0;
-
-  while (true) {
-    const index = source.indexOf(query, position);
-
-    if (index === -1) {
-      break;
-    }
-
-    count += 1;
-    position = index + query.length;
-  }
-
-  return count;
-}
-
-function calculateScore(chunkText: string, query: string) {
-  const normalizedText = normalize(chunkText);
-  const normalizedQuery = normalize(query);
-  const queryTokens = tokenize(query);
-
-  const exactMatches = countOccurrences(normalizedText, normalizedQuery);
-
-  let tokenMatches = 0;
-
-  for (const token of queryTokens) {
-    tokenMatches += countOccurrences(normalizedText, token);
-  }
-
-  const matchedUniqueTokens = queryTokens.filter((token) => normalizedText.includes(token)).length;
-
-  const coverage = queryTokens.length > 0 ? matchedUniqueTokens / queryTokens.length : 0;
-
-  return {
-    matches: exactMatches + tokenMatches,
-    score: exactMatches * 10 + tokenMatches * 2 + coverage * 5,
-  };
-}
-
-function createSnippet(text: string, query: string) {
-  const normalizedText = text.toLocaleLowerCase('ru-RU');
-  const normalizedQuery = query.toLocaleLowerCase('ru-RU');
-
-  let matchIndex = normalizedText.indexOf(normalizedQuery);
-
-  if (matchIndex === -1) {
-    const firstToken = tokenize(query)[0];
-
-    matchIndex = firstToken ? normalizedText.indexOf(firstToken) : 0;
-  }
-
-  if (matchIndex === -1) {
-    matchIndex = 0;
-  }
-
-  const radius = 220;
-  const start = Math.max(0, matchIndex - radius);
-  const end = Math.min(text.length, matchIndex + query.length + radius);
-
-  let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
-
-  if (start > 0) {
-    snippet = `…${snippet}`;
-  }
-
-  if (end < text.length) {
-    snippet = `${snippet}…`;
-  }
-
-  return snippet;
+function parseMode(value: string | null): RetrievalMode | null {
+  if (value === null || value === 'lexical') return 'lexical';
+  if (value === 'semantic' || value === 'hybrid') return value;
+  return null;
 }
 
 export async function GET(request: Request) {
   try {
     const authorization = await authorizeDocumentApi();
     if (authorization.response) return authorization.response;
-
     const tenant = getDocumentTenantContext(authorization.session);
-    const url = new URL(request.url);
-    const query = url.searchParams.get('q')?.trim() ?? '';
-
-    if (query.length < 2) {
+    const services = getDocumentServices();
+    if (!services.rag) {
       return NextResponse.json(
-        {
-          error: 'Введите не менее двух символов.',
-        },
-        {
-          status: 400,
-        },
+        { error: 'Поиск временно недоступен.', code: 'RAG_UNAVAILABLE' },
+        { status: 503 },
       );
     }
-
-    const services = getDocumentServices();
-    const documents = await services.metadata.list(tenant);
-    const results: SearchResult[] = [];
-
-    for (const document of documents) {
-      if (document.status !== 'COMPLETED') {
-        continue;
-      }
-
-      const chunks = await services.processing.readChunks(tenant, document.id);
-
-      for (const chunk of chunks) {
-        const evaluation = calculateScore(chunk.text, query);
-
-        if (evaluation.score <= 0) {
-          continue;
-        }
-
-        results.push({
-          documentId: document.id,
-          documentName: document.originalName,
-          chunkId: chunk.id,
-          chunkIndex: chunk.index,
-          snippet: createSnippet(chunk.text, query),
-          matches: evaluation.matches,
-          score: Number(evaluation.score.toFixed(2)),
-        });
-      }
+    assertApiRateLimit(tenant, services.rag.configuration.limits.rateLimitPerMinute);
+    const url = new URL(request.url);
+    if (url.searchParams.has('companyId')) {
+      return NextResponse.json(
+        { error: 'Параметр companyId не поддерживается.', code: 'TENANT_INPUT_REJECTED' },
+        { status: 400 },
+      );
     }
-
-    results.sort((first, second) => second.score - first.score);
-
-    const bestByDocument = new Map<
-      string,
-      SearchResult & {
-        chunksFound: number;
-      }
-    >();
-
-    for (const result of results) {
-      const existing = bestByDocument.get(result.documentId);
-
-      if (!existing) {
-        bestByDocument.set(result.documentId, {
-          ...result,
-          chunksFound: 1,
-        });
-
-        continue;
-      }
-
-      existing.chunksFound += 1;
-
-      if (result.score > existing.score) {
-        bestByDocument.set(result.documentId, {
-          ...result,
-          chunksFound: existing.chunksFound,
-        });
-      }
+    const mode = parseMode(url.searchParams.get('mode'));
+    if (!mode) {
+      return NextResponse.json(
+        { error: 'Неизвестный режим поиска.', code: 'INVALID_SEARCH_MODE' },
+        { status: 400 },
+      );
     }
-
-    const groupedResults = Array.from(bestByDocument.values())
-      .sort((first, second) => second.score - first.score)
-      .slice(0, 20);
-
+    const query = url.searchParams.get('q')?.trim() ?? '';
+    const topKValue = url.searchParams.get('topK');
+    const topK = topKValue ? Number(topKValue) : undefined;
+    const rawTypes = url.searchParams
+      .getAll('documentType')
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (rawTypes.some((value) => !isDocumentType(value))) {
+      return NextResponse.json(
+        { error: 'Некорректный тип документа.', code: 'INVALID_DOCUMENT_TYPE' },
+        { status: 400 },
+      );
+    }
+    const documentTypes = rawTypes.filter((value): value is DocumentType => isDocumentType(value));
+    const retriever =
+      mode === 'lexical'
+        ? services.rag.lexical
+        : mode === 'semantic'
+          ? services.rag.semantic
+          : services.rag.hybrid;
+    const correlationId = crypto.randomUUID();
+    const results = await retriever.retrieve({
+      tenant,
+      query,
+      topK,
+      correlationId,
+      filters: {
+        documentTypes,
+        createdFrom: url.searchParams.get('createdFrom') ?? undefined,
+        createdTo: url.searchParams.get('createdTo') ?? undefined,
+      },
+    });
     return NextResponse.json({
       query,
-      total: groupedResults.length,
-      results: groupedResults,
+      mode,
+      total: results.length,
+      correlationId,
+      results,
     });
   } catch (error) {
-    console.error('Chunk search error:', error);
-
+    if (error instanceof RetrievalInputError) {
+      return NextResponse.json(
+        { error: 'Некорректные параметры поиска.', code: error.code },
+        { status: 400 },
+      );
+    }
+    if (error instanceof ApiRateLimitError) {
+      return NextResponse.json(
+        { error: 'Слишком много запросов.', code: error.code },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
-      {
-        error: 'Не удалось выполнить поиск.',
-      },
-      {
-        status: 500,
-      },
+      { error: 'Не удалось выполнить поиск.', code: 'RETRIEVAL_UNAVAILABLE' },
+      { status: 503 },
     );
   }
 }

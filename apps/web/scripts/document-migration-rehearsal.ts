@@ -101,8 +101,16 @@ async function rehearseEmptyDatabase(options: {
     const migrations = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
       'SELECT COUNT(*)::bigint AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
     );
-    if (Number(migrations[0]?.count ?? 0) !== 3) {
-      throw new Error('Empty database did not apply exactly three document migrations.');
+    if (Number(migrations[0]?.count ?? 0) !== 4) {
+      throw new Error('Empty database did not apply exactly four document migrations.');
+    }
+    const vector = await client.$queryRawUnsafe<Array<{ extension: boolean; tableReady: boolean }>>(
+      `SELECT
+        EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS "extension",
+        to_regclass('"DocumentChunkEmbedding"') IS NOT NULL AS "tableReady"`,
+    );
+    if (!vector[0]?.extension || !vector[0]?.tableReady) {
+      throw new Error('pgvector storage is unavailable after empty database migration.');
     }
   } finally {
     await client.$disconnect();
@@ -210,6 +218,10 @@ async function rehearseLegacyDatabase(options: {
         ocrStatus: string;
         requiresManualReview: boolean;
         intelligenceVersion: string;
+        embeddingStatus: string;
+        embeddingAttempts: number;
+        embeddingModel: string | null;
+        embeddingContentHash: string | null;
       }>
     >(
       `SELECT
@@ -226,6 +238,10 @@ async function rehearseLegacyDatabase(options: {
          ,"ocrStatus"::text AS "ocrStatus"
          ,"requiresManualReview"
          ,"intelligenceVersion"
+         ,"embeddingStatus"::text AS "embeddingStatus"
+         ,"embeddingAttempts"
+         ,"embeddingModel"
+         ,"embeddingContentHash"
        FROM "DocumentMetadata"
        WHERE "companyId" = 'integration-legacy'
        ORDER BY "id"`,
@@ -269,6 +285,14 @@ async function rehearseLegacyDatabase(options: {
       ) {
         throw new Error('Document intelligence legacy defaults are unsafe.');
       }
+      if (
+        record.embeddingStatus !== 'PENDING' ||
+        record.embeddingAttempts !== 0 ||
+        record.embeddingModel !== null ||
+        record.embeddingContentHash !== null
+      ) {
+        throw new Error('Embedding legacy defaults are unsafe.');
+      }
     }
 
     const indexes = await verified.$queryRawUnsafe<Array<{ indexname: string }>>(
@@ -278,7 +302,8 @@ async function rehearseLegacyDatabase(options: {
     const indexNames = new Set(indexes.map((index) => index.indexname));
     if (
       !indexNames.has('DocumentMetadata_companyId_nextRetryAt_idx') ||
-      !indexNames.has('DocumentMetadata_companyId_quarantinedAt_idx')
+      !indexNames.has('DocumentMetadata_companyId_quarantinedAt_idx') ||
+      !indexNames.has('DocumentMetadata_companyId_embeddingStatus_idx')
     ) {
       throw new Error('Processing indexes are missing after migration.');
     }
@@ -296,6 +321,44 @@ async function rehearseLegacyDatabase(options: {
          END;
        END
        $constraint_check$`,
+    );
+    const vectorIndexes = await verified.$queryRawUnsafe<Array<{ indexname: string }>>(
+      `SELECT indexname FROM pg_indexes
+       WHERE schemaname = 'public' AND tablename = 'DocumentChunkEmbedding'`,
+    );
+    const vectorIndexNames = new Set(vectorIndexes.map((index) => index.indexname));
+    if (
+      !vectorIndexNames.has('DocumentChunkEmbedding_company_model_version_idx') ||
+      !vectorIndexNames.has('DocumentChunkEmbedding_company_document_idx')
+    ) {
+      throw new Error('Tenant-aware vector indexes are missing after migration.');
+    }
+    const extension = await verified.$queryRawUnsafe<Array<{ extension: boolean }>>(
+      `SELECT EXISTS (
+        SELECT 1 FROM pg_extension WHERE extname = 'vector'
+      ) AS "extension"`,
+    );
+    if (!extension[0]?.extension) throw new Error('pgvector extension is missing.');
+    await verified.$executeRawUnsafe(
+      `DO $dimension_check$
+       BEGIN
+         BEGIN
+           INSERT INTO "DocumentChunkEmbedding" (
+             "companyId", "documentId", "chunkId", "chunkIndex", "contentHash",
+             "contentPreview", "embeddingModel", "embeddingVersion",
+             "dimensions", "embedding", "createdAt", "updatedAt"
+           ) VALUES (
+             'integration-legacy', 'legacy-completed', 'invalid-dimension', 0,
+             'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+             'preview', 'rehearsal-model', 'rehearsal-v1', 3,
+             '[1,2]'::vector, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+           );
+           RAISE EXCEPTION 'vector dimension constraint accepted an invalid value';
+         EXCEPTION
+           WHEN check_violation THEN NULL;
+         END;
+       END
+       $dimension_check$`,
     );
   } finally {
     await verified.$disconnect();

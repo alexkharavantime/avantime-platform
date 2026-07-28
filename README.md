@@ -85,6 +85,27 @@ npm run test:ocr-integration
 See [Document Intelligence](./docs/DOCUMENT_INTELLIGENCE.md) for installation,
 configuration, lifecycle, security boundaries and current limitations.
 
+## AI Gateway and hybrid RAG
+
+TASK-004 adds a server-side AI Gateway, asynchronous tenant-aware chunk embeddings,
+PostgreSQL/pgvector storage, lexical/semantic/hybrid retrieval and server-validated
+citations. Development and tests use a deterministic fake provider; production
+fails fast unless real providers, PostgreSQL embedding jobs and RAG readiness are
+configured.
+
+```bash
+npm run documents:embedding-worker
+npm run documents:embedding-check
+npm run documents:vector-check
+npm run documents:reindex -- --document-id=<id> --dry-run
+npm run documents:rag-evaluate
+npm run test:rag-integration
+```
+
+See [AI Gateway](./docs/AI_GATEWAY.md), [Hybrid RAG](./docs/HYBRID_RAG.md) and
+[Document Operations](./docs/DOCUMENT_OPERATIONS.md) for configuration, lifecycle,
+security, evaluation and integration commands.
+
 ## Document integration validation
 
 PostgreSQL/MinIO integration infrastructure is isolated from the normal development
