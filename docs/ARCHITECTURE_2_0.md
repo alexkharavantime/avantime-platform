@@ -270,7 +270,41 @@ Prisma-модель metadata использует составной перви�
 
 Если удаление объекта завершается ошибкой, soft-deleted metadata сохраняется для повторной попытки и расследования. Автоматический cleanup не запускается, пока не будет выбран механизм очередей и operational policy.
 
-Legacy migration читает `.data`, вычисляет checksum, переносит metadata в PostgreSQL и объекты в S3. Поддерживаются dry-run и повторный запуск; локальные файлы не удаляются. Текущие тесты являются контрактными и используют изолированные fake/local adapters, поскольку реальная PostgreSQL/S3 infrastructure в CI ещё не подготовлена.
+Legacy migration читает `.data`, вычисляет checksum, переносит metadata в PostgreSQL и объекты в S3. Поддерживаются dry-run и повторный запуск; локальные файлы не удаляются.
+
+### Третья итерация фоновой обработки
+
+TASK-002 отделяет resource-intensive PDF extraction от upload HTTP request следующими границами:
+
+- `DocumentProcessingQueue` управляет tenant-scoped enqueue, exclusive claim, acknowledge и delayed release;
+- `DocumentProcessingJob` содержит только безопасные внутренние идентификаторы и operational metadata;
+- `DocumentProcessingWorker` восстанавливает tenant из server-side configuration, читает оригинал через `DocumentStorage` и сохраняет derivatives через `DocumentProcessingRepository`;
+- `LocalDocumentProcessingQueue` является persistent development/test adapter;
+- `ExternalDocumentProcessingQueue` фиксирует production-контракт, но конкретный provider и infrastructure пока не выбраны.
+
+Metadata использует типобезопасные состояния `UPLOADED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `QUARANTINED` и `DELETED`. Переходы централизованы и выполняются repository как tenant-scoped conditional update. Lifecycle metadata хранит число попыток, безопасный код/сообщение ошибки, время начала/завершения, `nextRetryAt`, `quarantinedAt` и `workerId`.
+
+Upload сохраняет оригинал и metadata `UPLOADED`, затем идемпотентно ставит job и переводит документ в `QUEUED`. Worker получает эксклюзивный lease, переводит документ в `PROCESSING`, проверяет SHA-256 до extraction, сохраняет полный text/chunks и только затем ставит `COMPLETED`. Partial derivatives удаляются и не считаются завершённой обработкой.
+
+Временные ошибки получают exponential backoff до настраиваемого лимита. Постоянные ошибки переходят в `FAILED`, а исчерпавшие retry limit — в `QUARANTINED`. Tenant-aware `ADMIN`-only API поддерживает list, single-document retry, resolve при полном результате и permanently fail. Массовые destructive operations отсутствуют.
+
+Local queue сохраняет job и lease между перезапусками, но не гарантирует distributed locking между несколькими процессами или узлами. Production запрещает local queue и работает fail-fast без external adapter. Worker не запускается автоматически; provider, process manager, metrics и alerts требуют отдельного решения.
+
+### Четвёртая итерация инфраструктурной валидации
+
+Отдельный Docker Compose поднимает PostgreSQL и MinIO только для local/integration testing. Он использует loopback ports, отдельные database/bucket/volumes и безопасные тестовые credentials. Production deployment не изменяется, а integration commands отклоняют production mode, remote endpoints и targets без маркера `integration`.
+
+Реальные integration tests проверяют:
+
+- tenant-aware PostgreSQL repository, conditional claim, soft delete, processing metadata, индексы и constraint;
+- MinIO-compatible storage, tenant-prefixed keys, checksum, path traversal, удаление и last-write-wins;
+- полный PDF flow через PostgreSQL, MinIO и существующую local queue без AI API.
+
+Migration rehearsal применяет Prisma migrations к пустой и legacy test database, проверяет преобразование статусов/defaults/indexes/constraints и повторный deploy. Rehearsal databases имеют валидируемые integration-имена и удаляются после проверки.
+
+Document health разделён на публичные минимальные liveness/readiness ответы и `ADMIN`-only component diagnostics. Readiness выполняет только безопасные read/list operations. Worker поддерживает graceful shutdown: после `SIGINT`/`SIGTERM` завершает текущий `runOnce`, не claim следующий job и полагается на lease recovery при аварийной остановке.
+
+Этот integration boundary не является production Infrastructure as Code. Managed providers, bucket encryption/versioning, external queue, distributed supervision, backup/restore, SLO, metrics и alerts остаются отдельными инфраструктурными решениями.
 
 ## Jira
 
@@ -778,6 +812,10 @@ Production-файлы хранятся в приватном S3-совмести
 - экспериментальные загрузка PDF, извлечение текста, локальный поиск, OpenAI и Gemini.
 - tenant-aware контракты документов, локальный Storage Adapter и репозитории метаданных/обработки;
 - отрицательные тесты изоляции документов, удаления и защиты локальных путей.
+- queue/worker abstraction, persistent local queue, retries, quarantine и asynchronous PDF upload flow;
+- lifecycle, concurrency, restart и production fail-fast тесты обработки документов.
+- local/integration PostgreSQL/MinIO environment, реальные integration test suites, migration rehearsal и Document health boundary;
+- graceful worker shutdown и безопасные operational commands.
 
 ### Что необходимо сделать
 
@@ -788,7 +826,8 @@ Production-файлы хранятся в приватном S3-совмести
 - согласовать публичную и документную базы знаний;
 - стабилизировать аутентификацию, роли и границы организаций;
 - синхронизировать документацию и версии проекта;
-- добавить автоматические тесты и наблюдаемость.
+- подключить production external queue provider и наблюдаемость.
+- выполнить PostgreSQL/MinIO integration suite и migration rehearsal в Docker-enabled CI;
 
 **Приоритет:** критический.
 
@@ -803,6 +842,8 @@ Production-файлы хранятся в приватном S3-совмести
 - первые адаптеры Jira, Email, OpenAI и Gemini;
 - прототип обработки PDF и RAG-подобного ответа.
 - первая tenant-aware граница хранения документов с локальным адаптером и обязательным `companyId`.
+- отдельный PDF worker flow с идемпотентной local queue, retries и quarantine.
+- изолированный PostgreSQL/MinIO integration boundary, health/readiness и migration rehearsal automation.
 
 ### Что необходимо сделать
 
@@ -810,9 +851,10 @@ Production-файлы хранятся в приватном S3-совмести
 - внедрить защищённый AI Gateway;
 - создать единый клиентский dashboard;
 - развернуть private S3 infrastructure и проверить перенос production-объектов через существующий адаптер;
+- выбрать и подключить production external queue adapter, process supervision и queue monitoring;
 - внедрить организационную изоляцию данных;
 - реализовать историю диалогов;
-- добавить `pgvector`, embeddings и гибридный поиск;
+- выполнить [TASK-003](./tasks/TASK-003.md): OCR, embeddings, vector storage и hybrid retrieval;
 - унифицировать аудит, ошибки и логи;
 - покрыть критические сценарии тестами.
 
@@ -889,7 +931,7 @@ Production-файлы хранятся в приватном S3-совмести
 - защиту API — проверять роль, организацию и ресурс во всех маршрутах;
 - локальное хранение runtime-данных — сохранить только как development-реализацию репозиториев и адаптеров, а production перевести на PostgreSQL и object storage;
 - AI-маршруты — убрать прямые вызовы провайдеров и логирование частей ключей;
-- обработку документов — вынести тяжёлые операции из пользовательского запроса;
+- обработку документов — подключить к production external queue и наблюдаемости, сохранив реализованный worker contract;
 - обработку ошибок — ввести единый формат и корреляционные идентификаторы;
 - конфигурацию — централизовать проверку переменных окружения без раскрытия значений.
 

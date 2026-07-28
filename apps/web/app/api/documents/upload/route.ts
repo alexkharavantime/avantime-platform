@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext, toDocumentApiItem } from '../../../../lib/document-model';
-import { deleteDocument, getDocumentServices } from '../../../../lib/document-services';
-import { extractPdfText } from '../../../../lib/pdf-extractor';
+import {
+  deleteDocument,
+  enqueueUploadedDocument,
+  getDocumentServices,
+} from '../../../../lib/document-services';
 
 export const runtime = 'nodejs';
 
@@ -74,7 +77,7 @@ export async function POST(request: Request) {
     try {
       document = await services.metadata.create(tenant, {
         id,
-        status: 'Обрабатывается',
+        status: 'UPLOADED',
         originalName: file.name,
         storedName,
         mimeType: 'application/pdf',
@@ -89,35 +92,32 @@ export async function POST(request: Request) {
     }
 
     try {
-      const extracted = await extractPdfText(pdfBuffer);
-      await services.processing.save(tenant, id, {
-        text: extracted.text,
-        chunks: extracted.chunks,
-      });
-
-      document =
-        (await services.metadata.update(tenant, id, {
-          status: 'Обработан',
-          pages: extracted.pages,
-          textLength: extracted.text.length,
-          chunksCount: extracted.chunksCount,
-          processedAt: new Date().toISOString(),
-          errorMessage: undefined,
-        })) ?? document;
-    } catch (processingError) {
-      console.error('PDF processing error:', processingError);
-      document =
-        (await services.metadata.update(tenant, id, {
-          status: 'Ошибка',
-          errorMessage: 'Не удалось извлечь текст.',
-        })) ?? document;
+      const enqueued = await enqueueUploadedDocument(tenant, id, services);
+      if (!enqueued) {
+        throw new Error('Document metadata disappeared before enqueue.');
+      }
+      document = enqueued.document;
+    } catch {
+      return NextResponse.json(
+        {
+          error: 'Документ сохранён, но пока не поставлен в очередь обработки.',
+        },
+        {
+          status: 503,
+        },
+      );
     }
 
-    return NextResponse.json({
-      document: toDocumentApiItem(document),
-    });
-  } catch (error) {
-    console.error('Document upload error:', error);
+    return NextResponse.json(
+      {
+        document: toDocumentApiItem(document),
+      },
+      {
+        status: 202,
+      },
+    );
+  } catch {
+    console.error('Document upload failed.');
 
     return NextResponse.json({ error: 'Не удалось загрузить документ.' }, { status: 500 });
   }

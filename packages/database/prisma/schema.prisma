@@ -8,57 +8,57 @@ datasource db {
 }
 
 model User {
-  id        String           @id @default(cuid())
-  email     String           @unique
-  name      String
-  role      UserRole         @default(CLIENT)
-  active    Boolean          @default(true)
-  passwordHash String?
-  phone     String?
-  jobTitle  String?
-  company   Company?         @relation(fields: [companyId], references: [id])
-  companyId String?
-  requests  SupportRequest[]
-  messages  RequestMessage[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  passwordResetTokens PasswordResetToken[]
+  id                     String                  @id @default(cuid())
+  email                  String                  @unique
+  name                   String
+  role                   UserRole                @default(CLIENT)
+  active                 Boolean                 @default(true)
+  passwordHash           String?
+  phone                  String?
+  jobTitle               String?
+  company                Company?                @relation(fields: [companyId], references: [id])
+  companyId              String?
+  requests               SupportRequest[]
+  messages               RequestMessage[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  passwordResetTokens    PasswordResetToken[]
   notificationPreference NotificationPreference?
-  emailMessages EmailMessage[]
-  knowledgeArticles KnowledgeArticle[]
+  emailMessages          EmailMessage[]
+  knowledgeArticles      KnowledgeArticle[]
 }
 
 model Company {
-  id        String           @id @default(cuid())
-  name      String
+  id                 String           @id @default(cuid())
+  name               String
   registrationNumber String?
-  address   String?
-  users     User[]
-  requests  SupportRequest[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  address            String?
+  users              User[]
+  requests           SupportRequest[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 }
 
 model SupportRequest {
-  id          String           @id @default(cuid())
-  publicId    String           @unique
+  id          String              @id @default(cuid())
+  publicId    String              @unique
   title       String
   description String
   category    String
-  priority    Priority         @default(NORMAL)
-  status      RequestStatus    @default(NEW)
+  priority    Priority            @default(NORMAL)
+  status      RequestStatus       @default(NEW)
   jiraKey     String?
   jiraSyncAt  DateTime?
   dueAt       DateTime?
-  requester   User             @relation(fields: [requesterId], references: [id])
+  requester   User                @relation(fields: [requesterId], references: [id])
   requesterId String
-  company     Company          @relation(fields: [companyId], references: [id])
+  company     Company             @relation(fields: [companyId], references: [id])
   companyId   String
   messages    RequestMessage[]
   auditEvents AuditEvent[]
   attachments RequestAttachment[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
 model RequestMessage {
@@ -110,57 +110,56 @@ model RequestAttachment {
   createdAt  DateTime       @default(now())
 }
 
-
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 model SystemEvent {
-  id        String   @id @default(cuid())
-  level     String   @default("INFO")
-  category  String
-  message   String
+  id         String   @id @default(cuid())
+  level      String   @default("INFO")
+  category   String
+  message    String
   actorEmail String?
-  metadata  Json?
-  createdAt DateTime @default(now())
+  metadata   Json?
+  createdAt  DateTime @default(now())
 }
 
-
 model NotificationPreference {
-  id String @id @default(cuid())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String @unique
-  requestCreated Boolean @default(true)
-  requestUpdated Boolean @default(true)
-  newMessage Boolean @default(true)
-  slaAlerts Boolean @default(true)
-  weeklySummary Boolean @default(false)
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String   @unique
+  requestCreated Boolean  @default(true)
+  requestUpdated Boolean  @default(true)
+  newMessage     Boolean  @default(true)
+  slaAlerts      Boolean  @default(true)
+  weeklySummary  Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
 }
 
 model EmailMessage {
-  id String @id @default(cuid())
-  recipient String
-  subject String
-  textBody String
-  htmlBody String?
-  template String
-  status EmailStatus @default(PENDING)
-  attempts Int @default(0)
-  lastError String?
-  providerId String?
-  scheduledAt DateTime @default(now())
-  sentAt DateTime?
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String      @id @default(cuid())
+  recipient   String
+  subject     String
+  textBody    String
+  htmlBody    String?
+  template    String
+  status      EmailStatus @default(PENDING)
+  attempts    Int         @default(0)
+  lastError   String?
+  providerId  String?
+  scheduledAt DateTime    @default(now())
+  sentAt      DateTime?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId      String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
   @@index([status, scheduledAt])
 }
 
@@ -171,22 +170,22 @@ enum EmailStatus {
   FAILED
 }
 
-
 model KnowledgeArticle {
-  id          String          @id @default(cuid())
-  slug        String          @unique
+  id          String        @id @default(cuid())
+  slug        String        @unique
   title       String
   summary     String
   category    String
-  tags        String[]        @default([])
-  readingTime String          @default("5 минут")
+  tags        String[]      @default([])
+  readingTime String        @default("5 минут")
   content     Json
-  status      ArticleStatus   @default(DRAFT)
-  author      User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  status      ArticleStatus @default(DRAFT)
+  author      User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
   authorId    String?
   publishedAt DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   @@index([status, category])
 }
 
@@ -197,33 +196,45 @@ enum ArticleStatus {
 }
 
 model DocumentMetadata {
-  id           String                   @db.VarChar(200)
-  companyId    String                   @db.VarChar(200)
-  uploadedBy   String                   @db.VarChar(200)
-  originalName String
-  storedName   String                   @db.VarChar(255)
-  mimeType     String                   @db.VarChar(255)
-  size         Int
-  status       DocumentProcessingStatus @default(PROCESSING)
-  checksum     String                   @db.VarChar(64)
-  pages        Int?
-  textLength   Int?
-  processedAt  DateTime?
-  errorMessage String?
-  chunksCount  Int?
-  createdAt    DateTime                 @default(now())
-  updatedAt    DateTime                 @updatedAt
-  deletedAt    DateTime?
+  id                    String                   @db.VarChar(200)
+  companyId             String                   @db.VarChar(200)
+  uploadedBy            String                   @db.VarChar(200)
+  originalName          String
+  storedName            String                   @db.VarChar(255)
+  mimeType              String                   @db.VarChar(255)
+  size                  Int
+  status                DocumentProcessingStatus @default(UPLOADED)
+  checksum              String                   @db.VarChar(64)
+  processingAttempts    Int                      @default(0)
+  lastErrorCode         String?                  @db.VarChar(100)
+  lastErrorMessage      String?
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  nextRetryAt           DateTime?
+  quarantinedAt         DateTime?
+  workerId              String?                  @db.VarChar(200)
+  pages                 Int?
+  textLength            Int?
+  chunksCount           Int?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  deletedAt             DateTime?
 
   @@id([companyId, id])
   @@index([companyId, status])
+  @@index([companyId, nextRetryAt])
+  @@index([companyId, quarantinedAt])
   @@index([companyId, createdAt])
   @@index([createdAt])
   @@index([deletedAt])
 }
 
 enum DocumentProcessingStatus {
+  UPLOADED
+  QUEUED
   PROCESSING
-  PROCESSED
+  COMPLETED
   FAILED
+  QUARANTINED
+  DELETED
 }

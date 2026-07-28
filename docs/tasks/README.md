@@ -52,10 +52,11 @@
 
 ## Реестр
 
-| Задание | Название | Статус |
-|---|---|---|
-| [TASK-001](TASK-001.md) | Первая реализация Avantime Platform v2 и страницы Agent+ | Done |
-| [TASK-002](TASK-002.md) | Tenant-aware хранение документов и границы RAG | In Progress |
+| Задание                 | Название                                                 | Статус |
+| ----------------------- | -------------------------------------------------------- | ------ |
+| [TASK-001](TASK-001.md) | Первая реализация Avantime Platform v2 и страницы Agent+ | Done   |
+| [TASK-002](TASK-002.md) | Tenant-aware хранение и обработка документов             | Done   |
+| [TASK-003](TASK-003.md) | Document Intelligence and Hybrid RAG                     | Draft  |
 
 ## Связанные документы
 

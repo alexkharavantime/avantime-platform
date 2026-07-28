@@ -65,8 +65,8 @@ Architecture Decision Record — краткая запись значимого 
 
 Если альтернатив несколько, они оформляются в виде таблицы:
 
-| Альтернатива | Преимущества | Недостатки | Причина отказа | Возможность пересмотра |
-|---|---|---|---|---|
+| Альтернатива                  | Преимущества          | Недостатки          | Причина отказа                      | Возможность пересмотра                        |
+| ----------------------------- | --------------------- | ------------------- | ----------------------------------- | --------------------------------------------- |
 | Краткое описание альтернативы | Основные преимущества | Основные недостатки | Почему альтернатива не была выбрана | При каких условиях решение можно пересмотреть |
 
 ### Принятое решение
@@ -1186,26 +1186,217 @@ Deployment обязан создать private bucket с блокировкой 
 
 ---
 
+## ADR-0017
+
+**Название:** Фоновая обработка документов через queue abstraction и отдельный worker
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-27
+
+### Контекст
+
+PDF extraction выполнялся внутри upload HTTP request. Длительная или ошибочная обработка удерживала запрос, смешивала persistence и processing, не имела управляемых retries, exclusive worker claim и quarantine. При этом TASK-002 запрещает преждевременно выбирать внешний queue provider без готовой production infrastructure.
+
+### Варианты
+
+- сохранить синхронную обработку в Next.js route handler;
+- реализовать только in-memory background task внутри web process;
+- ввести queue/worker contracts, local development adapter и отложить выбор external provider;
+- сразу подключить конкретный Redis/SQS/RabbitMQ provider;
+- выделить document processing в отдельный microservice.
+
+## Альтернативы, которые были отклонены
+
+| Альтернатива                   | Преимущества                                | Недостатки                                                                  | Причина отказа                                        | Возможность пересмотра                                       |
+| ------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------ |
+| Синхронный HTTP flow           | Минимум компонентов                         | Долгие запросы, нет retries, restart recovery и quarantine                  | Не соответствует требованиям надёжности Version 2.0   | Не рекомендуется                                             |
+| In-memory task web process     | Быстрый прототип                            | Job теряются при рестарте, нет exclusive lease и горизонтальной координации | Не обеспечивает надёжный lifecycle                    | Только для disposable demo, не для текущего модуля           |
+| Сразу выбрать внешний provider | Production primitives и distributed locking | Требует инфраструктурного решения, deployment и отдельной зависимости       | Provider и operational environment ещё не согласованы | После выбора infrastructure и выполнения load/recovery tests |
+| Отдельный microservice         | Независимое масштабирование                 | Преждевременная операционная сложность и новый deployment boundary          | Модульный монолит пока достаточен                     | При доказанной нагрузке или требованиях изоляции             |
+
+### Принятое решение
+
+Внутри модульного монолита определить `DocumentProcessingQueue`, `DocumentProcessingWorker` и `DocumentProcessingJob`. Upload route только сохраняет original/metadata, идемпотентно ставит job и возвращает `202`. PDF extraction выполняет отдельный worker process.
+
+Development и тесты используют persistent `LocalDocumentProcessingQueue` с tenant-scoped file, exclusive lease и восстановлением просроченного claim. Production использует только `ExternalDocumentProcessingQueue`; конкретный adapter не входит в текущую итерацию, поэтому production processing работает fail-fast до его подключения.
+
+Metadata является source of truth для lifecycle: `UPLOADED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `QUARANTINED`, `DELETED`. Все переходы проверяются централизованно и выполняются conditional repository update с обязательным tenant.
+
+### Причины выбора
+
+Решение немедленно убирает тяжёлую работу из HTTP, формирует стабильный provider-neutral контракт и позволяет проверить idempotency, retries, quarantine, tenant isolation и restart safety без преждевременного инфраструктурного выбора.
+
+### Преимущества
+
+- короткий upload HTTP lifecycle;
+- идемпотентная постановка job;
+- exclusive processing и восстановление lease;
+- централизованные retries и quarantine;
+- обязательный tenant и checksum;
+- возможность подключить внешний provider без изменения API/worker domain logic;
+- сохранение модульного монолита.
+
+### Недостатки
+
+- local adapter не поддерживает distributed multi-process locking;
+- production processing недоступен до реализации external adapter;
+- нет heartbeat/lease extension для очень долгих job;
+- process supervision, queue metrics и alerts ещё не выбраны;
+- один worker process обрабатывает один явно настроенный tenant.
+
+### Последствия
+
+- web и worker deploy/process lifecycle разделяются;
+- production deployment обязан предоставить внешний queue adapter и не может использовать local queue;
+- retries выполняются только для классифицированных временных ошибок;
+- provider messages, stack traces, secrets и document content не попадают в клиентские ответы и worker logs;
+- quarantine operations остаются `ADMIN`-only и single-document;
+- OCR, embeddings и hybrid RAG строятся поверх этого worker boundary в следующих итерациях.
+
+### Откат
+
+До production cutover можно остановить worker и сохранить queued metadata/job для повторного запуска. Возврат synchronous extraction не рекомендуется. Для code rollback новая metadata schema остаётся совместимым superset, но статусы новых документов нужно предварительно нормализовать; destructive автоматический rollback не выполняется.
+
+### Влияние на архитектуру
+
+Решение затрагивает Document API, metadata repository, Prisma schema, development runtime data, operational commands и deployment configuration. UI меняется только для отображения новых статусов. AI providers, lexical search, portal/dashboard boundaries и RBAC не меняются.
+
+### Связанные документы
+
+- `docs/ARCHITECTURE_2_0.md`, разделы 1, 8 и 10;
+- `docs/DOCUMENT_PROCESSING.md`;
+- `docs/tasks/TASK-002.md`;
+- `docs/ROADMAP.md`, Version 2.0;
+- `docs/PROJECT_STATUS.md`.
+
+### Связанные задачи Product Backlog
+
+- DOC-002;
+- INFRA-003;
+- PORTAL-003;
+- SEC-002;
+- INFRA-002.
+
+---
+
+## ADR-0018
+
+**Название:** Изолированная инфраструктурная валидация Document subsystem
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+Storage и processing contracts TASK-002 покрыты unit/contract tests, но production-like поведение PostgreSQL repository, S3-compatible storage и Prisma migrations нельзя надёжно подтвердить только fake/local adapters. При этом integration environment не должен менять production deployment, обращаться к реальным AWS/database resources или делать обычный test suite зависимым от Docker.
+
+### Варианты
+
+- оставить только unit/contract tests;
+- использовать общие development PostgreSQL и object storage;
+- запускать integration tests против реальных cloud resources;
+- добавить отдельный local Docker Compose с PostgreSQL/MinIO и жёсткими safety guards;
+- сразу создавать полноценную production Infrastructure as Code.
+
+## Альтернативы, которые были отклонены
+
+| Альтернатива               | Преимущества                        | Недостатки                                                | Причина отказа                            | Возможность пересмотра                     |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------- | ----------------------------------------- | ------------------------------------------ |
+| Только unit/contract tests | Быстрые и не требуют инфраструктуры | Не проверяют SQL concurrency, миграции и S3 protocol      | Недостаточно для validation gate TASK-002 | Остаются первым уровнем test pyramid       |
+| Общие development services | Меньше конфигурации                 | Риск загрязнения или удаления данных разработчика         | Нет безопасной изоляции                   | Не рекомендуется                           |
+| Реальные cloud resources   | Близко к production provider        | Стоимость, secrets, сеть и риск затронуть реальные данные | Противоречит scope и безопасности         | В отдельном защищённом staging environment |
+| Полная production IaC      | Готовая deployment topology         | Требует выбора providers, queue, backup и observability   | Преждевременно расширяет TASK-002         | INFRA-001 после утверждения providers      |
+
+### Принятое решение
+
+Добавить отдельный `docker-compose.integration.yml` с PostgreSQL и MinIO, отдельный `.env.integration`, явные operational commands и real integration test runner. Обычный `npm test` не требует Docker.
+
+Все destructive integration operations работают deny-by-default: требуют явный test flag, запрещают `NODE_ENV=production`, допускают только loopback endpoints и targets с маркером `integration`. Cleanup ограничивается tenant/object prefixes и отдельным локальным каталогом. Migration rehearsal создаёт только валидированные временные test databases.
+
+Health boundary разделяется на минимальный публичный liveness/readiness и `ADMIN`-only component diagnostics. Проверки не создают probe objects и не раскрывают sensitive configuration. Worker поддерживает graceful shutdown, но distributed heartbeat/fencing остаются будущим решением.
+
+### Причины выбора
+
+Решение проверяет реальные SQL/S3/migration semantics воспроизводимо и без привязки к production provider. Изоляция и guards уменьшают риск ошибочного запуска против production, а отдельная команда сохраняет быстрый unit test loop.
+
+### Преимущества
+
+- реальные PostgreSQL conditional updates и constraints;
+- S3-compatible protocol validation через MinIO;
+- повторяемый end-to-end PDF pipeline без AI API;
+- безопасный migration rehearsal;
+- воспроизводимый local и CI boundary;
+- минимальные operational health contracts;
+- отсутствие изменений production deployment.
+
+### Недостатки
+
+- требуется Docker;
+- MinIO/PostgreSQL не гарантируют полную эквивалентность выбранным в будущем managed providers;
+- external queue и distributed worker behavior не проверяются;
+- Compose не заменяет staging, backup/restore и disaster recovery;
+- real integration suite медленнее unit tests.
+
+### Последствия
+
+- Docker-enabled CI должен запускать integration tests и migration rehearsal отдельным gate;
+- production provider selection остаётся отдельным ADR;
+- тестовые credentials не могут использоваться в production;
+- повторная запись S3 key имеет документированную семантику last-write-wins;
+- TASK-002 остаётся `In Progress`, пока real integration gate не выполнен;
+- OCR, embeddings и hybrid retrieval переходят в TASK-003.
+
+### Откат
+
+Integration Compose, runner и commands можно удалить без изменения production storage/processing contracts. Test volumes удаляются только командой integration teardown. Откат не требует миграции production data.
+
+### Влияние на архитектуру
+
+Решение добавляет local/integration infrastructure boundary, test suites, health route и operational scripts. Доменные contracts, пользовательский UI, RBAC, AI providers и production topology не меняются.
+
+### Связанные документы
+
+- `docs/ARCHITECTURE_2_0.md`;
+- `docs/DOCUMENT_PROCESSING.md`;
+- `docs/DOCUMENT_OPERATIONS.md`;
+- `docs/tasks/TASK-002.md`;
+- `docs/tasks/TASK-003.md`;
+- `docs/ROADMAP.md`;
+- `docs/PROJECT_STATUS.md`.
+
+### Связанные задачи Product Backlog
+
+- DOC-001;
+- DOC-002;
+- INFRA-001;
+- INFRA-002;
+- INFRA-003;
+- SEC-006.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
 
-| Предлагаемая тема | Ожидаемая версия | Причина |
-|---|---|---|
-| Выбор механизма очередей и фоновых задач | Version 2.0 | Документы, Email, embeddings и интеграции не должны выполняться в пользовательском запросе |
-| Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0 | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup |
-| Использование `pgvector` и стратегия векторного поиска | Version 2.0 | Требуется подтвердить объём, индексы и порядок миграции |
-| Модель сессий, MFA и корпоративного входа | Version 2.0–3.0 | Требуется определить жизненный цикл identity |
-| Выбор системы кэша и rate limit | Version 2.0 | Требуется распределённая координация |
-| Выбор платформы мониторинга и трассировки | Version 2.0 | Нужна единая наблюдаемость |
-| Формат очередей и событий Integration Hub | Version 2.1 | Требуются стабильные интеграционные контракты |
-| Модель мультитенантности | Version 3.0 | Необходимо обеспечить строгую изоляцию организаций |
-| Плагинная архитектура и песочница | Version 3.0 | Требуется безопасное расширение платформы |
-| Использование MCP для AI Tools | Version 3.0 | Необходимо определить доверенные серверы, права и аудит |
-| Стратегия локальных LLM | Version 3.0 | Требуются изолированные и гибридные развёртывания |
-| Переход от `develop` к классическому GitHub Flow | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса |
+| Предлагаемая тема                                            | Ожидаемая версия         | Причина                                                                                                 |
+| ------------------------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Выбор конкретного external queue provider                    | Version 2.0              | Queue/worker contract принят в ADR-0017; требуется distributed adapter, deployment и operational policy |
+| Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0              | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup           |
+| Использование `pgvector` и стратегия векторного поиска       | Version 2.0              | Требуется подтвердить объём, индексы и порядок миграции                                                 |
+| Модель сессий, MFA и корпоративного входа                    | Version 2.0–3.0          | Требуется определить жизненный цикл identity                                                            |
+| Выбор системы кэша и rate limit                              | Version 2.0              | Требуется распределённая координация                                                                    |
+| Выбор платформы мониторинга и трассировки                    | Version 2.0              | Нужна единая наблюдаемость                                                                              |
+| Формат очередей и событий Integration Hub                    | Version 2.1              | Требуются стабильные интеграционные контракты                                                           |
+| Модель мультитенантности                                     | Version 3.0              | Необходимо обеспечить строгую изоляцию организаций                                                      |
+| Плагинная архитектура и песочница                            | Version 3.0              | Требуется безопасное расширение платформы                                                               |
+| Использование MCP для AI Tools                               | Version 3.0              | Необходимо определить доверенные серверы, права и аудит                                                 |
+| Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                                       |
+| Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                           |
 
-Следующий свободный номер: `ADR-0017`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0019`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

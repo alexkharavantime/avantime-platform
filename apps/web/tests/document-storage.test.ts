@@ -4,14 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import type { DocumentMetadata, DocumentTenantContext } from '../lib/document-model';
+import type { DocumentTenantContext } from '../lib/document-model';
+import { LocalDocumentProcessingQueue } from '../lib/document-processing-queue';
 import {
   LocalDocumentHistoryRepository,
   LocalDocumentMetadataRepository,
   LocalDocumentProcessingRepository,
+  type CreateDocumentMetadata,
 } from '../lib/document-repositories';
 import { deleteDocument, type DocumentServices } from '../lib/document-services';
 import { LocalDocumentStorage } from '../lib/document-storage';
+import { DEFAULT_DOCUMENT_RETRY_POLICY } from '../lib/document-retry-policy';
 
 const companyA: DocumentTenantContext = {
   companyId: 'company-a',
@@ -30,6 +33,10 @@ async function createFixture() {
     metadata: new LocalDocumentMetadataRepository(dataDirectory),
     processing: new LocalDocumentProcessingRepository(storage),
     history: new LocalDocumentHistoryRepository(storage),
+    queue: new LocalDocumentProcessingQueue(dataDirectory),
+    retryPolicy: DEFAULT_DOCUMENT_RETRY_POLICY,
+    queueLeaseDurationMs: 300_000,
+    workerPollIntervalMs: 1_000,
   };
 
   return {
@@ -39,15 +46,12 @@ async function createFixture() {
   };
 }
 
-function metadata(
-  id: string,
-  storedName = `${id}.pdf`,
-): Omit<DocumentMetadata, 'companyId' | 'uploadedBy' | 'deletedAt'> {
+function metadata(id: string, storedName = `${id}.pdf`): CreateDocumentMetadata {
   const now = new Date().toISOString();
 
   return {
     id,
-    status: 'Обработан',
+    status: 'COMPLETED',
     originalName: 'document.pdf',
     storedName,
     mimeType: 'application/pdf',
@@ -57,7 +61,7 @@ function metadata(
     updatedAt: now,
     pages: 1,
     textLength: 12,
-    processedAt: now,
+    processingCompletedAt: now,
     chunksCount: 1,
   };
 }
@@ -166,6 +170,10 @@ test('soft-deleting a document hides only metadata for the current tenant', asyn
     assert.equal(
       (await fixture.services.metadata.findDeletedById(companyA, documentId))?.companyId,
       'company-a',
+    );
+    assert.equal(
+      (await fixture.services.metadata.findDeletedById(companyA, documentId))?.status,
+      'DELETED',
     );
     assert.equal(
       (await fixture.services.storage.read(companyA, 'original', storedName))?.toString('utf8'),

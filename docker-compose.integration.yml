@@ -1,0 +1,59 @@
+name: avantime-integration
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT}:5432'
+    volumes:
+      - postgres-integration-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: 'no'
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - '127.0.0.1:${MINIO_PORT}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT}:9001'
+    volumes:
+      - minio-integration-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: 'no'
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - >
+        mc alias set integration http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
+        mc mb --ignore-existing "integration/$${MINIO_BUCKET}";
+        mc anonymous set none "integration/$${MINIO_BUCKET}";
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+    restart: 'no'
+
+volumes:
+  postgres-integration-data:
+  minio-integration-data:

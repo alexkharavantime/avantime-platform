@@ -122,7 +122,11 @@
 - прототипы PDF, локального поиска, OpenAI и Gemini;
 - tenant-aware метаданные документов, локальный Storage Adapter и репозиторные границы;
 - PostgreSQL metadata repository, S3-compatible adapter, checksum, soft delete и migration/cleanup commands;
+- queue/worker abstraction, persistent local development queue, asynchronous PDF extraction, retries и quarantine;
+- изолированный PostgreSQL/MinIO integration environment, real integration test suites, migration rehearsal и Document health boundary;
+- graceful worker shutdown и deny-by-default operational guards;
 - автоматические отрицательные тесты авторизации и изоляции документов;
+- lifecycle, concurrency, restart и production queue fail-fast тесты;
 - базовые интеграции Jira и Resend.
 
 **Что ещё необходимо сделать:**
@@ -130,8 +134,9 @@
 - консолидировать параллельные реализации;
 - закрыть пробелы безопасности;
 - внедрить AI Gateway и развернуть/проверить production PostgreSQL/S3 infrastructure для реализованных границ хранения;
-- перенести обработку документов в фоновые задачи;
-- добавить тесты и наблюдаемость;
+- подключить production external queue adapter, process supervision и queue monitoring;
+- выполнить подготовленные PostgreSQL/MinIO integration tests и migration rehearsal в Docker-enabled CI;
+- внедрить production observability, backup/restore и disaster recovery rehearsal;
 - синхронизировать документацию.
 
 **Приоритет:** критический, первый обязательный этап.
@@ -144,7 +149,7 @@
 - production PostgreSQL;
 - объектное хранилище;
 - менеджер секретов;
-- выбранный механизм очередей и фоновых задач;
+- выбранный external queue provider и production adapter поверх принятого worker contract;
 - продуктовые решения по объединению портала и dashboard.
 
 **Риски:**
@@ -312,6 +317,8 @@
 
 ## Version 2.2 — Knowledge Center и управляемый AI
 
+Функциональный объём OCR, document type detection, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation formalized в [TASK-003](./tasks/TASK-003.md). Он начинается после фактического infrastructure gate TASK-002 и не относится к её завершению.
+
 ### Основная цель
 
 Превратить знания, документы, обучение и AI в управляемую корпоративную систему с измеримым качеством.
@@ -417,7 +424,7 @@
 **Что уже реализовано:**
 
 - статьи, категории, теги, статусы и административная публикация;
-- прототип загрузки PDF и извлечения текста;
+- загрузка PDF с отдельным worker flow, retries и quarantine;
 - локальный полнотекстовый поиск;
 - ответы OpenAI по фрагментам документов;
 - история вопросов в локальных данных.
@@ -425,7 +432,7 @@
 **Что ещё необходимо сделать:**
 
 - перенести прототип в production-хранилища;
-- добавить embeddings и повторное ранжирование;
+- выполнить TASK-003: OCR, embeddings, semantic/hybrid retrieval, citations и evaluation;
 - внедрить права на всех уровнях;
 - поддержать дополнительные форматы;
 - создать версии, редакционный процесс и аналитику;
@@ -440,7 +447,7 @@
 - AI Gateway;
 - объектное хранилище;
 - `pgvector` или согласованная векторная база;
-- фоновые задачи;
+- production external queue provider поверх существующего background worker contract;
 - RBAC и организационная изоляция;
 - Integration Hub для внешних источников;
 - владельцы контента и редакционный процесс.

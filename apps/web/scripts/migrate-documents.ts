@@ -7,7 +7,10 @@ import {
   LocalDocumentMetadataRepository,
   LocalDocumentProcessingRepository,
 } from '../lib/document-repositories';
-import { createDocumentServices, type DocumentServices } from '../lib/document-services';
+import {
+  createDocumentPersistenceServices,
+  type DocumentPersistenceServices,
+} from '../lib/document-services';
 import { LocalDocumentStorage } from '../lib/document-storage';
 import { loadDocumentConfiguration } from '../lib/document-configuration';
 
@@ -16,7 +19,7 @@ function argumentValue(name: string) {
   return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
 }
 
-function createLegacyServices(dataDirectory: string): DocumentServices {
+function createLegacyServices(dataDirectory: string): DocumentPersistenceServices {
   const storage = new LocalDocumentStorage(dataDirectory);
   return {
     storage,
@@ -52,7 +55,7 @@ async function main() {
   const report = await migrateDocuments({
     tenant,
     source: createLegacyServices(legacyDirectory),
-    target: createDocumentServices(targetConfiguration),
+    target: createDocumentPersistenceServices(targetConfiguration),
     dryRun,
   });
 
