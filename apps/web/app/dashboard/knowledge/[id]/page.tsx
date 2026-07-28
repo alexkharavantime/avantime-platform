@@ -17,6 +17,16 @@ type DocumentItem = {
   textLength?: number;
   processedAt?: string;
   errorMessage?: string;
+  detectedDocumentType: string;
+  detectedMimeType?: string;
+  detectionConfidence?: number;
+  textExtractionMethod: string;
+  ocrStatus: string;
+  ocrLanguage?: string;
+  pageCount?: number;
+  extractedCharacterCount?: number;
+  requiresManualReview: boolean;
+  intelligenceVersion: string;
 };
 
 type ViewMode = 'pdf' | 'text';
@@ -62,6 +72,7 @@ export default function DocumentPage() {
   const [textLoading, setTextLoading] = useState(false);
   const [error, setError] = useState('');
   const [textError, setTextError] = useState('');
+  const [reprocessing, setReprocessing] = useState(false);
 
   useEffect(() => {
     async function loadDocument() {
@@ -148,6 +159,30 @@ export default function DocumentPage() {
     void loadText();
   }
 
+  async function reprocess() {
+    if (!document || reprocessing) return;
+    setReprocessing(true);
+    setError('');
+    try {
+      const response = await fetch('/api/documents/reprocess', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ documentId: document.id, dryRun: false }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Не удалось запустить обработку.');
+      setDocument({ ...document, status: 'В очереди' });
+    } catch (reprocessError) {
+      setError(
+        reprocessError instanceof Error
+          ? reprocessError.message
+          : 'Не удалось запустить обработку.',
+      );
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="p-6 lg:p-8">
@@ -194,7 +229,7 @@ export default function DocumentPage() {
           rel="noreferrer"
           className="rounded-xl bg-blue-600 px-5 py-3 text-center font-bold text-white hover:bg-blue-700"
         >
-          Открыть PDF
+          Открыть оригинал
         </a>
       </div>
 
@@ -256,6 +291,59 @@ export default function DocumentPage() {
             </div>
 
             <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Определённый тип
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-800">{document.detectedDocumentType}</dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Фактический MIME
+              </dt>
+              <dd className="mt-1 break-all font-semibold text-slate-800">
+                {document.detectedMimeType ?? '—'}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Извлечение / OCR
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-800">
+                {document.textExtractionMethod} / {document.ocrStatus}
+                {document.ocrLanguage ? ` (${document.ocrLanguage})` : ''}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Уверенность
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-800">
+                {document.detectionConfidence === undefined
+                  ? '—'
+                  : `${Math.round(document.detectionConfidence * 100)}%`}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Проверка оператором
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-800">
+                {document.requiresManualReview ? 'Требуется' : 'Не требуется'}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Версия обработки
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-800">{document.intelligenceVersion}</dd>
+            </div>
+
+            <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Размер</dt>
               <dd className="mt-1 font-semibold text-slate-800">{formatSize(document.size)}</dd>
             </div>
@@ -314,6 +402,15 @@ export default function DocumentPage() {
               </div>
             ) : null}
           </dl>
+
+          <button
+            type="button"
+            onClick={() => void reprocess()}
+            disabled={reprocessing || document.status === 'Обрабатывается'}
+            className="mt-6 w-full rounded-xl border border-blue-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {reprocessing ? 'Постановка в очередь…' : 'Обработать повторно'}
+          </button>
         </aside>
       </div>
     </main>

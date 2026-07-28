@@ -11,6 +11,7 @@ import type {
 import { decideDocumentRetry, type DocumentRetryPolicy } from './document-retry-policy';
 import type { DocumentStorage } from './document-storage';
 import { extractPdfText } from './pdf-extractor';
+import type { DocumentIntelligenceService } from './document-intelligence';
 
 export type DocumentExtractor = typeof extractPdfText;
 
@@ -36,6 +37,7 @@ export type DocumentProcessingWorkerDependencies = {
   queue: DocumentProcessingQueue;
   retryPolicy: DocumentRetryPolicy;
   extractor?: DocumentExtractor;
+  intelligence?: DocumentIntelligenceService;
   now?: () => Date;
   leaseDurationMs?: number;
 };
@@ -148,7 +150,9 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
         );
       }
 
-      const extracted = await this.extractor(original);
+      const extracted = this.dependencies.intelligence
+        ? await this.dependencies.intelligence.process(claimed, original)
+        : await this.extractor(original);
       await this.dependencies.processing.save(tenant, claimed.id, {
         text: extracted.text,
         chunks: extracted.chunks,
@@ -160,9 +164,10 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
         ['PROCESSING'],
         'COMPLETED',
         {
-          pages: extracted.pages,
+          pages: 'pages' in extracted ? extracted.pages : extracted.intelligence.pageCount,
           textLength: extracted.text.length,
           chunksCount: extracted.chunksCount,
+          ...('intelligence' in extracted ? extracted.intelligence : {}),
           processingCompletedAt: this.now().toISOString(),
           nextRetryAt: null,
           quarantinedAt: null,
@@ -210,6 +215,15 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
         lastErrorMessage: classified.safeMessage,
         processingCompletedAt: this.now().toISOString(),
         workerId: null,
+        ...(classified.code.startsWith('OCR_')
+          ? {
+              ocrStatus:
+                classified.code === 'OCR_RUNTIME_UNAVAILABLE'
+                  ? ('UNAVAILABLE' as const)
+                  : ('FAILED' as const),
+              ocrCompletedAt: this.now().toISOString(),
+            }
+          : {}),
       };
 
       if (decision.action === 'RETRY') {

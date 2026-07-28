@@ -84,6 +84,15 @@ test('quarantine retry policy remains ADMIN-only', () => {
   );
 });
 
+test('document reprocess route derives tenant server-side and rejects client companyId', async () => {
+  const route = await import('node:fs/promises').then(({ readFile }) =>
+    readFile(path.join(process.cwd(), 'app/api/documents/reprocess/route.ts'), 'utf8'),
+  );
+  assert.match(route, /authorizeDocumentApi/);
+  assert.match(route, /getDocumentTenantContext/);
+  assert.doesNotMatch(route, /companyId/);
+});
+
 test('a client cannot read a request owned by another company', async () => {
   const sameCompany = await getRequest('AV-1042', session({ companyId: 'demo-company' }));
   const otherCompany = await getRequest('AV-1042', session({ companyId: 'other-company' }));

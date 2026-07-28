@@ -25,6 +25,19 @@ import {
   type DocumentStorage,
   type S3DocumentStorageClient,
 } from './document-storage';
+import {
+  DefaultDocumentIntelligenceService,
+  type DocumentIntelligenceService,
+} from './document-intelligence';
+import {
+  DefaultDocumentOcrService,
+  DisabledDocumentOcrProvider,
+  TesseractDocumentOcrProvider,
+  type DocumentOcrProvider,
+  type DocumentOcrService,
+} from './document-ocr';
+import { DefaultDocumentTextQualityService } from './document-text-quality';
+import { DefaultDocumentTypeDetector } from './document-type-detection';
 
 export type DocumentPersistenceServices = {
   storage: DocumentStorage;
@@ -38,12 +51,15 @@ export type DocumentServices = DocumentPersistenceServices & {
   retryPolicy: DocumentConfiguration['retryPolicy'];
   queueLeaseDurationMs: number;
   workerPollIntervalMs: number;
+  ocr?: DocumentOcrService;
+  intelligence?: DocumentIntelligenceService;
 };
 
 export type DocumentServiceDependencies = {
   loadDatabase?: DocumentMetadataDatabaseLoader;
   s3Client?: S3DocumentStorageClient;
   processingQueue?: DocumentProcessingQueue;
+  ocrProvider?: DocumentOcrProvider;
 };
 
 let configuredServices: DocumentServices | undefined;
@@ -97,6 +113,18 @@ export function createDocumentServices(
     queue =
       dependencies.processingQueue ?? new LocalDocumentProcessingQueue(configuration.dataDirectory);
   }
+  const ocrProvider =
+    dependencies.ocrProvider ??
+    (configuration.ocr.driver === 'local'
+      ? new TesseractDocumentOcrProvider()
+      : new DisabledDocumentOcrProvider());
+  const ocr = new DefaultDocumentOcrService(ocrProvider, configuration.ocr);
+  const intelligence = new DefaultDocumentIntelligenceService({
+    ocr,
+    quality: new DefaultDocumentTextQualityService(configuration.textQuality),
+    typeDetector: new DefaultDocumentTypeDetector(configuration.detectionMinimumConfidence),
+    version: configuration.intelligenceVersion,
+  });
 
   return {
     ...persistence,
@@ -104,6 +132,8 @@ export function createDocumentServices(
     retryPolicy: configuration.retryPolicy,
     queueLeaseDurationMs: configuration.queueLeaseDurationMs,
     workerPollIntervalMs: configuration.workerPollIntervalMs,
+    ocr,
+    intelligence,
   };
 }
 
@@ -126,6 +156,7 @@ export function createDocumentProcessingWorker(
     queue: documentServices.queue,
     retryPolicy: documentServices.retryPolicy,
     leaseDurationMs: documentServices.queueLeaseDurationMs,
+    intelligence: dependencies.extractor ? undefined : documentServices.intelligence,
     ...dependencies,
   });
 }
@@ -193,6 +224,79 @@ export async function enqueueUploadedDocument(
     });
     throw error;
   }
+}
+
+export type ReprocessDocumentResult =
+  | { outcome: 'NOT_FOUND'; documentId: string; dryRun: boolean }
+  | {
+      outcome: 'WOULD_REPROCESS' | 'QUEUED' | 'ALREADY_QUEUED';
+      documentId: string;
+      dryRun: boolean;
+    };
+
+export async function reprocessDocument(
+  tenant: DocumentTenantContext,
+  documentId: string,
+  options: { dryRun: boolean },
+  documentServices: DocumentServices = getDocumentServices(),
+): Promise<ReprocessDocumentResult> {
+  const document = await documentServices.metadata.findById(tenant, documentId);
+  if (!document) return { outcome: 'NOT_FOUND', documentId, dryRun: options.dryRun };
+  if (document.status === 'UPLOADED' || document.status === 'QUEUED') {
+    if (options.dryRun) {
+      return { outcome: 'WOULD_REPROCESS', documentId, dryRun: true };
+    }
+    const queued = await documentServices.queue.enqueue(tenant, documentId);
+    return {
+      outcome: queued.enqueued ? 'QUEUED' : 'ALREADY_QUEUED',
+      documentId,
+      dryRun: false,
+    };
+  }
+  if (!['COMPLETED', 'FAILED', 'QUARANTINED'].includes(document.status)) {
+    throw new Error('Document cannot be reprocessed in its current state.');
+  }
+  if (options.dryRun) {
+    return { outcome: 'WOULD_REPROCESS', documentId, dryRun: true };
+  }
+
+  const queued = await documentServices.queue.enqueue(tenant, documentId);
+  const reset = await documentServices.metadata.transitionStatus(
+    tenant,
+    documentId,
+    [document.status],
+    'QUEUED',
+    {
+      detectedDocumentType: 'UNKNOWN',
+      detectionConfidence: null,
+      textExtractionMethod: 'NONE',
+      ocrStatus: 'PENDING',
+      ocrProvider: null,
+      ocrLanguage: null,
+      ocrStartedAt: null,
+      ocrCompletedAt: null,
+      pageCount: null,
+      extractedCharacterCount: null,
+      requiresManualReview: true,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      processingStartedAt: null,
+      processingCompletedAt: null,
+      nextRetryAt: null,
+      quarantinedAt: null,
+      workerId: null,
+    },
+  );
+  if (!reset) {
+    if (queued.enqueued) await documentServices.queue.removeForDocument(tenant, documentId);
+    throw new Error('Document state changed before reprocessing.');
+  }
+  await documentServices.processing.delete(tenant, documentId);
+  return {
+    outcome: queued.enqueued ? 'QUEUED' : 'ALREADY_QUEUED',
+    documentId,
+    dryRun: false,
+  };
 }
 
 export type DocumentCleanupResult = {

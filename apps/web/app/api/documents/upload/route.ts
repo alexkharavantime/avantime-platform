@@ -7,10 +7,10 @@ import {
   enqueueUploadedDocument,
   getDocumentServices,
 } from '../../../../lib/document-services';
+import { detectDocumentFile } from '../../../../lib/document-file-detection';
+import { loadDocumentConfiguration } from '../../../../lib/document-configuration';
 
 export const runtime = 'nodejs';
-
-const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 export async function GET() {
   try {
@@ -43,19 +43,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Файл не выбран.' }, { status: 400 });
     }
 
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      return NextResponse.json(
-        { error: 'Сейчас поддерживаются только PDF-файлы.' },
-        { status: 400 },
-      );
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json(
-        { error: 'Размер файла не должен превышать 20 МБ.' },
-        { status: 400 },
-      );
+    const configuration = loadDocumentConfiguration();
+    if (file.size > configuration.ocr.maximumFileSize) {
+      return NextResponse.json({ error: 'Файл превышает допустимый размер.' }, { status: 400 });
     }
 
     const services = getDocumentServices();
@@ -66,12 +56,29 @@ export async function POST(request: Request) {
         .replace(/_+/g, '_')
         .slice(-150) || 'document.pdf';
     const storedName = `${id}-${safeName}`;
-    const pdfBuffer = Buffer.from(await file.arrayBuffer());
+    const documentBuffer = Buffer.from(await file.arrayBuffer());
+    const detection = detectDocumentFile({
+      content: documentBuffer,
+      originalName: file.name,
+      declaredMimeType: file.type,
+    });
+    if (!detection.processable) {
+      return NextResponse.json(
+        { error: 'Поддерживаются PDF, PNG и JPEG. Формат файла проверяется на сервере.' },
+        { status: 400 },
+      );
+    }
     const now = new Date().toISOString();
 
-    const storedObject = await services.storage.write(tenant, 'original', storedName, pdfBuffer, {
-      contentType: 'application/pdf',
-    });
+    const storedObject = await services.storage.write(
+      tenant,
+      'original',
+      storedName,
+      documentBuffer,
+      {
+        contentType: detection.detectedMimeType,
+      },
+    );
 
     let document;
     try {
@@ -80,11 +87,14 @@ export async function POST(request: Request) {
         status: 'UPLOADED',
         originalName: file.name,
         storedName,
-        mimeType: 'application/pdf',
+        mimeType: detection.detectedMimeType,
         size: file.size,
         checksum: storedObject.checksum,
         createdAt: now,
         updatedAt: now,
+        detectedMimeType: detection.detectedMimeType,
+        requiresManualReview: detection.mismatch,
+        intelligenceVersion: configuration.intelligenceVersion,
       });
     } catch (error) {
       await services.storage.delete(tenant, 'original', storedName);

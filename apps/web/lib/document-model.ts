@@ -1,5 +1,11 @@
 import type { AppSession } from './session';
 import type { DocumentProcessingStatus } from './document-processing-state';
+import type {
+  DocumentIntelligenceMetadata,
+  DocumentOcrStatus,
+  DocumentTextExtractionMethod,
+  DocumentType,
+} from './document-intelligence-model';
 
 export const AVANTIME_DOCUMENT_COMPANY_ID = 'avantime';
 export const UNVERIFIED_DOCUMENT_CHECKSUM = '0'.repeat(64);
@@ -20,7 +26,7 @@ export type TextChunk = {
   end: number;
 };
 
-export type DocumentMetadata = {
+export type DocumentMetadata = DocumentIntelligenceMetadata & {
   id: string;
   companyId: string;
   uploadedBy: string;
@@ -74,6 +80,18 @@ export type DocumentApiItem = {
   nextRetryAt?: string;
   quarantinedAt?: string;
   workerId?: string;
+  detectedDocumentType: DocumentType;
+  detectedMimeType?: string;
+  detectionConfidence?: number;
+  textExtractionMethod: DocumentTextExtractionMethod;
+  ocrStatus: DocumentOcrStatus;
+  ocrLanguage?: string;
+  ocrStartedAt?: string;
+  ocrCompletedAt?: string;
+  pageCount?: number;
+  extractedCharacterCount?: number;
+  requiresManualReview: boolean;
+  intelligenceVersion: string;
 };
 
 const API_STATUS_LABELS: Record<DocumentProcessingStatus, DocumentApiStatus> = {
@@ -126,5 +144,17 @@ export function toDocumentApiItem(document: DocumentMetadata): DocumentApiItem {
     nextRetryAt: document.nextRetryAt ?? undefined,
     quarantinedAt: document.quarantinedAt ?? undefined,
     workerId: document.workerId ?? undefined,
+    detectedDocumentType: document.detectedDocumentType,
+    detectedMimeType: document.detectedMimeType ?? undefined,
+    detectionConfidence: document.detectionConfidence ?? undefined,
+    textExtractionMethod: document.textExtractionMethod,
+    ocrStatus: document.ocrStatus,
+    ocrLanguage: document.ocrLanguage ?? undefined,
+    ocrStartedAt: document.ocrStartedAt ?? undefined,
+    ocrCompletedAt: document.ocrCompletedAt ?? undefined,
+    pageCount: document.pageCount ?? undefined,
+    extractedCharacterCount: document.extractedCharacterCount ?? undefined,
+    requiresManualReview: document.requiresManualReview,
+    intelligenceVersion: document.intelligenceVersion,
   };
 }

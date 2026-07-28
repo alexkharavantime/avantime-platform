@@ -5,15 +5,36 @@ import {
 import type { DocumentTenantContext } from './document-model';
 import { getDocumentServices, type DocumentServices } from './document-services';
 
-export type DocumentHealthComponent = 'configuration' | 'worker' | 'metadata' | 'storage' | 'queue';
-export type DocumentHealthStatus = 'ready' | 'unavailable';
+export type DocumentReadinessStatus = 'ready' | 'unavailable';
+export type DocumentComponentStatus = DocumentReadinessStatus | 'disabled';
 
 export type DocumentReadiness = {
-  status: DocumentHealthStatus;
-  components: Record<DocumentHealthComponent, DocumentHealthStatus>;
+  status: DocumentReadinessStatus;
+  components: {
+    core: {
+      status: DocumentReadinessStatus;
+      configuration: DocumentReadinessStatus;
+      worker: DocumentReadinessStatus;
+      metadata: DocumentReadinessStatus;
+      storage: DocumentReadinessStatus;
+      queue: DocumentReadinessStatus;
+    };
+    documentIntelligence: {
+      status: DocumentComponentStatus;
+      requiredForReadiness: boolean;
+      textQuality: DocumentReadinessStatus;
+      typeDetection: DocumentReadinessStatus;
+      ocr: {
+        status: DocumentComponentStatus;
+        runtime: DocumentComponentStatus;
+        languages: DocumentComponentStatus;
+        pdfSupport: DocumentComponentStatus;
+      };
+    };
+  };
 };
 
-async function check(action: () => Promise<unknown>): Promise<DocumentHealthStatus> {
+async function check(action: () => Promise<unknown>): Promise<DocumentReadinessStatus> {
   try {
     await action();
     return 'ready';
@@ -29,26 +50,61 @@ export async function checkDocumentReadiness(
     loadServices?: () => DocumentServices;
   } = {},
 ): Promise<DocumentReadiness> {
-  const components: DocumentReadiness['components'] = {
-    configuration: 'unavailable',
-    worker: 'unavailable',
-    metadata: 'unavailable',
-    storage: 'unavailable',
-    queue: 'unavailable',
+  const readiness: DocumentReadiness = {
+    status: 'unavailable',
+    components: {
+      core: {
+        status: 'unavailable',
+        configuration: 'unavailable',
+        worker: 'unavailable',
+        metadata: 'unavailable',
+        storage: 'unavailable',
+        queue: 'unavailable',
+      },
+      documentIntelligence: {
+        status: 'unavailable',
+        requiredForReadiness: true,
+        textQuality: 'unavailable',
+        typeDetection: 'unavailable',
+        ocr: {
+          status: 'unavailable',
+          runtime: 'unavailable',
+          languages: 'unavailable',
+          pdfSupport: 'unavailable',
+        },
+      },
+    },
   };
+  const { core, documentIntelligence } = readiness.components;
   const configurationLoader = dependencies.loadConfiguration ?? loadDocumentConfiguration;
   const workerConfigurationLoader =
     dependencies.loadWorkerConfiguration ?? loadDocumentWorkerConfiguration;
   const servicesLoader = dependencies.loadServices ?? getDocumentServices;
 
+  let configuration: ReturnType<typeof loadDocumentConfiguration>;
   try {
-    configurationLoader();
-    components.configuration = 'ready';
+    configuration = configurationLoader();
+    core.configuration = 'ready';
+    documentIntelligence.requiredForReadiness = configuration.ocrRequiredForReadiness;
+    documentIntelligence.textQuality =
+      configuration.textQuality.minimumCharacters > 0 &&
+      configuration.textQuality.minimumPrintableRatio >= 0 &&
+      configuration.textQuality.minimumAlphanumericRatio >= 0
+        ? 'ready'
+        : 'unavailable';
+    documentIntelligence.typeDetection =
+      configuration.detectionMinimumConfidence >= 0 ? 'ready' : 'unavailable';
+    if (configuration.ocr.driver === 'disabled') {
+      documentIntelligence.status = 'disabled';
+      documentIntelligence.ocr = {
+        status: 'disabled',
+        runtime: 'disabled',
+        languages: 'disabled',
+        pdfSupport: 'disabled',
+      };
+    }
   } catch {
-    return {
-      status: 'unavailable',
-      components,
-    };
+    return readiness;
   }
 
   let tenant: DocumentTenantContext;
@@ -58,34 +114,66 @@ export async function checkDocumentReadiness(
       companyId: worker.tenantId,
       userId: 'document-health',
     };
-    components.worker = 'ready';
+    core.worker = 'ready';
   } catch {
-    return {
-      status: 'unavailable',
-      components,
-    };
+    return readiness;
   }
 
   let services: DocumentServices;
   try {
     services = servicesLoader();
   } catch {
-    return {
-      status: 'unavailable',
-      components,
-    };
+    return readiness;
   }
 
-  components.metadata = await check(() => services.metadata.list(tenant));
-  components.storage = await check(() =>
+  core.metadata = await check(() => services.metadata.list(tenant));
+  core.storage = await check(() =>
     services.storage.read(tenant, 'history', 'document-health-check.json'),
   );
-  components.queue = await check(() => services.queue.list(tenant));
+  core.queue = await check(() => services.queue.list(tenant));
+  core.status = [core.configuration, core.worker, core.metadata, core.storage, core.queue].every(
+    (status) => status === 'ready',
+  )
+    ? 'ready'
+    : 'unavailable';
 
-  return {
-    status: Object.values(components).every((status) => status === 'ready')
+  if (configuration.ocr.driver !== 'disabled' && services.ocr) {
+    try {
+      const ocr = await services.ocr.checkAvailability();
+      documentIntelligence.ocr.runtime =
+        (ocr.runtimeAvailable ?? ocr.available) ? 'ready' : 'unavailable';
+      documentIntelligence.ocr.languages = configuration.ocr.languages.every((language) =>
+        ocr.languages.includes(language),
+      )
+        ? 'ready'
+        : 'unavailable';
+      documentIntelligence.ocr.pdfSupport = ocr.pdfSupported ? 'ready' : 'unavailable';
+    } catch {
+      documentIntelligence.ocr.runtime = 'unavailable';
+      documentIntelligence.ocr.languages = 'unavailable';
+      documentIntelligence.ocr.pdfSupport = 'unavailable';
+    }
+    documentIntelligence.ocr.status = [
+      documentIntelligence.ocr.runtime,
+      documentIntelligence.ocr.languages,
+      documentIntelligence.ocr.pdfSupport,
+    ].every((status) => status === 'ready')
       ? 'ready'
-      : 'unavailable',
-    components,
-  };
+      : 'unavailable';
+    documentIntelligence.status =
+      documentIntelligence.textQuality === 'ready' &&
+      documentIntelligence.typeDetection === 'ready' &&
+      documentIntelligence.ocr.status === 'ready'
+        ? 'ready'
+        : 'unavailable';
+  }
+
+  readiness.status =
+    core.status === 'ready' &&
+    documentIntelligence.textQuality === 'ready' &&
+    documentIntelligence.typeDetection === 'ready' &&
+    (!documentIntelligence.requiredForReadiness || documentIntelligence.status === 'ready')
+      ? 'ready'
+      : 'unavailable';
+  return readiness;
 }

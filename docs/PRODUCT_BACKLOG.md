@@ -385,7 +385,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** Planned
-- **Описание:** Создать единую точку авторизации, маршрутизации, журналирования и контроля AI-запросов.
+- **Описание:** Создать единую точку авторизации, маршрутизации, журналирования и контроля AI-запросов в рамках [TASK-004](./tasks/TASK-004.md).
 - **Критерии готовности:** все модели вызываются через Gateway; единый контракт; rate limit; бюджет; аудит; нормализованные ошибки.
 - **Зависимости:** SEC-001, SEC-004, SEC-005.
 
@@ -457,7 +457,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Создать конвейер поиска контекста и генерации ответа с учётом прав в рамках [TASK-003](./tasks/TASK-003.md).
+- **Описание:** Создать конвейер поиска контекста и генерации ответа с учётом прав в рамках [TASK-004](./tasks/TASK-004.md).
 - **Критерии готовности:** права до поиска; гибридный retrieval; источники; ограниченный контекст; оценка ответа.
 - **Зависимости:** KB-001, AI-008, AI-009, SEC-002.
 
@@ -469,7 +469,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** Planned
-- **Описание:** Асинхронно создавать версионированные tenant-aware embeddings документов и статей в рамках [TASK-003](./tasks/TASK-003.md).
+- **Описание:** Асинхронно создавать версионированные tenant-aware embeddings документов и статей в рамках [TASK-004](./tasks/TASK-004.md).
 - **Критерии готовности:** модель и версия сохранены; tenant-контекст; контрольная сумма; повторная индексация; очередь.
 - **Зависимости:** DOC-002, INFRA-003, AI-009.
 
@@ -481,7 +481,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** Planned
-- **Описание:** Выбрать и проверить tenant-aware vector storage для [TASK-003](./tasks/TASK-003.md); `pgvector` остаётся исходной гипотезой, а не внедрённым решением.
+- **Описание:** Выбрать и проверить tenant-aware vector storage для [TASK-004](./tasks/TASK-004.md); `pgvector` остаётся исходной гипотезой, а не внедрённым решением.
 - **Критерии готовности:** миграция; индексы; фильтрация по организации; резервное копирование; нагрузочный тест.
 - **Зависимости:** INFRA-001, SEC-006.
 
@@ -677,7 +677,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Асинхронно проверять, извлекать текст, разбивать и индексировать документы. Третья итерация TASK-002 добавила status transitions, provider-neutral queue/worker contracts, persistent local queue, checksum verification, retries и quarantine. Production external adapter, observability, OCR и индексация остаются.
+- **Описание:** Асинхронно проверять, извлекать текст, разбивать и индексировать документы. TASK-002 добавила status transitions, provider-neutral queue/worker contracts, persistent local queue, checksum verification, retries и quarantine; TASK-003 завершила OCR/type detection и Document Intelligence metadata. Production external adapter, observability и indexing остаются.
 - **Критерии готовности:** production external queue; типобезопасные статусы; PDF; ограничения; exclusive claim; quarantine; повторная обработка; ошибки не теряются; monitoring.
 - **Зависимости:** DOC-001, INFRA-003.
 
@@ -693,7 +693,7 @@ Product Backlog — основной управляемый перечень п�
 - **Критерии готовности:** безопасный parser; таблицы и листы; лимиты; тестовые документы; поиск и preview.
 - **Зависимости:** DOC-002, KB-007.
 
-Функциональный этап OCR, type detection, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation зафиксирован отдельно в [TASK-003](./tasks/TASK-003.md). Он не входит в инфраструктурное завершение TASK-002.
+Завершённая [TASK-003](./tasks/TASK-003.md) реализует OCR/type detection, Document Intelligence metadata и раздельные core/OCR readiness components. AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation перенесены в [TASK-004](./tasks/TASK-004.md) и не входят в инфраструктурное завершение TASK-002.
 
 ## EPIC-007 Интеграция Jira
 
@@ -1226,7 +1226,7 @@ Product Backlog — основной управляемый перечень п�
 - `/dashboard` и внутренние document/AI API защищены, но полная матрица ролей ещё отсутствует;
 - существуют параллельные `/portal` и `/dashboard`;
 - публичная и документная базы знаний остаются раздельными реализациями;
-- production adapters PostgreSQL/S3 и document worker contracts реализованы; local PostgreSQL/MinIO integration environment и tests подготовлены, но Docker execution gate, production infrastructure, external queue и backup ещё не завершены;
+- production adapters PostgreSQL/S3 и document worker contracts реализованы; local PostgreSQL/MinIO и OCR Docker gates выполнены, но обязательный CI gate, production infrastructure, external queue и backup ещё не завершены;
 - OpenAI и Gemini вызываются напрямую без общего AI Gateway;
 - версии README, корневого приложения, web workspace и архитектурной документации расходятся;
 - production и demo fallback могут скрывать ошибки PostgreSQL;

@@ -101,8 +101,8 @@ async function rehearseEmptyDatabase(options: {
     const migrations = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
       'SELECT COUNT(*)::bigint AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
     );
-    if (Number(migrations[0]?.count ?? 0) !== 2) {
-      throw new Error('Empty database did not apply exactly two document migrations.');
+    if (Number(migrations[0]?.count ?? 0) !== 3) {
+      throw new Error('Empty database did not apply exactly three document migrations.');
     }
   } finally {
     await client.$disconnect();
@@ -205,6 +205,11 @@ async function rehearseLegacyDatabase(options: {
         processingStartedAt: Date | null;
         nextRetryAt: Date | null;
         quarantinedAt: Date | null;
+        detectedDocumentType: string;
+        textExtractionMethod: string;
+        ocrStatus: string;
+        requiresManualReview: boolean;
+        intelligenceVersion: string;
       }>
     >(
       `SELECT
@@ -216,6 +221,11 @@ async function rehearseLegacyDatabase(options: {
          "processingStartedAt",
          "nextRetryAt",
          "quarantinedAt"
+         ,"detectedDocumentType"::text AS "detectedDocumentType"
+         ,"textExtractionMethod"::text AS "textExtractionMethod"
+         ,"ocrStatus"::text AS "ocrStatus"
+         ,"requiresManualReview"
+         ,"intelligenceVersion"
        FROM "DocumentMetadata"
        WHERE "companyId" = 'integration-legacy'
        ORDER BY "id"`,
@@ -251,6 +261,13 @@ async function rehearseLegacyDatabase(options: {
         record.quarantinedAt !== null
       ) {
         throw new Error('New nullable processing fields have unsafe legacy values.');
+      }
+      if (
+        record.detectedDocumentType !== 'UNKNOWN' ||
+        !record.requiresManualReview ||
+        !record.intelligenceVersion
+      ) {
+        throw new Error('Document intelligence legacy defaults are unsafe.');
       }
     }
 

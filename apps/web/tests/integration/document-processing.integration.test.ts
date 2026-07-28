@@ -78,6 +78,8 @@ test('document pipeline integrates PostgreSQL, MinIO and the local queue', async
       loadServices: () => services,
     });
     assert.equal(readiness.status, 'ready');
+    assert.equal(readiness.components.core.status, 'ready');
+    assert.equal(readiness.components.documentIntelligence.requiredForReadiness, false);
 
     await services.storage.write(tenantA, 'original', storedName, pdf, {
       checksum,

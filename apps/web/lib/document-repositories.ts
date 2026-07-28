@@ -11,6 +11,12 @@ import {
   type TextChunk,
 } from './document-model';
 import {
+  defaultDocumentIntelligenceMetadata,
+  isDocumentOcrStatus,
+  isDocumentTextExtractionMethod,
+  isDocumentType,
+} from './document-intelligence-model';
+import {
   assertDocumentProcessingStatus,
   assertDocumentStatusTransition,
   isDocumentProcessingStatus,
@@ -39,6 +45,19 @@ export type CreateDocumentMetadata = Omit<
   | 'pages'
   | 'textLength'
   | 'chunksCount'
+  | 'detectedDocumentType'
+  | 'detectedMimeType'
+  | 'detectionConfidence'
+  | 'textExtractionMethod'
+  | 'ocrStatus'
+  | 'ocrProvider'
+  | 'ocrLanguage'
+  | 'ocrStartedAt'
+  | 'ocrCompletedAt'
+  | 'pageCount'
+  | 'extractedCharacterCount'
+  | 'requiresManualReview'
+  | 'intelligenceVersion'
 > &
   Partial<
     Pick<
@@ -54,6 +73,19 @@ export type CreateDocumentMetadata = Omit<
       | 'pages'
       | 'textLength'
       | 'chunksCount'
+      | 'detectedDocumentType'
+      | 'detectedMimeType'
+      | 'detectionConfidence'
+      | 'textExtractionMethod'
+      | 'ocrStatus'
+      | 'ocrProvider'
+      | 'ocrLanguage'
+      | 'ocrStartedAt'
+      | 'ocrCompletedAt'
+      | 'pageCount'
+      | 'extractedCharacterCount'
+      | 'requiresManualReview'
+      | 'intelligenceVersion'
     >
   >;
 export type UpdateDocumentMetadata = Partial<
@@ -157,6 +189,19 @@ type LegacyDocument = {
   nextRetryAt?: unknown;
   quarantinedAt?: unknown;
   workerId?: unknown;
+  detectedDocumentType?: unknown;
+  detectedMimeType?: unknown;
+  detectionConfidence?: unknown;
+  textExtractionMethod?: unknown;
+  ocrStatus?: unknown;
+  ocrProvider?: unknown;
+  ocrLanguage?: unknown;
+  ocrStartedAt?: unknown;
+  ocrCompletedAt?: unknown;
+  pageCount?: unknown;
+  extractedCharacterCount?: unknown;
+  requiresManualReview?: unknown;
+  intelligenceVersion?: unknown;
 };
 
 function isMissingFile(error: unknown) {
@@ -237,13 +282,41 @@ function validateDocumentMetadata(document: DocumentMetadata) {
   if ((document.status === 'DELETED') !== Boolean(document.deletedAt)) {
     throw new Error('DELETED status and deletedAt must be set together.');
   }
+  if (!isDocumentType(document.detectedDocumentType)) throw new Error('Invalid document type.');
+  if (!isDocumentTextExtractionMethod(document.textExtractionMethod)) {
+    throw new Error('Invalid text extraction method.');
+  }
+  if (!isDocumentOcrStatus(document.ocrStatus)) throw new Error('Invalid OCR status.');
+  if (
+    document.detectionConfidence !== null &&
+    (!Number.isFinite(document.detectionConfidence) ||
+      document.detectionConfidence < 0 ||
+      document.detectionConfidence > 1)
+  ) {
+    throw new Error('detectionConfidence must be between 0 and 1.');
+  }
+  for (const [label, value] of [
+    ['pageCount', document.pageCount],
+    ['extractedCharacterCount', document.extractedCharacterCount],
+  ] as const) {
+    if (value !== null && (!Number.isSafeInteger(value) || value < 0)) {
+      throw new Error(`${label} must be a non-negative safe integer.`);
+    }
+  }
+  if (document.ocrStartedAt) parseDocumentDate(document.ocrStartedAt, 'ocrStartedAt');
+  if (document.ocrCompletedAt) parseDocumentDate(document.ocrCompletedAt, 'ocrCompletedAt');
+  if (!document.intelligenceVersion.trim() || document.intelligenceVersion.length > 100) {
+    throw new Error('intelligenceVersion is required and must not exceed 100 characters.');
+  }
 }
 
 function withProcessingDefaults(
   metadata: CreateDocumentMetadata,
   tenant: DocumentTenantContext,
 ): DocumentMetadata {
+  const intelligence = defaultDocumentIntelligenceMetadata();
   return {
+    ...intelligence,
     ...metadata,
     companyId: tenant.companyId,
     uploadedBy: tenant.userId,
@@ -259,6 +332,20 @@ function withProcessingDefaults(
     pages: metadata.pages ?? null,
     textLength: metadata.textLength ?? null,
     chunksCount: metadata.chunksCount ?? null,
+    detectedDocumentType: metadata.detectedDocumentType ?? intelligence.detectedDocumentType,
+    detectedMimeType: metadata.detectedMimeType ?? intelligence.detectedMimeType,
+    detectionConfidence: metadata.detectionConfidence ?? intelligence.detectionConfidence,
+    textExtractionMethod: metadata.textExtractionMethod ?? intelligence.textExtractionMethod,
+    ocrStatus: metadata.ocrStatus ?? intelligence.ocrStatus,
+    ocrProvider: metadata.ocrProvider ?? intelligence.ocrProvider,
+    ocrLanguage: metadata.ocrLanguage ?? intelligence.ocrLanguage,
+    ocrStartedAt: metadata.ocrStartedAt ?? intelligence.ocrStartedAt,
+    ocrCompletedAt: metadata.ocrCompletedAt ?? intelligence.ocrCompletedAt,
+    pageCount: metadata.pageCount ?? intelligence.pageCount,
+    extractedCharacterCount:
+      metadata.extractedCharacterCount ?? intelligence.extractedCharacterCount,
+    requiresManualReview: metadata.requiresManualReview ?? intelligence.requiresManualReview,
+    intelligenceVersion: metadata.intelligenceVersion ?? intelligence.intelligenceVersion,
   };
 }
 
@@ -317,6 +404,45 @@ function normalizeLegacyDocument(
     pages: typeof item.pages === 'number' ? item.pages : null,
     textLength: typeof item.textLength === 'number' ? item.textLength : null,
     chunksCount: typeof item.chunksCount === 'number' ? item.chunksCount : null,
+    detectedDocumentType: isDocumentType(item.detectedDocumentType)
+      ? item.detectedDocumentType
+      : 'UNKNOWN',
+    detectedMimeType: asNullableString(item.detectedMimeType),
+    detectionConfidence:
+      typeof item.detectionConfidence === 'number' &&
+      item.detectionConfidence >= 0 &&
+      item.detectionConfidence <= 1
+        ? item.detectionConfidence
+        : null,
+    textExtractionMethod: isDocumentTextExtractionMethod(item.textExtractionMethod)
+      ? item.textExtractionMethod
+      : status === 'COMPLETED'
+        ? 'PDF_TEXT'
+        : 'NONE',
+    ocrStatus: isDocumentOcrStatus(item.ocrStatus)
+      ? item.ocrStatus
+      : status === 'COMPLETED'
+        ? 'NOT_REQUIRED'
+        : 'PENDING',
+    ocrProvider: asNullableString(item.ocrProvider),
+    ocrLanguage: asNullableString(item.ocrLanguage),
+    ocrStartedAt: asNullableString(item.ocrStartedAt),
+    ocrCompletedAt: asNullableString(item.ocrCompletedAt),
+    pageCount:
+      typeof item.pageCount === 'number'
+        ? item.pageCount
+        : typeof item.pages === 'number'
+          ? item.pages
+          : null,
+    extractedCharacterCount:
+      typeof item.extractedCharacterCount === 'number'
+        ? item.extractedCharacterCount
+        : typeof item.textLength === 'number'
+          ? item.textLength
+          : null,
+    requiresManualReview:
+      typeof item.requiresManualReview === 'boolean' ? item.requiresManualReview : true,
+    intelligenceVersion: asString(item.intelligenceVersion) ?? 'legacy-task-002',
   };
 }
 
@@ -529,6 +655,19 @@ type DatabaseDocumentRecord = {
   pages: number | null;
   textLength: number | null;
   chunksCount: number | null;
+  detectedDocumentType: string;
+  detectedMimeType: string | null;
+  detectionConfidence: number | null;
+  textExtractionMethod: string;
+  ocrStatus: string;
+  ocrProvider: string | null;
+  ocrLanguage: string | null;
+  ocrStartedAt: Date | null;
+  ocrCompletedAt: Date | null;
+  pageCount: number | null;
+  extractedCharacterCount: number | null;
+  requiresManualReview: boolean;
+  intelligenceVersion: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -576,6 +715,23 @@ function mapDatabaseDocument(record: DatabaseDocumentRecord): DocumentMetadata {
     pages: record.pages,
     textLength: record.textLength,
     chunksCount: record.chunksCount,
+    detectedDocumentType: isDocumentType(record.detectedDocumentType)
+      ? record.detectedDocumentType
+      : 'UNKNOWN',
+    detectedMimeType: record.detectedMimeType,
+    detectionConfidence: record.detectionConfidence,
+    textExtractionMethod: isDocumentTextExtractionMethod(record.textExtractionMethod)
+      ? record.textExtractionMethod
+      : 'NONE',
+    ocrStatus: isDocumentOcrStatus(record.ocrStatus) ? record.ocrStatus : 'PENDING',
+    ocrProvider: record.ocrProvider,
+    ocrLanguage: record.ocrLanguage,
+    ocrStartedAt: record.ocrStartedAt?.toISOString() ?? null,
+    ocrCompletedAt: record.ocrCompletedAt?.toISOString() ?? null,
+    pageCount: record.pageCount,
+    extractedCharacterCount: record.extractedCharacterCount,
+    requiresManualReview: record.requiresManualReview,
+    intelligenceVersion: record.intelligenceVersion,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     deletedAt: record.deletedAt?.toISOString() ?? null,
@@ -652,6 +808,23 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
         pages: document.pages,
         textLength: document.textLength,
         chunksCount: document.chunksCount,
+        detectedDocumentType: document.detectedDocumentType,
+        detectedMimeType: document.detectedMimeType,
+        detectionConfidence: document.detectionConfidence,
+        textExtractionMethod: document.textExtractionMethod,
+        ocrStatus: document.ocrStatus,
+        ocrProvider: document.ocrProvider,
+        ocrLanguage: document.ocrLanguage,
+        ocrStartedAt: document.ocrStartedAt
+          ? parseDocumentDate(document.ocrStartedAt, 'ocrStartedAt')
+          : null,
+        ocrCompletedAt: document.ocrCompletedAt
+          ? parseDocumentDate(document.ocrCompletedAt, 'ocrCompletedAt')
+          : null,
+        pageCount: document.pageCount,
+        extractedCharacterCount: document.extractedCharacterCount,
+        requiresManualReview: document.requiresManualReview,
+        intelligenceVersion: document.intelligenceVersion,
         createdAt: parseDocumentDate(document.createdAt, 'createdAt'),
         updatedAt: parseDocumentDate(document.updatedAt, 'updatedAt'),
         deletedAt: null,
@@ -859,6 +1032,39 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
     if (changes.pages !== undefined) data.pages = changes.pages;
     if (changes.textLength !== undefined) data.textLength = changes.textLength;
     if (changes.chunksCount !== undefined) data.chunksCount = changes.chunksCount;
+    if (changes.detectedDocumentType !== undefined) {
+      data.detectedDocumentType = changes.detectedDocumentType;
+    }
+    if (changes.detectedMimeType !== undefined) data.detectedMimeType = changes.detectedMimeType;
+    if (changes.detectionConfidence !== undefined) {
+      data.detectionConfidence = changes.detectionConfidence;
+    }
+    if (changes.textExtractionMethod !== undefined) {
+      data.textExtractionMethod = changes.textExtractionMethod;
+    }
+    if (changes.ocrStatus !== undefined) data.ocrStatus = changes.ocrStatus;
+    if (changes.ocrProvider !== undefined) data.ocrProvider = changes.ocrProvider;
+    if (changes.ocrLanguage !== undefined) data.ocrLanguage = changes.ocrLanguage;
+    if (changes.ocrStartedAt !== undefined) {
+      data.ocrStartedAt = changes.ocrStartedAt
+        ? parseDocumentDate(changes.ocrStartedAt, 'ocrStartedAt')
+        : null;
+    }
+    if (changes.ocrCompletedAt !== undefined) {
+      data.ocrCompletedAt = changes.ocrCompletedAt
+        ? parseDocumentDate(changes.ocrCompletedAt, 'ocrCompletedAt')
+        : null;
+    }
+    if (changes.pageCount !== undefined) data.pageCount = changes.pageCount;
+    if (changes.extractedCharacterCount !== undefined) {
+      data.extractedCharacterCount = changes.extractedCharacterCount;
+    }
+    if (changes.requiresManualReview !== undefined) {
+      data.requiresManualReview = changes.requiresManualReview;
+    }
+    if (changes.intelligenceVersion !== undefined) {
+      data.intelligenceVersion = changes.intelligenceVersion;
+    }
   }
 }
 

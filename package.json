@@ -21,7 +21,12 @@
     "documents:health-check": "npm run documents:health-check -w @avantime/web",
     "documents:health-check:integration": "npm run documents:health-check -w @avantime/web -- --integration",
     "documents:worker-check": "npm run documents:worker-check -w @avantime/web",
-    "documents:worker-check:integration": "npm run documents:worker-check -w @avantime/web -- --integration"
+    "documents:worker-check:integration": "npm run documents:worker-check -w @avantime/web -- --integration",
+    "documents:ocr-check": "npm run documents:ocr-check -w @avantime/web",
+    "documents:intelligence-health": "npm run documents:intelligence-health -w @avantime/web",
+    "documents:reprocess": "npm run documents:reprocess -w @avantime/web --",
+    "test:ocr-integration": "npm run test:ocr-integration -w @avantime/web",
+    "test:ocr-integration:docker": "docker build -f docker/ocr-integration.Dockerfile -t avantime-ocr-integration . && docker run --rm avantime-ocr-integration"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

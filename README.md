@@ -69,6 +69,22 @@ provider is selected or connected in the current iteration.
 Lifecycle, retry, quarantine and configuration details are documented in
 [Document Processing](./docs/DOCUMENT_PROCESSING.md).
 
+## Document Intelligence and local OCR
+
+TASK-003 adds server-side format detection, text-quality assessment, OCR fallback
+for PDF/PNG/JPEG and deterministic document type detection. Local OCR requires
+Tesseract language data and Poppler; it never starts from an HTTP route.
+
+```bash
+npm run documents:ocr-check
+npm run documents:intelligence-health
+npm run documents:reprocess -- --id=<document-id> --dry-run
+npm run test:ocr-integration
+```
+
+See [Document Intelligence](./docs/DOCUMENT_INTELLIGENCE.md) for installation,
+configuration, lifecycle, security boundaries and current limitations.
+
 ## Document integration validation
 
 PostgreSQL/MinIO integration infrastructure is isolated from the normal development

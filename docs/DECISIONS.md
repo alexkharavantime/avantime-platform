@@ -1377,6 +1377,54 @@ Integration Compose, runner и commands можно удалить без изм�
 
 ---
 
+## ADR-0019
+
+**Название:** Provider-neutral OCR boundary поверх tenant-aware document worker
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+TASK-002 проверяет checksum и изолирует storage/metadata/queue по tenant, но прежний extractor работал только с текстовыми PDF. OCR нельзя запускать из HTTP route или связывать с конкретным cloud API без утверждённых data-processing условий.
+
+### Варианты
+
+- выполнять Tesseract непосредственно в API route;
+- встроить единственный provider в worker;
+- добавить provider-neutral service и локальный subprocess adapter;
+- сразу выбрать cloud OCR provider.
+
+### Принятое решение
+
+Ввести `DocumentOcrProvider`/`DocumentOcrService` и вызывать их только из Document Intelligence orchestration внутри существующего worker после checksum verification. Локальная реализация использует Tesseract и Poppler через `spawn` с `shell: false`, allowlist языков, timeout, лимитами размера/страниц и обязательной очисткой случайного временного каталога.
+
+Фактический MIME определяется по сигнатуре. Обычный PDF text проходит общую quality assessment и не вызывает OCR при достаточном качестве. Type detection остаётся детерминированным; `UNKNOWN` и low confidence требуют manual review.
+
+### Последствия
+
+- HTTP API сохраняет ADMIN и server-controlled tenant boundary;
+- production требует явную OCR-конфигурацию и принудительно включает runtime в overall readiness;
+- core document readiness и OCR/document intelligence diagnostics разделены; optional или disabled OCR не скрывается, но не блокирует обычный PostgreSQL/MinIO integration boundary;
+- отсутствие runtime является контролируемой retryable ошибкой;
+- Word/Excel распознаются, но не обрабатываются;
+- cloud OCR, embeddings и hybrid RAG требуют отдельных решений;
+- обычные unit tests используют fake provider, real OCR проверяется отдельной командой.
+
+### Откат
+
+Worker может вернуться к прежнему extractor через существующую dependency injection. Добавленные nullable/default metadata сохраняются без потери исходного файла.
+
+### Связанные документы
+
+- `docs/DOCUMENT_INTELLIGENCE.md`;
+- `docs/DOCUMENT_PROCESSING.md`;
+- `docs/DOCUMENT_OPERATIONS.md`;
+- `docs/tasks/TASK-003.md`.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1396,7 +1444,7 @@ Integration Compose, runner и commands можно удалить без изм�
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                                       |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                           |
 
-Следующий свободный номер: `ADR-0019`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0020`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

@@ -118,7 +118,11 @@ External queue provider не выбран. Production запрещает local q
 
 Document health разделён на минимальные публичные liveness/readiness и `ADMIN`-only component diagnostics без sensitive configuration. Worker по `SIGINT`/`SIGTERM` завершает текущий job, не claim следующий и прерывает idle wait. Production fail-fast и запрет local adapters сохранены.
 
-PostgreSQL/MinIO integration environment фактически запущен. Migration rehearsal успешно проверил пустую и legacy database, повторный deploy, нормализацию `processingAttempts` и сохранение check constraint. Все 16 PostgreSQL/MinIO/end-to-end tests прошли. TASK-002 переведена в `Done`; OCR, embeddings и hybrid RAG вынесены в [TASK-003](./tasks/TASK-003.md).
+PostgreSQL/MinIO integration environment фактически запущен. Migration rehearsal успешно проверил пустую и legacy database, повторный deploy, нормализацию `processingAttempts` и сохранение check constraint. Все 16 PostgreSQL/MinIO/end-to-end tests прошли. TASK-002 переведена в `Done`.
+
+[TASK-003](./tasks/TASK-003.md) завершена: добавлены server-side format detection, Document Intelligence metadata, text-quality assessment, normalization, provider-neutral OCR contract, локальный Tesseract/Poppler adapter, single-document reprocess и раздельные core/OCR readiness components. Production readiness не ослаблен: настроенный OCR обязателен для overall readiness, а обычный PostgreSQL/MinIO environment проверяет core pipeline без OCR container. PostgreSQL/MinIO/local queue regression suite и отдельный Docker OCR gate с реальным Tesseract/Poppler фактически пройдены.
+
+Поиск остаётся лексическим. AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation перенесены в [TASK-004](./tasks/TASK-004.md). Завершение TASK-003 не переводит более широкие backlog-задачи AI-001, AI-007, AI-008, AI-009 или DOC-002 в `Done`.
 
 Проверки четвёртой итерации TASK-002:
 
@@ -174,7 +178,7 @@ PostgreSQL/MinIO integration environment фактически запущен. Mi
 | Безопасность            | In Progress |        65% | Dashboard и внутренние API закрыты; document persistence tenant-aware и проверен локально, но полная RBAC и production provider validation отсутствуют |
 | UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                             |
 | Инфраструктура          | In Progress |        40% | Добавлены local PostgreSQL/MinIO validation, persistence/worker contracts и health; нет production providers, external queue, backup и наблюдаемости   |
-| Тестирование            | In Progress |        50% | 52 unit/security и 16 PostgreSQL/MinIO/end-to-end tests проходят; обязательный CI gate и покрытие остальных доменов ещё отсутствуют                    |
+| Тестирование            | In Progress |        50% | 73 unit/security, 16 PostgreSQL/MinIO/end-to-end и отдельный real OCR test проходят; обязательный CI gate и покрытие остальных доменов ещё отсутствуют |
 | Развёртывание           | Planned     |        15% | Локальный запуск описан частично; production deployment и rollback не формализованы                                                                    |
 
 ---
@@ -205,7 +209,7 @@ PostgreSQL/MinIO integration environment фактически запущен. Mi
 | AI-007            | Защищённый RAG                                       | P0        |        25% | Ответы по разрешённым знаниям с проверяемыми источниками                                                                  |
 | KB-001            | Объединение двух баз знаний                          | P0        |        30% | Единый домен статей и документов                                                                                          |
 | DOC-001           | Единое файловое хранилище                            | P0        |        65% | Local/S3 adapters, PostgreSQL metadata и migration готовы; infrastructure, signed URLs, backup и вложения остаются        |
-| DOC-002           | Конвейер обработки документов                        | P0        |        65% | Async PDF worker, retries и quarantine готовы; external queue, monitoring, OCR и indexing остаются                        |
+| DOC-002           | Конвейер обработки документов                        | P0        |        78% | Async worker, retries/quarantine и OCR boundary готовы; external queue, production monitoring и indexing остаются         |
 | UX-001            | Единая дизайн-система                                | P1        |        45% | Общие tokens и интерфейсные паттерны                                                                                      |
 | UX-002            | Библиотека компонентов                               | P1        |        45% | Стабильные exports и повторно используемые компоненты                                                                     |
 | DOCS-001–DOCS-004 | Vision, Master Specification, Architecture и Roadmap | P0–P1     |        85% | Утверждённая согласованная документационная основа                                                                        |
@@ -387,7 +391,7 @@ PostgreSQL/MinIO integration environment фактически запущен. Mi
 
 **Оценка:** 4/10.
 
-**Комментарий:** 52 unit/security tests проверяют авторизацию, tenant isolation, persistence, lifecycle, retries/quarantine, migration ordering, health guards, graceful shutdown и production fail-fast. Дополнительно 16 PostgreSQL/MinIO/end-to-end integration tests и migration rehearsal успешно выполнены локально.
+**Комментарий:** 73 unit/security tests проверяют авторизацию, tenant isolation, persistence, lifecycle, retries/quarantine, migration ordering, раздельные core/OCR health guards, graceful shutdown и production fail-fast. Дополнительно 16 PostgreSQL/MinIO/end-to-end integration tests, migration rehearsal и отдельный real OCR Docker test успешно выполнены локально.
 
 **Рекомендации:** начать с auth/RBAC, обращений, документов, RAG permissions, Jira idempotency и migration tests.
 
@@ -461,6 +465,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                    |
 | ---------- | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-28 | 1.9    | Codex, по поручению владельца проекта | TASK-003 переведена в Done после успешных core/OCR readiness, PostgreSQL/MinIO и real Tesseract/Poppler gates; AI Gateway, embeddings и hybrid RAG перенесены в TASK-004                     |
 | 2026-07-28 | 1.8    | Codex, по поручению владельца проекта | Исправлена нормализация legacy processingAttempts; успешно выполнены migration rehearsal и 16 PostgreSQL/MinIO/E2E tests; TASK-002 переведена в Done                                         |
 | 2026-07-28 | 1.7    | Codex, по поручению владельца проекта | Добавлены PostgreSQL/MinIO integration boundary, migration rehearsal, Document health, graceful worker shutdown, operational guide и draft TASK-003; Docker execution gate остаётся открытым |
 | 2026-07-27 | 1.6    | Codex, по поручению владельца проекта | Зафиксирована третья итерация TASK-002: queue/worker contracts, async PDF, retries, quarantine, status model и lifecycle tests                                                               |

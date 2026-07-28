@@ -1,6 +1,6 @@
 # Обработка документов
 
-Документ описывает tenant-aware очередь, отдельный worker, retries, quarantine и инфраструктурную валидацию PDF pipeline в TASK-002. OCR, embeddings, hybrid RAG и внешний queue provider в эту задачу не входят.
+Документ описывает tenant-aware очередь, отдельный worker, retries, quarantine и инфраструктурную валидацию pipeline TASK-002. Первая итерация TASK-003 добавляет format detection, text-quality gate и OCR fallback; embeddings, hybrid RAG и внешний queue provider по-прежнему не входят.
 
 ## Статусная модель
 
@@ -135,7 +135,7 @@ npm run integration:down
 
 ## Health model
 
-`/api/health/documents?mode=liveness` сообщает только о доступности процесса. Readiness дополнительно проверяет configuration, worker configuration, metadata repository, storage и queue. Публичный ответ минимален; component statuses с `details=true` доступны только `ADMIN`.
+`/api/health/documents?mode=liveness` сообщает только о доступности процесса. Readiness отдельно показывает core document processing (configuration, worker configuration, metadata repository, storage и queue) и Document Intelligence/OCR. OCR diagnostics содержат runtime, languages и PDF support; optional OCR не понижает core status, а required OCR участвует в общем status. Публичный ответ минимален; component statuses с `details=true` доступны только `ADMIN`.
 
 Health не создаёт probe objects и не возвращает bucket names, credentials, connection strings, stack traces или provider errors.
 
@@ -166,7 +166,7 @@ Production требует PostgreSQL metadata, S3 storage, external queue config
 - production auto-start, process manager, metrics и alerts не реализованы;
 - PostgreSQL/MinIO integration tests реализованы, но требуют отдельного Docker-запуска;
 - обработка ограничена PDF и существующим extractor;
-- OCR, embeddings, `pgvector`, semantic/hybrid RAG и AI Gateway не менялись;
+- OCR fallback для PDF/PNG/JPEG реализован через provider-neutral boundary; embeddings, `pgvector`, semantic/hybrid RAG и AI Gateway не менялись;
 - Document API остаётся `ADMIN`-only;
 - worker обрабатывает один явно настроенный tenant за процесс.
 
@@ -175,6 +175,7 @@ Production требует PostgreSQL metadata, S3 storage, external queue config
 - [TASK-002](./tasks/TASK-002.md)
 - [TASK-003](./tasks/TASK-003.md)
 - [Document Operations](./DOCUMENT_OPERATIONS.md)
+- [Document Intelligence](./DOCUMENT_INTELLIGENCE.md)
 - [Architecture 2.0](./ARCHITECTURE_2_0.md)
 - [Architecture Decisions](./DECISIONS.md)
 - [Project Status](./PROJECT_STATUS.md)

@@ -15,7 +15,7 @@
 cp .env.integration.example .env.integration
 ```
 
-`.env.integration` исключён из Git. Guard требует `RUN_DOCUMENT_INTEGRATION_TESTS=1`, `NODE_ENV` не равный `production`, локальные PostgreSQL/MinIO endpoints, database и bucket с маркером `integration`, а также drivers `s3`, `postgresql` и `local`.
+`.env.integration` исключён из Git. Guard требует `RUN_DOCUMENT_INTEGRATION_TESTS=1`, `NODE_ENV` не равный `production`, локальные PostgreSQL/MinIO endpoints, database и bucket с маркером `integration`, а также drivers `s3`, `postgresql` и `local`. OCR в обычном integration environment отключён и не требует Tesseract/Poppler.
 
 ## Integration infrastructure
 
@@ -93,11 +93,11 @@ Route `/api/health/documents` поддерживает:
 
 Readiness проверяет:
 
-- application configuration;
-- worker configuration;
-- metadata repository connectivity;
-- object storage connectivity;
-- processing queue readiness.
+- `core`: application/worker configuration, metadata repository, object storage и processing queue;
+- `documentIntelligence`: text quality, type detection и отдельный OCR component;
+- OCR runtime, выбранные language data и Poppler PDF support без сокрытия `disabled`/`unavailable`.
+
+Overall readiness требует готовый core pipeline. OCR влияет на него только при явной политике `DOCUMENT_OCR_REQUIRED_FOR_READINESS=true`; production принудительно использует эту политику и завершается ошибкой конфигурации при попытке отключить provider или сделать OCR optional.
 
 Ответы не содержат connection strings, bucket names, credentials, stack traces и provider messages. Check выполняет только read/list operations и не создаёт probe objects.
 
@@ -140,4 +140,4 @@ S3 object key имеет формат `documents/{companyId}/{kind}/{key}`. Ме
 - metrics, SLO, dashboards, alerts и централизованные audit logs;
 - distributed heartbeat/fencing для долгих jobs.
 
-OCR, embeddings, vector storage и hybrid RAG относятся к [TASK-003](tasks/TASK-003.md), а не к эксплуатационному завершению TASK-002.
+Локальный OCR завершённой TASK-003 описан в [Document Intelligence](./DOCUMENT_INTELLIGENCE.md). Он проверяется отдельными `documents:ocr-check`, `test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; real OCR test не входит в обычные unit или PostgreSQL/MinIO integration tests. AI Gateway, embeddings, vector storage, semantic/hybrid RAG и citations перенесены в [TASK-004](tasks/TASK-004.md).
