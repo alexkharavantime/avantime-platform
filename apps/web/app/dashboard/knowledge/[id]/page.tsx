@@ -69,12 +69,9 @@ export default function DocumentPage() {
         setLoading(true);
         setError('');
 
-        const response = await fetch(
-          `/api/documents/item?id=${encodeURIComponent(id)}`,
-          {
-            cache: 'no-store',
-          },
-        );
+        const response = await fetch(`/api/documents/item?id=${encodeURIComponent(id)}`, {
+          cache: 'no-store',
+        });
 
         const responseText = await response.text();
 
@@ -86,24 +83,16 @@ export default function DocumentPage() {
         try {
           result = JSON.parse(responseText);
         } catch {
-          throw new Error(
-            `Сервер вернул некорректный ответ. Код ${response.status}`,
-          );
+          throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
         }
 
         if (!response.ok || !result.document) {
-          throw new Error(
-            result.error || 'Не удалось открыть документ.',
-          );
+          throw new Error(result.error || 'Не удалось открыть документ.');
         }
 
         setDocument(result.document);
       } catch (loadError) {
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Не удалось открыть документ.',
-        );
+        setError(loadError instanceof Error ? loadError.message : 'Не удалось открыть документ.');
       } finally {
         setLoading(false);
       }
@@ -123,12 +112,9 @@ export default function DocumentPage() {
       setTextLoading(true);
       setTextError('');
 
-      const response = await fetch(
-        `/api/documents/text?id=${encodeURIComponent(document.id)}`,
-        {
-          cache: 'no-store',
-        },
-      );
+      const response = await fetch(`/api/documents/text?id=${encodeURIComponent(document.id)}`, {
+        cache: 'no-store',
+      });
 
       const responseText = await response.text();
 
@@ -140,25 +126,17 @@ export default function DocumentPage() {
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error(
-          `Сервер вернул некорректный ответ. Код ${response.status}`,
-        );
+        throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
       }
 
       if (!response.ok) {
-        throw new Error(
-          result.error || 'Не удалось получить текст документа.',
-        );
+        throw new Error(result.error || 'Не удалось получить текст документа.');
       }
 
-      setDocumentText(
-        typeof result.text === 'string' ? result.text : '',
-      );
+      setDocumentText(typeof result.text === 'string' ? result.text : '');
     } catch (loadError) {
       setTextError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'Не удалось получить текст документа.',
+        loadError instanceof Error ? loadError.message : 'Не удалось получить текст документа.',
       );
     } finally {
       setTextLoading(false);
@@ -173,9 +151,7 @@ export default function DocumentPage() {
   if (loading) {
     return (
       <main className="p-6 lg:p-8">
-        <p className="font-bold text-slate-700">
-          Загрузка документа…
-        </p>
+        <p className="font-bold text-slate-700">Загрузка документа…</p>
       </main>
     );
   }
@@ -183,22 +159,16 @@ export default function DocumentPage() {
   if (error || !document) {
     return (
       <main className="p-6 lg:p-8">
-        <Link
-          href="/dashboard/knowledge"
-          className="text-sm font-bold text-blue-700"
-        >
+        <Link href="/dashboard/knowledge" className="text-sm font-bold text-blue-700">
           ← Вернуться в Knowledge Center
         </Link>
 
-        <p className="mt-8 font-bold text-red-600">
-          {error || 'Документ не найден.'}
-        </p>
+        <p className="mt-8 font-bold text-red-600">{error || 'Документ не найден.'}</p>
       </main>
     );
   }
 
-  const fileUrl =
-    `/api/documents/file?id=${encodeURIComponent(document.id)}`;
+  const fileUrl = `/api/documents/file?id=${encodeURIComponent(document.id)}`;
 
   const isProcessed = document.status === 'Обработан';
 
@@ -213,13 +183,9 @@ export default function DocumentPage() {
 
       <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">
-            Документ
-          </p>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">Документ</p>
 
-          <h2 className="mt-2 max-w-4xl text-3xl font-black text-slate-950">
-            {document.name}
-          </h2>
+          <h2 className="mt-2 max-w-4xl text-3xl font-black text-slate-950">{document.name}</h2>
         </div>
 
         <a
@@ -262,68 +228,46 @@ export default function DocumentPage() {
           </div>
 
           {viewMode === 'pdf' ? (
-            <iframe
-              title={document.name}
-              src={fileUrl}
-              className="h-[75vh] w-full"
-            />
+            <iframe title={document.name} src={fileUrl} className="h-[75vh] w-full" />
           ) : (
             <div className="h-[75vh] overflow-auto p-6">
               {textLoading ? (
-                <p className="font-semibold text-slate-600">
-                  Загрузка текста…
-                </p>
+                <p className="font-semibold text-slate-600">Загрузка текста…</p>
               ) : textError ? (
-                <p className="font-semibold text-red-600">
-                  {textError}
-                </p>
+                <p className="font-semibold text-red-600">{textError}</p>
               ) : documentText ? (
                 <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-slate-700">
                   {documentText}
                 </pre>
               ) : (
-                <p className="font-semibold text-slate-500">
-                  Извлечённый текст пуст.
-                </p>
+                <p className="font-semibold text-slate-500">Извлечённый текст пуст.</p>
               )}
             </div>
           )}
         </section>
 
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-black text-slate-950">
-            Свойства документа
-          </h3>
+          <h3 className="font-black text-slate-950">Свойства документа</h3>
 
           <dl className="mt-5 space-y-5">
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Тип
-              </dt>
-              <dd className="mt-1 font-semibold text-slate-800">
-                {document.type}
-              </dd>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Тип</dt>
+              <dd className="mt-1 font-semibold text-slate-800">{document.type}</dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Размер
-              </dt>
-              <dd className="mt-1 font-semibold text-slate-800">
-                {formatSize(document.size)}
-              </dd>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Размер</dt>
+              <dd className="mt-1 font-semibold text-slate-800">{formatSize(document.size)}</dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Статус
-              </dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Статус</dt>
               <dd className="mt-1">
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-bold ${
                     isProcessed
                       ? 'bg-emerald-50 text-emerald-700'
-                      : document.status === 'Ошибка'
+                      : document.status === 'Ошибка' || document.status === 'Карантин'
                         ? 'bg-red-50 text-red-700'
                         : 'bg-blue-50 text-blue-700'
                   }`}
@@ -334,27 +278,19 @@ export default function DocumentPage() {
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Страниц
-              </dt>
-              <dd className="mt-1 font-semibold text-slate-800">
-                {document.pages ?? '—'}
-              </dd>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Страниц</dt>
+              <dd className="mt-1 font-semibold text-slate-800">{document.pages ?? '—'}</dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Символов
-              </dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Символов</dt>
               <dd className="mt-1 font-semibold text-slate-800">
                 {document.textLength?.toLocaleString('ru-RU') ?? '—'}
               </dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Загружен
-              </dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Загружен</dt>
               <dd className="mt-1 font-semibold text-slate-800">
                 {formatDate(document.uploadedAt)}
               </dd>
@@ -374,9 +310,7 @@ export default function DocumentPage() {
                 <dt className="text-xs font-bold uppercase tracking-wide text-red-400">
                   Ошибка обработки
                 </dt>
-                <dd className="mt-1 text-sm font-semibold text-red-600">
-                  {document.errorMessage}
-                </dd>
+                <dd className="mt-1 text-sm font-semibold text-red-600">{document.errorMessage}</dd>
               </div>
             ) : null}
           </dl>

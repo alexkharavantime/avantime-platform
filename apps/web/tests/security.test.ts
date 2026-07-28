@@ -27,10 +27,7 @@ function session(overrides: Partial<AppSession> = {}): AppSession {
 
 test('SESSION_SECRET is required and must be sufficiently long', () => {
   assert.throws(() => getSessionSecret({}), /SESSION_SECRET is required/);
-  assert.throws(
-    () => getSessionSecret({ SESSION_SECRET: 'too-short' }),
-    /at least 32 characters/,
-  );
+  assert.throws(() => getSessionSecret({ SESSION_SECRET: 'too-short' }), /at least 32 characters/);
   assert.equal(getSessionSecret({ SESSION_SECRET: 'x'.repeat(32) }), 'x'.repeat(32));
 });
 
@@ -78,6 +75,15 @@ test('Document API denies access unless the session belongs to an ADMIN', () => 
   );
 });
 
+test('quarantine retry policy remains ADMIN-only', () => {
+  assert.equal(authorizeDocumentSession(null).response?.status, 401);
+  assert.equal(authorizeDocumentSession(session({ role: 'CLIENT' })).response?.status, 403);
+  assert.equal(
+    authorizeDocumentSession(session({ role: 'ADMIN', companyId: undefined })).response,
+    undefined,
+  );
+});
+
 test('a client cannot read a request owned by another company', async () => {
   const sameCompany = await getRequest('AV-1042', session({ companyId: 'demo-company' }));
   const otherCompany = await getRequest('AV-1042', session({ companyId: 'other-company' }));
@@ -105,14 +111,8 @@ test('a client cannot download an attachment owned by another company', async ()
     } as File;
     const attachment = await addAttachment('AV-1042', file);
 
-    const denied = await getAttachmentFile(
-      attachment.id,
-      session({ companyId: 'other-company' }),
-    );
-    const allowed = await getAttachmentFile(
-      attachment.id,
-      session({ companyId: 'demo-company' }),
-    );
+    const denied = await getAttachmentFile(attachment.id, session({ companyId: 'other-company' }));
+    const allowed = await getAttachmentFile(attachment.id, session({ companyId: 'demo-company' }));
 
     assert.equal(denied, null);
     assert.equal(allowed?.name, 'evidence.txt');

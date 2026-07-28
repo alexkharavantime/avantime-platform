@@ -6,14 +6,19 @@ import test from 'node:test';
 
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
-import { loadDocumentConfiguration } from '../lib/document-configuration';
+import {
+  loadDocumentConfiguration,
+  loadDocumentWorkerConfiguration,
+} from '../lib/document-configuration';
 import { migrateDocuments } from '../lib/document-migration';
-import type { DocumentMetadata, DocumentTenantContext } from '../lib/document-model';
+import type { DocumentTenantContext } from '../lib/document-model';
+import { LocalDocumentProcessingQueue } from '../lib/document-processing-queue';
 import {
   LocalDocumentHistoryRepository,
   LocalDocumentMetadataRepository,
   LocalDocumentProcessingRepository,
   PostgreSQLDocumentMetadataRepository,
+  type CreateDocumentMetadata,
 } from '../lib/document-repositories';
 import {
   cleanupDeletedDocuments,
@@ -27,6 +32,7 @@ import {
   S3DocumentStorage,
   type S3DocumentStorageClient,
 } from '../lib/document-storage';
+import { DEFAULT_DOCUMENT_RETRY_POLICY } from '../lib/document-retry-policy';
 
 const companyA: DocumentTenantContext = {
   companyId: 'company-a',
@@ -47,10 +53,16 @@ type DatabaseRecord = {
   size: number;
   status: string;
   checksum: string;
+  processingAttempts: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  processingStartedAt: Date | null;
+  processingCompletedAt: Date | null;
+  nextRetryAt: Date | null;
+  quarantinedAt: Date | null;
+  workerId: string | null;
   pages: number | null;
   textLength: number | null;
-  processedAt: Date | null;
-  errorMessage: string | null;
   chunksCount: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -81,8 +93,14 @@ class FakeDocumentMetadataDelegate {
       ...data,
       pages: data.pages ?? null,
       textLength: data.textLength ?? null,
-      processedAt: data.processedAt ?? null,
-      errorMessage: data.errorMessage ?? null,
+      processingAttempts: data.processingAttempts ?? 0,
+      lastErrorCode: data.lastErrorCode ?? null,
+      lastErrorMessage: data.lastErrorMessage ?? null,
+      processingStartedAt: data.processingStartedAt ?? null,
+      processingCompletedAt: data.processingCompletedAt ?? null,
+      nextRetryAt: data.nextRetryAt ?? null,
+      quarantinedAt: data.quarantinedAt ?? null,
+      workerId: data.workerId ?? null,
       chunksCount: data.chunksCount ?? null,
       deletedAt: data.deletedAt ?? null,
     };
@@ -115,6 +133,23 @@ class FakeDocumentMetadataDelegate {
       return false;
     }
     if (where.id !== undefined && record.id !== where.id) return false;
+    if (typeof where.status === 'string' && record.status !== where.status) return false;
+    if (
+      typeof where.status === 'object' &&
+      where.status !== null &&
+      'in' in where.status &&
+      !(where.status as { in: string[] }).in.includes(record.status)
+    ) {
+      return false;
+    }
+    if (
+      typeof where.status === 'object' &&
+      where.status !== null &&
+      'not' in where.status &&
+      record.status === (where.status as { not: string }).not
+    ) {
+      return false;
+    }
     if (where.deletedAt === null && record.deletedAt !== null) return false;
     if (
       typeof where.deletedAt === 'object' &&
@@ -160,14 +195,11 @@ class FakeS3Client implements S3DocumentStorageClient {
   }
 }
 
-function metadata(
-  id: string,
-  data: Buffer,
-): Omit<DocumentMetadata, 'companyId' | 'uploadedBy' | 'deletedAt'> {
+function metadata(id: string, data: Buffer): CreateDocumentMetadata {
   const now = new Date().toISOString();
   return {
     id,
-    status: 'Обработан',
+    status: 'COMPLETED',
     originalName: `${id}.pdf`,
     storedName: `${id}.pdf`,
     mimeType: 'application/pdf',
@@ -208,6 +240,10 @@ async function localServices(directory: string): Promise<DocumentServices> {
     metadata: new LocalDocumentMetadataRepository(directory),
     processing: new LocalDocumentProcessingRepository(storage),
     history: new LocalDocumentHistoryRepository(storage),
+    queue: new LocalDocumentProcessingQueue(directory),
+    retryPolicy: DEFAULT_DOCUMENT_RETRY_POLICY,
+    queueLeaseDurationMs: 300_000,
+    workerPollIntervalMs: 1_000,
   };
 }
 
@@ -399,4 +435,25 @@ test('development document configuration creates local adapters', () => {
   assert.equal(configuration.metadataDriver, 'local');
   assert.equal(services.storage.kind, 'local');
   assert.equal(services.metadata instanceof LocalDocumentMetadataRepository, true);
+});
+
+test('worker configuration rejects unsafe tenant and worker identifiers', () => {
+  assert.throws(
+    () =>
+      loadDocumentWorkerConfiguration({
+        NODE_ENV: 'test',
+        DOCUMENT_WORKER_TENANT_ID: '../tenant',
+        DOCUMENT_WORKER_ID: 'worker',
+      }),
+    /unsafe path segment/i,
+  );
+  assert.throws(
+    () =>
+      loadDocumentWorkerConfiguration({
+        NODE_ENV: 'test',
+        DOCUMENT_WORKER_TENANT_ID: 'tenant',
+        DOCUMENT_WORKER_ID: '../worker',
+      }),
+    /unsafe path segment/i,
+  );
 });

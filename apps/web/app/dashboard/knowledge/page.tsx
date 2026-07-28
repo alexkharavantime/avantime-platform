@@ -1,11 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  FormEvent,
-  useEffect,
-  useState,
-} from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 
 import { DocumentUpload } from '../../../components/document-upload';
 import { KnowledgeAsk } from '../../../components/knowledge-ask';
@@ -62,19 +58,16 @@ function formatDate(value: string) {
 }
 
 export default function KnowledgePage() {
-  const [documents, setDocuments] =
-    useState<DocumentItem[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] =
-    useState<SearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [searchPerformed, setSearchPerformed] =
-    useState(false);
+  const [searchPerformed, setSearchPerformed] = useState(false);
 
   useEffect(() => {
     async function loadDocuments() {
@@ -82,12 +75,9 @@ export default function KnowledgePage() {
         setLoading(true);
         setLoadError('');
 
-        const response = await fetch(
-          '/api/documents/upload',
-          {
-            cache: 'no-store',
-          },
-        );
+        const response = await fetch('/api/documents/upload', {
+          cache: 'no-store',
+        });
 
         const responseText = await response.text();
 
@@ -99,28 +89,17 @@ export default function KnowledgePage() {
         try {
           result = JSON.parse(responseText);
         } catch {
-          throw new Error(
-            `Сервер вернул некорректный ответ. Код ${response.status}`,
-          );
+          throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
         }
 
         if (!response.ok) {
-          throw new Error(
-            result.error ||
-              'Не удалось загрузить список документов.',
-          );
+          throw new Error(result.error || 'Не удалось загрузить список документов.');
         }
 
-        setDocuments(
-          Array.isArray(result.documents)
-            ? result.documents
-            : [],
-        );
+        setDocuments(Array.isArray(result.documents) ? result.documents : []);
       } catch (error) {
         setLoadError(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось загрузить список документов.',
+          error instanceof Error ? error.message : 'Не удалось загрузить список документов.',
         );
       } finally {
         setLoading(false);
@@ -131,69 +110,42 @@ export default function KnowledgePage() {
   }, []);
 
   function handleUploaded(document: DocumentItem) {
-    setDocuments((current) => [
-      document,
-      ...current,
-    ]);
+    setDocuments((current) => [document, ...current]);
   }
 
   async function handleDelete(document: DocumentItem) {
-    const confirmed = window.confirm(
-      `Удалить документ «${document.name}»?`,
-    );
+    const confirmed = window.confirm(`Удалить документ «${document.name}»?`);
 
     if (!confirmed) {
       return;
     }
 
     try {
-      const response = await fetch(
-        `/api/documents/upload?id=${encodeURIComponent(document.id)}`,
-        {
-          method: 'DELETE',
-        },
-      );
+      const response = await fetch(`/api/documents/upload?id=${encodeURIComponent(document.id)}`, {
+        method: 'DELETE',
+      });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          result.error ||
-            'Не удалось удалить документ.',
-        );
+        throw new Error(result.error || 'Не удалось удалить документ.');
       }
 
-      setDocuments((current) =>
-        current.filter(
-          (item) => item.id !== document.id,
-        ),
-      );
+      setDocuments((current) => current.filter((item) => item.id !== document.id));
 
-      setSearchResults((current) =>
-        current.filter(
-          (item) => item.documentId !== document.id,
-        ),
-      );
+      setSearchResults((current) => current.filter((item) => item.documentId !== document.id));
     } catch (error) {
-      window.alert(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось удалить документ.',
-      );
+      window.alert(error instanceof Error ? error.message : 'Не удалось удалить документ.');
     }
   }
 
-  async function handleSearch(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const query = searchQuery.trim();
 
     if (query.length < 2) {
-      setSearchError(
-        'Введите не менее двух символов.',
-      );
+      setSearchError('Введите не менее двух символов.');
       return;
     }
 
@@ -202,12 +154,9 @@ export default function KnowledgePage() {
       setSearchError('');
       setSearchPerformed(true);
 
-      const response = await fetch(
-        `/api/documents/search?q=${encodeURIComponent(query)}`,
-        {
-          cache: 'no-store',
-        },
-      );
+      const response = await fetch(`/api/documents/search?q=${encodeURIComponent(query)}`, {
+        cache: 'no-store',
+      });
 
       const responseText = await response.text();
 
@@ -219,30 +168,17 @@ export default function KnowledgePage() {
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error(
-          `Сервер вернул некорректный ответ. Код ${response.status}`,
-        );
+        throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
       }
 
       if (!response.ok) {
-        throw new Error(
-          result.error ||
-            'Не удалось выполнить поиск.',
-        );
+        throw new Error(result.error || 'Не удалось выполнить поиск.');
       }
 
-      setSearchResults(
-        Array.isArray(result.results)
-          ? result.results
-          : [],
-      );
+      setSearchResults(Array.isArray(result.results) ? result.results : []);
     } catch (error) {
       setSearchResults([]);
-      setSearchError(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось выполнить поиск.',
-      );
+      setSearchError(error instanceof Error ? error.message : 'Не удалось выполнить поиск.');
     } finally {
       setSearching(false);
     }
@@ -255,14 +191,10 @@ export default function KnowledgePage() {
     setSearchPerformed(false);
   }
 
-  const processedCount = documents.filter(
-    (document) =>
-      document.status === 'Обработан',
-  ).length;
+  const processedCount = documents.filter((document) => document.status === 'Обработан').length;
 
   const errorCount = documents.filter(
-    (document) =>
-      document.status === 'Ошибка',
+    (document) => document.status === 'Ошибка' || document.status === 'Карантин',
   ).length;
 
   return (
@@ -273,70 +205,46 @@ export default function KnowledgePage() {
             Knowledge Center
           </p>
 
-          <h2 className="mt-2 text-3xl font-black text-slate-950">
-            База знаний Avantime
-          </h2>
+          <h2 className="mt-2 text-3xl font-black text-slate-950">База знаний Avantime</h2>
 
           <p className="mt-2 max-w-2xl text-slate-500">
-            Загружайте документы, извлекайте текст
-            и выполняйте поиск по базе знаний.
+            Загружайте документы, извлекайте текст и выполняйте поиск по базе знаний.
           </p>
         </div>
 
-        <DocumentUpload
-          onUploaded={handleUploaded}
-        />
+        <DocumentUpload onUploaded={handleUploaded} />
       </div>
 
       <div className="mt-8 grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-3xl font-black text-slate-950">
-            {documents.length}
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            документов
-          </p>
+          <p className="text-3xl font-black text-slate-950">{documents.length}</p>
+          <p className="mt-1 text-sm text-slate-500">документов</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-3xl font-black text-slate-950">
-            {processedCount}
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            обработано
-          </p>
+          <p className="text-3xl font-black text-slate-950">{processedCount}</p>
+          <p className="mt-1 text-sm text-slate-500">обработано</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-3xl font-black text-slate-950">
-            {errorCount}
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            ошибок
-          </p>
+          <p className="text-3xl font-black text-slate-950">{errorCount}</p>
+          <p className="mt-1 text-sm text-slate-500">ошибок</p>
         </div>
       </div>
 
       <KnowledgeAsk />
 
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="font-black text-slate-950">
-          Поиск по документам
-        </h3>
+        <h3 className="font-black text-slate-950">Поиск по документам</h3>
 
         <p className="mt-1 text-sm text-slate-500">
           Поиск выполняется по извлечённому тексту обработанных PDF.
         </p>
 
-        <form
-          onSubmit={handleSearch}
-          className="mt-5 flex flex-col gap-3 sm:flex-row"
-        >
+        <form onSubmit={handleSearch} className="mt-5 flex flex-col gap-3 sm:flex-row">
           <input
             value={searchQuery}
-            onChange={(event) =>
-              setSearchQuery(event.target.value)
-            }
+            onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Введите слово или фразу"
             className="min-h-12 flex-1 rounded-xl border border-slate-300 px-4 outline-none ring-blue-200 focus:ring-4"
           />
@@ -360,24 +268,16 @@ export default function KnowledgePage() {
           ) : null}
         </form>
 
-        {searchError ? (
-          <p className="mt-4 font-semibold text-red-600">
-            {searchError}
-          </p>
-        ) : null}
+        {searchError ? <p className="mt-4 font-semibold text-red-600">{searchError}</p> : null}
 
-        {searchPerformed &&
-        !searching &&
-        !searchError ? (
+        {searchPerformed && !searching && !searchError ? (
           <div className="mt-6">
             <p className="text-sm font-bold text-slate-600">
               Найдено документов: {searchResults.length}
             </p>
 
             {searchResults.length === 0 ? (
-              <p className="mt-4 text-slate-500">
-                Совпадений не найдено.
-              </p>
+              <p className="mt-4 text-slate-500">Совпадений не найдено.</p>
             ) : (
               <div className="mt-4 space-y-4">
                 {searchResults.map((result) => (
@@ -387,9 +287,7 @@ export default function KnowledgePage() {
                     className="block rounded-2xl border border-slate-200 p-5 transition hover:border-blue-300 hover:bg-blue-50/40"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <h4 className="font-black text-slate-900">
-                        {result.documentName}
-                      </h4>
+                      <h4 className="font-black text-slate-900">{result.documentName}</h4>
 
                       <div className="flex flex-wrap gap-2">
                         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
@@ -406,9 +304,7 @@ export default function KnowledgePage() {
                       </div>
                     </div>
 
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {result.snippet}
-                    </p>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{result.snippet}</p>
                   </Link>
                 ))}
               </div>
@@ -419,32 +315,22 @@ export default function KnowledgePage() {
 
       <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="font-black text-slate-950">
-            Документы
-          </h3>
+          <h3 className="font-black text-slate-950">Документы</h3>
 
-          <p className="text-sm text-slate-500">
-            Загруженные документы
-          </p>
+          <p className="text-sm text-slate-500">Загруженные документы</p>
         </div>
 
         {loading ? (
           <div className="px-5 py-14 text-center">
-            <p className="font-bold text-slate-800">
-              Загрузка документов…
-            </p>
+            <p className="font-bold text-slate-800">Загрузка документов…</p>
           </div>
         ) : loadError ? (
           <div className="px-5 py-14 text-center">
-            <p className="font-bold text-red-600">
-              {loadError}
-            </p>
+            <p className="font-bold text-red-600">{loadError}</p>
           </div>
         ) : documents.length === 0 ? (
           <div className="px-5 py-14 text-center">
-            <p className="font-bold text-slate-800">
-              Документы ещё не загружены
-            </p>
+            <p className="font-bold text-slate-800">Документы ещё не загружены</p>
 
             <p className="mt-2 text-sm text-slate-500">
               Нажмите «Загрузить документ» и выберите PDF.
@@ -467,21 +353,17 @@ export default function KnowledgePage() {
 
                   <p className="mt-1 text-xs text-slate-500">
                     {document.type}
-                    {document.pages
-                      ? ` · ${document.pages} стр.`
-                      : ''}
+                    {document.pages ? ` · ${document.pages} стр.` : ''}
                   </p>
                 </div>
 
-                <span className="text-sm text-slate-500">
-                  {formatSize(document.size)}
-                </span>
+                <span className="text-sm text-slate-500">{formatSize(document.size)}</span>
 
                 <span
                   className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
                     document.status === 'Обработан'
                       ? 'bg-emerald-50 text-emerald-700'
-                      : document.status === 'Ошибка'
+                      : document.status === 'Ошибка' || document.status === 'Карантин'
                         ? 'bg-red-50 text-red-700'
                         : 'bg-blue-50 text-blue-700'
                   }`}
@@ -489,15 +371,11 @@ export default function KnowledgePage() {
                   {document.status}
                 </span>
 
-                <span className="text-sm text-slate-500">
-                  {formatDate(document.uploadedAt)}
-                </span>
+                <span className="text-sm text-slate-500">{formatDate(document.uploadedAt)}</span>
 
                 <button
                   type="button"
-                  onClick={() =>
-                    handleDelete(document)
-                  }
+                  onClick={() => handleDelete(document)}
                   className="rounded-lg border border-red-200 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
                 >
                   Удалить

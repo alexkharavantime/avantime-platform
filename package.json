@@ -9,10 +9,19 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
+    "test:integration": "npm run test:integration -w @avantime/web",
     "format": "prettier --write .",
     "db:generate": "npm run db:generate -w @avantime/database",
     "db:migrate": "npm run db:migrate -w @avantime/database",
-    "db:seed": "npm run db:seed -w @avantime/database"
+    "db:seed": "npm run db:seed -w @avantime/database",
+    "integration:up": "docker compose --env-file .env.integration -p avantime-integration -f docker-compose.integration.yml up -d --wait",
+    "integration:down": "docker compose --env-file .env.integration -p avantime-integration -f docker-compose.integration.yml down --volumes --remove-orphans",
+    "integration:clean": "npm run documents:integration-clean -w @avantime/web",
+    "documents:migration-rehearsal": "npm run documents:migration-rehearsal -w @avantime/web",
+    "documents:health-check": "npm run documents:health-check -w @avantime/web",
+    "documents:health-check:integration": "npm run documents:health-check -w @avantime/web -- --integration",
+    "documents:worker-check": "npm run documents:worker-check -w @avantime/web",
+    "documents:worker-check:integration": "npm run documents:worker-check -w @avantime/web -- --integration"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

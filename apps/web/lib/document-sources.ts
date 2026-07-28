@@ -1,8 +1,5 @@
 import type { DocumentTenantContext } from './document-model';
-import {
-  getDocumentServices,
-  type DocumentServices,
-} from './document-services';
+import { getDocumentServices, type DocumentServices } from './document-services';
 
 export type DocumentSourceReference = {
   documentId?: unknown;
@@ -37,11 +34,8 @@ export async function resolveDocumentSources(
     const key = `${reference.documentId}:${reference.chunkId}`;
     if (seen.has(key)) continue;
 
-    const document = await services.metadata.findById(
-      tenant,
-      reference.documentId,
-    );
-    if (!document || document.status !== 'Обработан') continue;
+    const document = await services.metadata.findById(tenant, reference.documentId);
+    if (!document || document.status !== 'COMPLETED') continue;
 
     const chunks = await services.processing.readChunks(tenant, document.id);
     const chunk = chunks.find(

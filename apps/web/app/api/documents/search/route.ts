@@ -29,10 +29,7 @@ function tokenize(value: string) {
     .filter((token) => token.length >= 2);
 }
 
-function countOccurrences(
-  source: string,
-  query: string,
-) {
+function countOccurrences(source: string, query: string) {
   if (!query) {
     return 0;
   }
@@ -54,63 +51,39 @@ function countOccurrences(
   return count;
 }
 
-function calculateScore(
-  chunkText: string,
-  query: string,
-) {
+function calculateScore(chunkText: string, query: string) {
   const normalizedText = normalize(chunkText);
   const normalizedQuery = normalize(query);
   const queryTokens = tokenize(query);
 
-  const exactMatches = countOccurrences(
-    normalizedText,
-    normalizedQuery,
-  );
+  const exactMatches = countOccurrences(normalizedText, normalizedQuery);
 
   let tokenMatches = 0;
 
   for (const token of queryTokens) {
-    tokenMatches += countOccurrences(
-      normalizedText,
-      token,
-    );
+    tokenMatches += countOccurrences(normalizedText, token);
   }
 
-  const matchedUniqueTokens = queryTokens.filter(
-    (token) => normalizedText.includes(token),
-  ).length;
+  const matchedUniqueTokens = queryTokens.filter((token) => normalizedText.includes(token)).length;
 
-  const coverage =
-    queryTokens.length > 0
-      ? matchedUniqueTokens / queryTokens.length
-      : 0;
+  const coverage = queryTokens.length > 0 ? matchedUniqueTokens / queryTokens.length : 0;
 
   return {
     matches: exactMatches + tokenMatches,
-    score:
-      exactMatches * 10 +
-      tokenMatches * 2 +
-      coverage * 5,
+    score: exactMatches * 10 + tokenMatches * 2 + coverage * 5,
   };
 }
 
-function createSnippet(
-  text: string,
-  query: string,
-) {
+function createSnippet(text: string, query: string) {
   const normalizedText = text.toLocaleLowerCase('ru-RU');
   const normalizedQuery = query.toLocaleLowerCase('ru-RU');
 
-  let matchIndex = normalizedText.indexOf(
-    normalizedQuery,
-  );
+  let matchIndex = normalizedText.indexOf(normalizedQuery);
 
   if (matchIndex === -1) {
     const firstToken = tokenize(query)[0];
 
-    matchIndex = firstToken
-      ? normalizedText.indexOf(firstToken)
-      : 0;
+    matchIndex = firstToken ? normalizedText.indexOf(firstToken) : 0;
   }
 
   if (matchIndex === -1) {
@@ -119,15 +92,9 @@ function createSnippet(
 
   const radius = 220;
   const start = Math.max(0, matchIndex - radius);
-  const end = Math.min(
-    text.length,
-    matchIndex + query.length + radius,
-  );
+  const end = Math.min(text.length, matchIndex + query.length + radius);
 
-  let snippet = text
-    .slice(start, end)
-    .replace(/\s+/g, ' ')
-    .trim();
+  let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
 
   if (start > 0) {
     snippet = `…${snippet}`;
@@ -165,19 +132,14 @@ export async function GET(request: Request) {
     const results: SearchResult[] = [];
 
     for (const document of documents) {
-      if (
-        document.status !== 'Обработан'
-      ) {
+      if (document.status !== 'COMPLETED') {
         continue;
       }
 
       const chunks = await services.processing.readChunks(tenant, document.id);
 
       for (const chunk of chunks) {
-        const evaluation = calculateScore(
-          chunk.text,
-          query,
-        );
+        const evaluation = calculateScore(chunk.text, query);
 
         if (evaluation.score <= 0) {
           continue;
@@ -188,68 +150,53 @@ export async function GET(request: Request) {
           documentName: document.originalName,
           chunkId: chunk.id,
           chunkIndex: chunk.index,
-          snippet: createSnippet(
-            chunk.text,
-            query,
-          ),
+          snippet: createSnippet(chunk.text, query),
           matches: evaluation.matches,
-          score: Number(
-            evaluation.score.toFixed(2),
-          ),
+          score: Number(evaluation.score.toFixed(2)),
         });
       }
     }
 
- results.sort(
-  (first, second) =>
-    second.score - first.score,
-);
+    results.sort((first, second) => second.score - first.score);
 
-const bestByDocument = new Map<
-  string,
-  SearchResult & {
-    chunksFound: number;
-  }
->();
+    const bestByDocument = new Map<
+      string,
+      SearchResult & {
+        chunksFound: number;
+      }
+    >();
 
-for (const result of results) {
-  const existing = bestByDocument.get(
-    result.documentId,
-  );
+    for (const result of results) {
+      const existing = bestByDocument.get(result.documentId);
 
-  if (!existing) {
-    bestByDocument.set(result.documentId, {
-      ...result,
-      chunksFound: 1,
+      if (!existing) {
+        bestByDocument.set(result.documentId, {
+          ...result,
+          chunksFound: 1,
+        });
+
+        continue;
+      }
+
+      existing.chunksFound += 1;
+
+      if (result.score > existing.score) {
+        bestByDocument.set(result.documentId, {
+          ...result,
+          chunksFound: existing.chunksFound,
+        });
+      }
+    }
+
+    const groupedResults = Array.from(bestByDocument.values())
+      .sort((first, second) => second.score - first.score)
+      .slice(0, 20);
+
+    return NextResponse.json({
+      query,
+      total: groupedResults.length,
+      results: groupedResults,
     });
-
-    continue;
-  }
-
-  existing.chunksFound += 1;
-
-  if (result.score > existing.score) {
-    bestByDocument.set(result.documentId, {
-      ...result,
-      chunksFound: existing.chunksFound,
-    });
-  }
-}
-
-const groupedResults = Array.from(
-  bestByDocument.values(),
-)
-  .sort(
-    (first, second) =>
-      second.score - first.score,
-  )
-  .slice(0, 20);
-
-return NextResponse.json({
-  query,
-  total: groupedResults.length,
-  results: groupedResults,
-});
   } catch (error) {
     console.error('Chunk search error:', error);
 

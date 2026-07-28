@@ -66,6 +66,7 @@ function isMissingFile(error: unknown) {
 
 function isMissingObject(error: unknown) {
   if (!(error instanceof Error)) return false;
+  if (error.name === 'NoSuchBucket') return false;
 
   const statusCode =
     '$metadata' in error

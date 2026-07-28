@@ -52,6 +52,42 @@ npm run build
 
 Production startup requires `SESSION_SECRET`; configure PostgreSQL before deployment.
 
+## Document processing worker
+
+Development uses a persistent local queue and does not start a worker automatically.
+
+```bash
+npm run documents:worker -w @avantime/web
+npm run documents:process-one -w @avantime/web
+npm run documents:retry -w @avantime/web -- --document-id=<document-id> --dry-run
+```
+
+Set `DOCUMENT_WORKER_TENANT_ID` to the server-controlled tenant processed by the
+worker. Production requires an external `DocumentProcessingQueue` adapter; no
+provider is selected or connected in the current iteration.
+
+Lifecycle, retry, quarantine and configuration details are documented in
+[Document Processing](./docs/DOCUMENT_PROCESSING.md).
+
+## Document integration validation
+
+PostgreSQL/MinIO integration infrastructure is isolated from the normal development
+stack and never starts automatically:
+
+```bash
+cp .env.integration.example .env.integration
+npm run integration:up
+npm run test:integration
+npm run documents:migration-rehearsal
+npm run documents:health-check:integration
+npm run integration:clean
+npm run integration:down
+```
+
+The normal `npm test` command does not require Docker. The integration commands
+reject production mode, remote endpoints and database/bucket names without an
+`integration` marker. See [Document Operations](./docs/DOCUMENT_OPERATIONS.md)
+for migration rehearsal, health, worker shutdown and cleanup details.
 
 ## v1.2
 
@@ -60,8 +96,8 @@ Production startup requires `SESSION_SECRET`; configure PostgreSQL before deploy
 - password reset tokens and pages
 - administrator system event journal
 
-
 ## v1.3
+
 - email queue and templates
 - Resend adapter with console fallback
 - notification preferences

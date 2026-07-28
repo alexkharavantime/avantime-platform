@@ -6,11 +6,16 @@ import { getPrisma } from '@avantime/database';
 import {
   AVANTIME_DOCUMENT_COMPANY_ID,
   UNVERIFIED_DOCUMENT_CHECKSUM,
-  type DocumentStatus,
   type DocumentMetadata,
   type DocumentTenantContext,
   type TextChunk,
 } from './document-model';
+import {
+  assertDocumentProcessingStatus,
+  assertDocumentStatusTransition,
+  isDocumentProcessingStatus,
+  type DocumentProcessingStatus,
+} from './document-processing-state';
 import {
   assertDocumentChecksum,
   assertDocumentTenantContext,
@@ -20,10 +25,42 @@ import {
 
 export type CreateDocumentMetadata = Omit<
   DocumentMetadata,
-  'companyId' | 'uploadedBy' | 'deletedAt'
->;
+  | 'companyId'
+  | 'uploadedBy'
+  | 'deletedAt'
+  | 'processingAttempts'
+  | 'lastErrorCode'
+  | 'lastErrorMessage'
+  | 'processingStartedAt'
+  | 'processingCompletedAt'
+  | 'nextRetryAt'
+  | 'quarantinedAt'
+  | 'workerId'
+  | 'pages'
+  | 'textLength'
+  | 'chunksCount'
+> &
+  Partial<
+    Pick<
+      DocumentMetadata,
+      | 'processingAttempts'
+      | 'lastErrorCode'
+      | 'lastErrorMessage'
+      | 'processingStartedAt'
+      | 'processingCompletedAt'
+      | 'nextRetryAt'
+      | 'quarantinedAt'
+      | 'workerId'
+      | 'pages'
+      | 'textLength'
+      | 'chunksCount'
+    >
+  >;
 export type UpdateDocumentMetadata = Partial<
-  Omit<DocumentMetadata, 'id' | 'companyId' | 'uploadedBy' | 'createdAt' | 'deletedAt'>
+  Omit<
+    DocumentMetadata,
+    'id' | 'companyId' | 'uploadedBy' | 'status' | 'createdAt' | 'updatedAt' | 'deletedAt'
+  >
 >;
 
 export interface DocumentMetadataRepository {
@@ -37,6 +74,13 @@ export interface DocumentMetadataRepository {
     tenant: DocumentTenantContext,
     documentId: string,
     changes: UpdateDocumentMetadata,
+  ): Promise<DocumentMetadata | null>;
+  transitionStatus(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    expectedStatuses: readonly DocumentProcessingStatus[],
+    nextStatus: DocumentProcessingStatus,
+    changes?: UpdateDocumentMetadata,
   ): Promise<DocumentMetadata | null>;
   delete(tenant: DocumentTenantContext, documentId: string): Promise<DocumentMetadata | null>;
   listDeleted(tenant: DocumentTenantContext): Promise<DocumentMetadata[]>;
@@ -105,6 +149,14 @@ type LegacyDocument = {
   chunksCount?: unknown;
   checksum?: unknown;
   deletedAt?: unknown;
+  processingAttempts?: unknown;
+  lastErrorCode?: unknown;
+  lastErrorMessage?: unknown;
+  processingStartedAt?: unknown;
+  processingCompletedAt?: unknown;
+  nextRetryAt?: unknown;
+  quarantinedAt?: unknown;
+  workerId?: unknown;
 };
 
 function isMissingFile(error: unknown) {
@@ -122,10 +174,16 @@ function asDocumentChecksum(value: unknown) {
   return checksum && /^[a-f0-9]{64}$/.test(checksum) ? checksum : UNVERIFIED_DOCUMENT_CHECKSUM;
 }
 
-function assertDocumentStatus(status: unknown): asserts status is DocumentStatus {
-  if (status !== 'Обрабатывается' && status !== 'Обработан' && status !== 'Ошибка') {
-    throw new Error('Unsupported document status.');
-  }
+function asNullableString(value: unknown) {
+  return asString(value) ?? null;
+}
+
+function normalizeLegacyStatus(value: unknown): DocumentProcessingStatus {
+  if (isDocumentProcessingStatus(value)) return value;
+  if (value === 'Обработан' || value === 'PROCESSED') return 'COMPLETED';
+  if (value === 'Ошибка') return 'FAILED';
+  if (value === 'Обрабатывается') return 'PROCESSING';
+  return 'UPLOADED';
 }
 
 function parseDocumentDate(value: string, label: string) {
@@ -142,7 +200,7 @@ function validateDocumentMetadata(document: DocumentMetadata) {
   assertSafeDocumentSegment(document.companyId, 'companyId');
   assertSafeDocumentSegment(document.uploadedBy, 'uploadedBy');
   assertSafeDocumentSegment(document.storedName, 'storedName');
-  assertDocumentStatus(document.status);
+  assertDocumentProcessingStatus(document.status);
   assertDocumentChecksum(document.checksum);
 
   if (!document.originalName.trim() || document.originalName.length > 500) {
@@ -157,8 +215,51 @@ function validateDocumentMetadata(document: DocumentMetadata) {
 
   parseDocumentDate(document.createdAt, 'createdAt');
   parseDocumentDate(document.updatedAt, 'updatedAt');
-  if (document.processedAt) parseDocumentDate(document.processedAt, 'processedAt');
+  if (!Number.isSafeInteger(document.processingAttempts) || document.processingAttempts < 0) {
+    throw new Error('processingAttempts must be a non-negative safe integer.');
+  }
+  if (document.lastErrorCode && !/^[A-Z0-9_]{1,100}$/.test(document.lastErrorCode)) {
+    throw new Error('lastErrorCode has an invalid format.');
+  }
+  if (document.lastErrorMessage && document.lastErrorMessage.length > 500) {
+    throw new Error('lastErrorMessage must not exceed 500 characters.');
+  }
+  if (document.workerId) assertSafeDocumentSegment(document.workerId, 'workerId');
+  if (document.processingStartedAt) {
+    parseDocumentDate(document.processingStartedAt, 'processingStartedAt');
+  }
+  if (document.processingCompletedAt) {
+    parseDocumentDate(document.processingCompletedAt, 'processingCompletedAt');
+  }
+  if (document.nextRetryAt) parseDocumentDate(document.nextRetryAt, 'nextRetryAt');
+  if (document.quarantinedAt) parseDocumentDate(document.quarantinedAt, 'quarantinedAt');
   if (document.deletedAt) parseDocumentDate(document.deletedAt, 'deletedAt');
+  if ((document.status === 'DELETED') !== Boolean(document.deletedAt)) {
+    throw new Error('DELETED status and deletedAt must be set together.');
+  }
+}
+
+function withProcessingDefaults(
+  metadata: CreateDocumentMetadata,
+  tenant: DocumentTenantContext,
+): DocumentMetadata {
+  return {
+    ...metadata,
+    companyId: tenant.companyId,
+    uploadedBy: tenant.userId,
+    deletedAt: null,
+    processingAttempts: metadata.processingAttempts ?? 0,
+    lastErrorCode: metadata.lastErrorCode ?? null,
+    lastErrorMessage: metadata.lastErrorMessage ?? null,
+    processingStartedAt: metadata.processingStartedAt ?? null,
+    processingCompletedAt: metadata.processingCompletedAt ?? null,
+    nextRetryAt: metadata.nextRetryAt ?? null,
+    quarantinedAt: metadata.quarantinedAt ?? null,
+    workerId: metadata.workerId ?? null,
+    pages: metadata.pages ?? null,
+    textLength: metadata.textLength ?? null,
+    chunksCount: metadata.chunksCount ?? null,
+  };
 }
 
 function normalizeLegacyDocument(
@@ -175,8 +276,10 @@ function normalizeLegacyDocument(
 
   const createdAt =
     asString(item.createdAt) ?? asString(item.uploadedAt) ?? new Date(0).toISOString();
-  const status =
-    item.status === 'Обработан' || item.status === 'Ошибка' ? item.status : 'Обрабатывается';
+  const deletedAt = asString(item.deletedAt) ?? null;
+  const status = deletedAt ? 'DELETED' : normalizeLegacyStatus(item.status);
+  const processingCompletedAt =
+    asString(item.processingCompletedAt) ?? asString(item.processedAt) ?? null;
 
   return {
     id,
@@ -191,13 +294,29 @@ function normalizeLegacyDocument(
     size: typeof item.size === 'number' && item.size >= 0 ? item.size : 0,
     checksum: asDocumentChecksum(item.checksum),
     createdAt,
-    updatedAt: asString(item.updatedAt) ?? asString(item.processedAt) ?? createdAt,
-    deletedAt: asString(item.deletedAt) ?? null,
-    pages: typeof item.pages === 'number' ? item.pages : undefined,
-    textLength: typeof item.textLength === 'number' ? item.textLength : undefined,
-    processedAt: asString(item.processedAt),
-    errorMessage: asString(item.errorMessage),
-    chunksCount: typeof item.chunksCount === 'number' ? item.chunksCount : undefined,
+    updatedAt: asString(item.updatedAt) ?? processingCompletedAt ?? createdAt,
+    deletedAt,
+    processingAttempts:
+      typeof item.processingAttempts === 'number' && item.processingAttempts >= 0
+        ? item.processingAttempts
+        : status === 'COMPLETED' || status === 'FAILED'
+          ? 1
+          : 0,
+    lastErrorCode:
+      asNullableString(item.lastErrorCode) ??
+      (status === 'FAILED' ? 'LEGACY_PROCESSING_ERROR' : null),
+    lastErrorMessage:
+      status === 'FAILED'
+        ? 'Не удалось обработать документ.'
+        : asNullableString(item.lastErrorMessage),
+    processingStartedAt: asNullableString(item.processingStartedAt),
+    processingCompletedAt,
+    nextRetryAt: asNullableString(item.nextRetryAt),
+    quarantinedAt: asNullableString(item.quarantinedAt),
+    workerId: asNullableString(item.workerId),
+    pages: typeof item.pages === 'number' ? item.pages : null,
+    textLength: typeof item.textLength === 'number' ? item.textLength : null,
+    chunksCount: typeof item.chunksCount === 'number' ? item.chunksCount : null,
   };
 }
 
@@ -224,12 +343,7 @@ export class LocalDocumentMetadataRepository implements DocumentMetadataReposito
   async create(tenant: DocumentTenantContext, metadata: CreateDocumentMetadata) {
     assertDocumentTenantContext(tenant);
     const documents = await this.read(tenant);
-    const document: DocumentMetadata = {
-      ...metadata,
-      companyId: tenant.companyId,
-      uploadedBy: tenant.userId,
-      deletedAt: null,
-    };
+    const document = withProcessingDefaults(metadata, tenant);
 
     validateDocumentMetadata(document);
     if (documents.some((item) => item.id === document.id)) {
@@ -261,16 +375,58 @@ export class LocalDocumentMetadataRepository implements DocumentMetadataReposito
     return updated;
   }
 
+  async transitionStatus(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    expectedStatuses: readonly DocumentProcessingStatus[],
+    nextStatus: DocumentProcessingStatus,
+    changes: UpdateDocumentMetadata = {},
+  ) {
+    assertDocumentTenantContext(tenant);
+    assertSafeDocumentSegment(documentId, 'document id');
+    assertDocumentProcessingStatus(nextStatus);
+    for (const expectedStatus of expectedStatuses) {
+      assertDocumentStatusTransition(expectedStatus, nextStatus);
+    }
+
+    const documents = await this.read(tenant);
+    const index = documents.findIndex(
+      (item) => item.id === documentId && !item.deletedAt && expectedStatuses.includes(item.status),
+    );
+    if (index === -1) return null;
+
+    assertDocumentStatusTransition(documents[index].status, nextStatus);
+    const updated: DocumentMetadata = {
+      ...documents[index],
+      ...changes,
+      id: documents[index].id,
+      companyId: tenant.companyId,
+      uploadedBy: documents[index].uploadedBy,
+      status: nextStatus,
+      createdAt: documents[index].createdAt,
+      updatedAt: new Date().toISOString(),
+      deletedAt: documents[index].deletedAt,
+    };
+    validateDocumentMetadata(updated);
+    documents[index] = updated;
+    await this.write(tenant, documents);
+    return updated;
+  }
+
   async delete(tenant: DocumentTenantContext, documentId: string) {
     const documents = await this.read(tenant);
     const index = documents.findIndex((item) => item.id === documentId && !item.deletedAt);
     if (index === -1) return null;
 
     const now = new Date().toISOString();
+    assertDocumentStatusTransition(documents[index].status, 'DELETED');
     const document = {
       ...documents[index],
+      status: 'DELETED' as const,
       updatedAt: now,
       deletedAt: now,
+      workerId: null,
+      nextRetryAt: null,
     };
     documents[index] = document;
     await this.write(tenant, documents);
@@ -362,10 +518,16 @@ type DatabaseDocumentRecord = {
   size: number;
   status: string;
   checksum: string;
+  processingAttempts: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  processingStartedAt: Date | null;
+  processingCompletedAt: Date | null;
+  nextRetryAt: Date | null;
+  quarantinedAt: Date | null;
+  workerId: string | null;
   pages: number | null;
   textLength: number | null;
-  processedAt: Date | null;
-  errorMessage: string | null;
   chunksCount: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -386,16 +548,9 @@ export type DocumentMetadataDatabaseClient = {
 
 export type DocumentMetadataDatabaseLoader = () => Promise<DocumentMetadataDatabaseClient | null>;
 
-function toDatabaseStatus(status: DocumentStatus) {
-  if (status === 'Обработан') return 'PROCESSED';
-  if (status === 'Ошибка') return 'FAILED';
-  return 'PROCESSING';
-}
-
-function fromDatabaseStatus(status: string): DocumentStatus {
-  if (status === 'PROCESSED') return 'Обработан';
-  if (status === 'FAILED') return 'Ошибка';
-  if (status === 'PROCESSING') return 'Обрабатывается';
+function fromDatabaseStatus(status: string): DocumentProcessingStatus {
+  if (status === 'PROCESSED') return 'COMPLETED';
+  if (isDocumentProcessingStatus(status)) return status;
   throw new Error('Database returned an unsupported document status.');
 }
 
@@ -410,11 +565,17 @@ function mapDatabaseDocument(record: DatabaseDocumentRecord): DocumentMetadata {
     size: record.size,
     status: fromDatabaseStatus(record.status),
     checksum: record.checksum,
-    pages: record.pages ?? undefined,
-    textLength: record.textLength ?? undefined,
-    processedAt: record.processedAt?.toISOString(),
-    errorMessage: record.errorMessage ?? undefined,
-    chunksCount: record.chunksCount ?? undefined,
+    processingAttempts: record.processingAttempts,
+    lastErrorCode: record.lastErrorCode,
+    lastErrorMessage: record.lastErrorMessage,
+    processingStartedAt: record.processingStartedAt?.toISOString() ?? null,
+    processingCompletedAt: record.processingCompletedAt?.toISOString() ?? null,
+    nextRetryAt: record.nextRetryAt?.toISOString() ?? null,
+    quarantinedAt: record.quarantinedAt?.toISOString() ?? null,
+    workerId: record.workerId,
+    pages: record.pages,
+    textLength: record.textLength,
+    chunksCount: record.chunksCount,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     deletedAt: record.deletedAt?.toISOString() ?? null,
@@ -458,12 +619,7 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
 
   async create(tenant: DocumentTenantContext, metadata: CreateDocumentMetadata) {
     const delegate = await this.delegate(tenant);
-    const document: DocumentMetadata = {
-      ...metadata,
-      companyId: tenant.companyId,
-      uploadedBy: tenant.userId,
-      deletedAt: null,
-    };
+    const document = withProcessingDefaults(metadata, tenant);
     validateDocumentMetadata(document);
 
     const record = await delegate.create({
@@ -475,14 +631,26 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
         storedName: document.storedName,
         mimeType: document.mimeType,
         size: document.size,
-        status: toDatabaseStatus(document.status),
+        status: document.status,
         checksum: document.checksum,
+        processingAttempts: document.processingAttempts,
+        lastErrorCode: document.lastErrorCode,
+        lastErrorMessage: document.lastErrorMessage,
+        processingStartedAt: document.processingStartedAt
+          ? parseDocumentDate(document.processingStartedAt, 'processingStartedAt')
+          : null,
+        processingCompletedAt: document.processingCompletedAt
+          ? parseDocumentDate(document.processingCompletedAt, 'processingCompletedAt')
+          : null,
+        nextRetryAt: document.nextRetryAt
+          ? parseDocumentDate(document.nextRetryAt, 'nextRetryAt')
+          : null,
+        quarantinedAt: document.quarantinedAt
+          ? parseDocumentDate(document.quarantinedAt, 'quarantinedAt')
+          : null,
+        workerId: document.workerId,
         pages: document.pages,
         textLength: document.textLength,
-        processedAt: document.processedAt
-          ? parseDocumentDate(document.processedAt, 'processedAt')
-          : null,
-        errorMessage: document.errorMessage,
         chunksCount: document.chunksCount,
         createdAt: parseDocumentDate(document.createdAt, 'createdAt'),
         updatedAt: parseDocumentDate(document.updatedAt, 'updatedAt'),
@@ -499,10 +667,6 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
       updatedAt: new Date(),
     };
 
-    if (changes.status !== undefined) {
-      assertDocumentStatus(changes.status);
-      data.status = toDatabaseStatus(changes.status);
-    }
     if (changes.originalName !== undefined) {
       if (!changes.originalName.trim() || changes.originalName.length > 500) {
         throw new Error('Document originalName is required and must not exceed 500 characters.');
@@ -529,13 +693,7 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
       assertDocumentChecksum(changes.checksum);
       data.checksum = changes.checksum;
     }
-    if (changes.pages !== undefined) data.pages = changes.pages;
-    if (changes.textLength !== undefined) data.textLength = changes.textLength;
-    if (changes.processedAt !== undefined) {
-      data.processedAt = parseDocumentDate(changes.processedAt, 'processedAt');
-    }
-    if (changes.errorMessage !== undefined) data.errorMessage = changes.errorMessage;
-    if (changes.chunksCount !== undefined) data.chunksCount = changes.chunksCount;
+    this.applyProcessingChanges(data, changes);
 
     const result = await delegate.updateMany({
       where: {
@@ -549,7 +707,46 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
     return this.findById(tenant, documentId);
   }
 
+  async transitionStatus(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    expectedStatuses: readonly DocumentProcessingStatus[],
+    nextStatus: DocumentProcessingStatus,
+    changes: UpdateDocumentMetadata = {},
+  ) {
+    const delegate = await this.delegate(tenant);
+    assertSafeDocumentSegment(documentId, 'document id');
+    assertDocumentProcessingStatus(nextStatus);
+    for (const expectedStatus of expectedStatuses) {
+      assertDocumentStatusTransition(expectedStatus, nextStatus);
+    }
+
+    const data: Record<string, unknown> = {
+      status: nextStatus,
+      updatedAt: new Date(),
+    };
+    this.applyProcessingChanges(data, changes);
+
+    const result = await delegate.updateMany({
+      where: {
+        companyId: tenant.companyId,
+        id: documentId,
+        status: {
+          in: [...expectedStatuses],
+        },
+        deletedAt: null,
+      },
+      data,
+    });
+    if (result.count === 0) return null;
+    return this.findById(tenant, documentId);
+  }
+
   async delete(tenant: DocumentTenantContext, documentId: string) {
+    const current = await this.findById(tenant, documentId);
+    if (!current) return null;
+    assertDocumentStatusTransition(current.status, 'DELETED');
+
     const delegate = await this.delegate(tenant);
     assertSafeDocumentSegment(documentId, 'document id');
     const deletedAt = new Date();
@@ -557,11 +754,15 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
       where: {
         companyId: tenant.companyId,
         id: documentId,
+        status: current.status,
         deletedAt: null,
       },
       data: {
+        status: 'DELETED',
         deletedAt,
         updatedAt: deletedAt,
+        workerId: null,
+        nextRetryAt: null,
       },
     });
     if (result.count === 0) return null;
@@ -624,6 +825,40 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
     }
 
     return database.documentMetadata;
+  }
+
+  private applyProcessingChanges(data: Record<string, unknown>, changes: UpdateDocumentMetadata) {
+    if (changes.processingAttempts !== undefined) {
+      data.processingAttempts = changes.processingAttempts;
+    }
+    if (changes.lastErrorCode !== undefined) data.lastErrorCode = changes.lastErrorCode;
+    if (changes.lastErrorMessage !== undefined) {
+      data.lastErrorMessage = changes.lastErrorMessage;
+    }
+    if (changes.processingStartedAt !== undefined) {
+      data.processingStartedAt = changes.processingStartedAt
+        ? parseDocumentDate(changes.processingStartedAt, 'processingStartedAt')
+        : null;
+    }
+    if (changes.processingCompletedAt !== undefined) {
+      data.processingCompletedAt = changes.processingCompletedAt
+        ? parseDocumentDate(changes.processingCompletedAt, 'processingCompletedAt')
+        : null;
+    }
+    if (changes.nextRetryAt !== undefined) {
+      data.nextRetryAt = changes.nextRetryAt
+        ? parseDocumentDate(changes.nextRetryAt, 'nextRetryAt')
+        : null;
+    }
+    if (changes.quarantinedAt !== undefined) {
+      data.quarantinedAt = changes.quarantinedAt
+        ? parseDocumentDate(changes.quarantinedAt, 'quarantinedAt')
+        : null;
+    }
+    if (changes.workerId !== undefined) data.workerId = changes.workerId;
+    if (changes.pages !== undefined) data.pages = changes.pages;
+    if (changes.textLength !== undefined) data.textLength = changes.textLength;
+    if (changes.chunksCount !== undefined) data.chunksCount = changes.chunksCount;
   }
 }
 
