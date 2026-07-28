@@ -30,7 +30,7 @@ ALTER TABLE "DocumentMetadata"
   RENAME COLUMN "errorMessage" TO "lastErrorMessage";
 
 ALTER TABLE "DocumentMetadata"
-  ADD COLUMN "processingAttempts" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "processingAttempts" INTEGER DEFAULT 0,
   ADD COLUMN "lastErrorCode" VARCHAR(100),
   ADD COLUMN "processingStartedAt" TIMESTAMP(3),
   ADD COLUMN "nextRetryAt" TIMESTAMP(3),
@@ -39,7 +39,10 @@ ALTER TABLE "DocumentMetadata"
 
 UPDATE "DocumentMetadata"
 SET
-  "processingAttempts" = 1,
+  "processingAttempts" = CASE
+    WHEN "processingAttempts" IS NULL OR "processingAttempts" = 0 THEN 1
+    ELSE "processingAttempts"
+  END,
   "lastErrorCode" = CASE
     WHEN "status" = 'FAILED' THEN 'LEGACY_PROCESSING_ERROR'
     ELSE NULL
@@ -49,6 +52,14 @@ SET
     ELSE NULL
   END
 WHERE "status" IN ('COMPLETED', 'FAILED');
+
+UPDATE "DocumentMetadata"
+SET "processingAttempts" = 0
+WHERE "processingAttempts" IS NULL OR "processingAttempts" < 0;
+
+ALTER TABLE "DocumentMetadata"
+  ALTER COLUMN "processingAttempts" SET DEFAULT 0,
+  ALTER COLUMN "processingAttempts" SET NOT NULL;
 
 UPDATE "DocumentMetadata"
 SET "status" = 'DELETED'

@@ -2,7 +2,7 @@
 
 ## Статус
 
-In Progress
+Done
 
 ## Ветка
 
@@ -261,7 +261,7 @@ In Progress
 - [x] Worker завершает текущий job после `SIGINT`/`SIGTERM` и не claim следующую работу.
 - [x] Production по-прежнему запрещает local storage и local queue.
 - [x] Изменённые файлы проходят статическую, типовую и scoped formatting проверку.
-- [ ] PostgreSQL/MinIO integration tests и migration rehearsal фактически выполнены в Docker environment.
+- [x] PostgreSQL/MinIO integration tests и migration rehearsal фактически выполнены в Docker environment.
 
 ## Риски
 
@@ -279,7 +279,7 @@ In Progress
 - приватность bucket, lifecycle, encryption и backup зависят от ещё не созданной production-инфраструктуры;
 - cleanup после физического удаления требует резервной копии для полного восстановления;
 - метаданные истории вопросов пока не перенесены в PostgreSQL и остаются объектом storage;
-- Docker недоступен в текущей среде Codex, поэтому реальные integration tests и rehearsal требуют ручного запуска или CI;
+- PostgreSQL/MinIO integration tests выполнены локально, но их запуск ещё не закреплён обязательным CI gate;
 - integration Compose не является production Infrastructure as Code и использует только local test credentials;
 - readiness подтверждает доступность зависимостей, но не заменяет monitoring, SLO, backup/restore и disaster recovery;
 - graceful shutdown не реализует distributed heartbeat/fencing и полагается на существующий lease recovery;
@@ -333,24 +333,26 @@ Quarantine API остаётся `ADMIN`-only и позволяет перечи�
 
 Document subsystem получил публичные минимальные liveness/readiness ответы и `ADMIN`-only детализацию по компонентам. Health checks не возвращают connection strings, bucket names, credentials, stack traces или provider messages. Worker корректно принимает `SIGINT`/`SIGTERM`, завершает уже полученный job и не claim следующую работу.
 
-`typecheck`, `lint`, 51 unit/security test, Prisma Client generation, schema validation, production build, local health/worker checks, scoped formatting, `git diff --check`, security invariants и secret pattern scan завершились успешно. Реальный запуск Docker integration tests и migration rehearsal в текущей среде не выполнен: команда `docker` отсутствует. До их успешного выполнения TASK-002 нельзя переводить в `Done`.
+Migration rehearsal успешно проверил пустую и legacy test database, повторный deploy, преобразование статусов и нормализацию `processingAttempts`: `NULL` получает допустимое значение, отрицательное значение преобразуется в `0`, положительное сохраняется, а check constraint запрещает новые отрицательные значения.
+
+`typecheck`, `lint`, 52 unit/security tests, 16 PostgreSQL/MinIO/end-to-end integration tests, Prisma Client generation, schema validation, production build, integration health/worker checks, scoped formatting, `git diff --check`, security invariants и secret pattern scan завершились успешно.
 
 ## Completion assessment
 
-| Критерий                                            | Оценка              | Комментарий                                                                          |
-| --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
-| Tenant-aware storage и repository boundaries        | completed           | Local, PostgreSQL и S3-compatible реализации не доверяют tenant из клиента           |
-| Асинхронный processing lifecycle                    | completed           | Queue/worker contracts, retries, quarantine и lease recovery реализованы             |
-| Production configuration boundaries                 | completed           | Production local adapters запрещены, обязательная конфигурация проверяется fail-fast |
-| Изолированное integration environment               | completed           | Compose, безопасный env example, runner и cleanup добавлены                          |
-| Реальные PostgreSQL/MinIO/E2E tests                 | partially completed | Тесты реализованы и типизированы, но не выполнены без Docker                         |
-| Migration rehearsal                                 | partially completed | Безопасная автоматизация реализована, фактический Docker-запуск ожидается            |
-| Liveness/readiness и worker operations              | completed           | Минимальный endpoint, CLI checks и graceful shutdown покрыты unit tests              |
-| Production queue provider и distributed supervision | deferred            | Требуют отдельного инфраструктурного ADR и не входят в TASK-002                      |
-| Backup/restore, SLO, metrics и alerts               | deferred            | Остаются INFRA-001/INFRA-002                                                         |
-| OCR, embeddings и hybrid RAG                        | deferred            | Перенесены в [TASK-003](./TASK-003.md)                                               |
+| Критерий                                            | Оценка    | Комментарий                                                                          |
+| --------------------------------------------------- | --------- | ------------------------------------------------------------------------------------ |
+| Tenant-aware storage и repository boundaries        | completed | Local, PostgreSQL и S3-compatible реализации не доверяют tenant из клиента           |
+| Асинхронный processing lifecycle                    | completed | Queue/worker contracts, retries, quarantine и lease recovery реализованы             |
+| Production configuration boundaries                 | completed | Production local adapters запрещены, обязательная конфигурация проверяется fail-fast |
+| Изолированное integration environment               | completed | Compose, безопасный env example, runner и cleanup добавлены                          |
+| Реальные PostgreSQL/MinIO/E2E tests                 | completed | 16 integration tests успешно выполнены в локальном Docker environment                |
+| Migration rehearsal                                 | completed | Пустая и legacy database, normalization, constraint и repeated deploy проверены      |
+| Liveness/readiness и worker operations              | completed | Минимальный endpoint, CLI checks и graceful shutdown покрыты unit tests              |
+| Production queue provider и distributed supervision | deferred  | Требуют отдельного инфраструктурного ADR и не входят в TASK-002                      |
+| Backup/restore, SLO, metrics и alerts               | deferred  | Остаются INFRA-001/INFRA-002                                                         |
+| OCR, embeddings и hybrid RAG                        | deferred  | Перенесены в [TASK-003](./TASK-003.md)                                               |
 
-Итог: исходные архитектурные и кодовые границы TASK-002 реализованы, но задание остаётся `In Progress` до фактического успешного прогона PostgreSQL/MinIO integration tests и migration rehearsal.
+Итог: исходный scope TASK-002 реализован и проверен. Задание переведено в `Done`. Production provider selection, external queue, observability, backup/restore и функциональный Document Intelligence остаются отдельными задачами.
 
 ## Связанные документы
 

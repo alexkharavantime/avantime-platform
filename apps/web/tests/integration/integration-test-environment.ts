@@ -44,6 +44,7 @@ export async function integrationDatabase() {
     documentMetadata: DocumentMetadataDatabaseClient['documentMetadata'] & {
       deleteMany(args: Record<string, unknown>): Promise<{ count: number }>;
     };
+    $executeRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
     $queryRawUnsafe<T>(query: string, ...values: unknown[]): Promise<T>;
     $disconnect(): Promise<void>;
   };

@@ -119,10 +119,24 @@ test('PostgreSQLDocumentMetadataRepository works against real PostgreSQL', async
   });
 
   await t.test('database constraint rejects negative attempts', async () => {
-    await assert.rejects(
-      repository.update(tenantA, documentId, {
-        processingAttempts: -1,
-      }),
+    await database.$executeRawUnsafe(
+      `DO $constraint_check$
+       BEGIN
+         BEGIN
+           UPDATE "DocumentMetadata"
+           SET "processingAttempts" = -1
+           WHERE ("companyId", "id") = (
+             SELECT "companyId", "id"
+             FROM "DocumentMetadata"
+             WHERE "processingAttempts" = 3
+             LIMIT 1
+           );
+           RAISE EXCEPTION 'processingAttempts constraint accepted a negative value';
+         EXCEPTION
+           WHEN check_violation THEN NULL;
+         END;
+       END
+       $constraint_check$`,
     );
     assert.equal((await repository.findById(tenantA, documentId))?.processingAttempts, 3);
   });

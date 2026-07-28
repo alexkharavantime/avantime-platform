@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -263,6 +263,40 @@ test('PostgreSQL repository rejects missing tenant context', async () => {
   await assert.rejects(
     repository.list(undefined as unknown as DocumentTenantContext),
     /tenant context is required/i,
+  );
+});
+
+test('processing migration normalizes legacy attempts before adding the constraint', async () => {
+  const migration = await readFile(
+    path.join(
+      process.cwd(),
+      '..',
+      '..',
+      'packages',
+      'database',
+      'prisma',
+      'migrations',
+      '20260727190000_document_processing_queue',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  const nullableColumn = migration.indexOf(
+    'ADD COLUMN IF NOT EXISTS "processingAttempts" INTEGER DEFAULT 0',
+  );
+  const normalization = migration.indexOf(
+    'WHERE "processingAttempts" IS NULL OR "processingAttempts" < 0',
+  );
+  const notNull = migration.indexOf('ALTER COLUMN "processingAttempts" SET NOT NULL');
+  const constraint = migration.indexOf('CONSTRAINT "DocumentMetadata_processingAttempts_check"');
+
+  assert.ok(nullableColumn >= 0);
+  assert.ok(normalization > nullableColumn);
+  assert.ok(notNull > normalization);
+  assert.ok(constraint > notNull);
+  assert.match(
+    migration,
+    /ELSE "processingAttempts"\s+END,[\s\S]*WHERE "status" IN \('COMPLETED', 'FAILED'\)/,
   );
 });
 

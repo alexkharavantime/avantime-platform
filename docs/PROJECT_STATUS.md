@@ -24,15 +24,15 @@
 
 ### 🚧 Три главных риска
 
-1. PostgreSQL/S3 integration suites реализованы, но ещё не выполнены в Docker-enabled environment; external queue provider отсутствует, Document API остаётся `ADMIN`-only;
+1. PostgreSQL/S3 contracts проверены через local PostgreSQL/MinIO, но выбранные production providers, external queue и обязательный CI gate отсутствуют; Document API остаётся `ADMIN`-only;
 2. параллельные `/portal` и `/dashboard`, две базы знаний и несколько независимых AI-маршрутов увеличивают архитектурный долг;
 3. production external queue, monitoring, backup/restore и disaster recovery ещё не реализованы.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. **TASK-002:** выполнить PostgreSQL/MinIO integration suite и migration rehearsal в Docker-enabled CI;
-2. **INFRA-003/INFRA-002:** выбрать external queue provider, distributed adapter, metrics и alerts;
-3. **INFRA-001/SEC-006:** развернуть private S3/PostgreSQL environment и проверить backup/restore.
+1. **INFRA-003/INFRA-002:** выбрать external queue provider, distributed adapter, metrics и alerts;
+2. **INFRA-001/SEC-006:** развернуть private S3/PostgreSQL environment и проверить backup/restore;
+3. **CI:** закрепить PostgreSQL/MinIO integration suite обязательным CI gate.
 
 ---
 
@@ -41,7 +41,7 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.7                                                                                       |
+| Версия документа                 | 1.8                                                                                       |
 | Дата последнего обновления       | 2026-07-28                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
 | Текущая ветка Git                | `feature/task-002-infrastructure-validation`                                              |
@@ -118,19 +118,21 @@ External queue provider не выбран. Production запрещает local q
 
 Document health разделён на минимальные публичные liveness/readiness и `ADMIN`-only component diagnostics без sensitive configuration. Worker по `SIGINT`/`SIGTERM` завершает текущий job, не claim следующий и прерывает idle wait. Production fail-fast и запрет local adapters сохранены.
 
-Docker в текущей среде отсутствует. Поэтому PostgreSQL/MinIO integration tests и migration rehearsal реализованы и статически проверены, но не были фактически выполнены. TASK-002 остаётся `In Progress` до успешного Docker-enabled gate. OCR, embeddings и hybrid RAG вынесены в [TASK-003](./tasks/TASK-003.md).
+PostgreSQL/MinIO integration environment фактически запущен. Migration rehearsal успешно проверил пустую и legacy database, повторный deploy, нормализацию `processingAttempts` и сохранение check constraint. Все 16 PostgreSQL/MinIO/end-to-end tests прошли. TASK-002 переведена в `Done`; OCR, embeddings и hybrid RAG вынесены в [TASK-003](./tasks/TASK-003.md).
 
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
 - `npm run lint` — успешно; database/shared/ui пока используют placeholder lint scripts;
-- `npm run test` — успешно, 51 из 51 tests;
+- `npm run test` — успешно, 52 из 52 tests;
 - `npm run db:generate` и Prisma schema validation — успешно;
 - production `npm run build` — успешно с одноразовым `SESSION_SECRET`, 55 из 55 static entries;
-- local document health и worker configuration checks — успешно;
+- PostgreSQL/MinIO/end-to-end integration suite — успешно, 16 из 16 tests;
+- migration rehearsal для пустой и legacy database — успешно, repeated deploy идемпотентен;
+- integration document health и worker configuration checks — успешно;
 - graceful shutdown и production fail-fast — успешно в unit tests;
 - scoped Prettier check, `git diff --check`, security invariants и secret pattern scan — успешно;
-- `docker --version` — команда отсутствует; integration startup, PostgreSQL/MinIO/E2E tests и migration rehearsal не выполнялись.
+- legacy `processingAttempts`: `NULL` нормализуется допустимо, отрицательное значение — в `0`, положительное сохраняется; constraint отклоняет новые отрицательные значения.
 
 Проверки второй итерации TASK-002:
 
@@ -169,10 +171,10 @@ Docker в текущей среде отсутствует. Поэтому Postg
 | 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                                  |
 | Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                                   |
 | API                     | In Progress |        45% | 27 route handlers, включая Document health; нет внешней версионируемой API Platform и единых контрактов                                                |
-| Безопасность            | In Progress |        60% | Dashboard и внутренние API закрыты; document persistence tenant-aware и fail-fast в production, но полная RBAC и инфраструктурная проверка отсутствуют |
+| Безопасность            | In Progress |        65% | Dashboard и внутренние API закрыты; document persistence tenant-aware и проверен локально, но полная RBAC и production provider validation отсутствуют |
 | UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                             |
 | Инфраструктура          | In Progress |        40% | Добавлены local PostgreSQL/MinIO validation, persistence/worker contracts и health; нет production providers, external queue, backup и наблюдаемости   |
-| Тестирование            | In Progress |        45% | Unit/security suites и real integration suites подготовлены; фактический PostgreSQL/MinIO gate ожидает Docker-enabled environment                      |
+| Тестирование            | In Progress |        50% | 52 unit/security и 16 PostgreSQL/MinIO/end-to-end tests проходят; обязательный CI gate и покрытие остальных доменов ещё отсутствуют                    |
 | Развёртывание           | Planned     |        15% | Локальный запуск описан частично; production deployment и rollback не формализованы                                                                    |
 
 ---
@@ -258,7 +260,7 @@ Docker в текущей среде отсутствует. Поэтому Postg
 | Категория       | Риск                                                                                                                            | Возможное снижение                                                         |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Технический     | Локальные документы имеют tenant-контекст, но системный `ADMIN` пока работает только в tenant `avantime` без выбора организации | Следующая итерация SEC-002 и явная модель административного tenant-доступа |
-| Технический     | S3/PostgreSQL contracts не проверены на реальной production-like infrastructure                                                 | Integration environment, migration rehearsal, backup/restore test          |
+| Технический     | S3/PostgreSQL contracts проверены через local PostgreSQL/MinIO, но не против выбранных production providers                     | Staging provider validation и backup/restore test                          |
 | Технический     | Async PDF worker готов, но production external queue adapter и distributed supervision отсутствуют                              | INFRA-003, provider decision, health checks и queue monitoring             |
 | Архитектурный   | `/portal` и `/dashboard` развиваются параллельно                                                                                | Утвердить ADR-0009 и выполнить PORTAL-001                                  |
 | Архитектурный   | Существуют две базы знаний                                                                                                      | KB-001, единая модель прав и lifecycle                                     |
@@ -385,7 +387,7 @@ Docker в текущей среде отсутствует. Поэтому Postg
 
 **Оценка:** 4/10.
 
-**Комментарий:** 51 автоматический unit/security test проверяет авторизацию, tenant isolation, persistence, lifecycle, retries/quarantine, restart, health guards, graceful shutdown и production fail-fast. Отдельные real PostgreSQL/MinIO/end-to-end suites реализованы, но их фактический Docker-запуск ещё не выполнен.
+**Комментарий:** 52 unit/security tests проверяют авторизацию, tenant isolation, persistence, lifecycle, retries/quarantine, migration ordering, health guards, graceful shutdown и production fail-fast. Дополнительно 16 PostgreSQL/MinIO/end-to-end integration tests и migration rehearsal успешно выполнены локально.
 
 **Рекомендации:** начать с auth/RBAC, обращений, документов, RAG permissions, Jira idempotency и migration tests.
 
@@ -447,7 +449,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 |       1 | Завершить review и сохранить стратегические документы отдельным PR | P0        | Единый утверждённый источник требований             | Низкая                    |
 |       2 | Утвердить RBAC и правила выбора tenant системным администратором   | P0        | Основа безопасного клиентского доступа к документам | Высокая                   |
 |       3 | Развернуть private S3 bucket и PostgreSQL migration environment    | P0        | Проверяемое production-хранение                     | Высокая                   |
-|       4 | Провести migration rehearsal и backup/restore test                 | P0        | Безопасный переход без потери tenant-принадлежности | Средняя                   |
+|       4 | Провести staging provider validation и backup/restore test         | P0        | Безопасный переход без потери tenant-принадлежности | Средняя                   |
 |       5 | Создать внутренний AI Gateway                                      | P0        | Единые политики, стоимость, аудит и модели          | Высокая                   |
 |       6 | Объединить `/portal` и `/dashboard` по этапам                      | P0        | Цельный UX и устранение дублирования                | Высокая                   |
 |       7 | Подключить external queue, мониторинг и корреляционные ID          | P0        | Production-ready обработка и диагностика            | Высокая                   |
@@ -459,6 +461,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                    |
 | ---------- | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-28 | 1.8    | Codex, по поручению владельца проекта | Исправлена нормализация legacy processingAttempts; успешно выполнены migration rehearsal и 16 PostgreSQL/MinIO/E2E tests; TASK-002 переведена в Done                                         |
 | 2026-07-28 | 1.7    | Codex, по поручению владельца проекта | Добавлены PostgreSQL/MinIO integration boundary, migration rehearsal, Document health, graceful worker shutdown, operational guide и draft TASK-003; Docker execution gate остаётся открытым |
 | 2026-07-27 | 1.6    | Codex, по поручению владельца проекта | Зафиксирована третья итерация TASK-002: queue/worker contracts, async PDF, retries, quarantine, status model и lifecycle tests                                                               |
 | 2026-07-27 | 1.5    | Codex, по поручению владельца проекта | Зафиксирована вторая итерация TASK-002: PostgreSQL/S3 persistence, checksum, soft delete, migration/cleanup и контрактные тесты                                                              |

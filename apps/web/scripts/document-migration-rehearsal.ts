@@ -140,19 +140,32 @@ async function rehearseLegacyDatabase(options: {
   try {
     const checksum = 'a'.repeat(64);
     await client.$executeRawUnsafe(
+      'ALTER TABLE "DocumentMetadata" ADD COLUMN "processingAttempts" INTEGER',
+    );
+    await client.$executeRawUnsafe(
       `INSERT INTO "DocumentMetadata"
         ("id", "companyId", "uploadedBy", "originalName", "storedName", "mimeType",
-         "size", "status", "checksum", "createdAt", "updatedAt", "deletedAt")
+         "size", "status", "processingAttempts", "checksum", "createdAt", "updatedAt",
+         "deletedAt")
        VALUES
         ('legacy-completed', 'integration-legacy', 'integration-user',
          'completed.pdf', 'completed.pdf', 'application/pdf', 10, 'PROCESSED',
-         $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+         NULL, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
         ('legacy-failed', 'integration-legacy', 'integration-user',
          'failed.pdf', 'failed.pdf', 'application/pdf', 10, 'FAILED',
-         $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+         NULL, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
         ('legacy-deleted', 'integration-legacy', 'integration-user',
          'deleted.pdf', 'deleted.pdf', 'application/pdf', 10, 'PROCESSED',
-         $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+         NULL, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        ('legacy-attempts-null', 'integration-legacy', 'integration-user',
+         'attempts-null.pdf', 'attempts-null.pdf', 'application/pdf', 10, 'PROCESSING',
+         NULL, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+        ('legacy-attempts-negative', 'integration-legacy', 'integration-user',
+         'attempts-negative.pdf', 'attempts-negative.pdf', 'application/pdf', 10, 'PROCESSING',
+         -1, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL),
+        ('legacy-attempts-positive', 'integration-legacy', 'integration-user',
+         'attempts-positive.pdf', 'attempts-positive.pdf', 'application/pdf', 10, 'PROCESSING',
+         4, $1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)`,
       checksum,
     );
   } finally {
@@ -224,6 +237,13 @@ async function rehearseLegacyDatabase(options: {
     if (byId.get('legacy-deleted')?.status !== 'DELETED') {
       throw new Error('Soft-deleted legacy metadata was not moved to DELETED.');
     }
+    if (
+      byId.get('legacy-attempts-null')?.processingAttempts !== 0 ||
+      byId.get('legacy-attempts-negative')?.processingAttempts !== 0 ||
+      byId.get('legacy-attempts-positive')?.processingAttempts !== 4
+    ) {
+      throw new Error('Legacy processing attempts were not normalized safely.');
+    }
     for (const record of records) {
       if (
         record.processingStartedAt !== null ||
@@ -246,19 +266,20 @@ async function rehearseLegacyDatabase(options: {
       throw new Error('Processing indexes are missing after migration.');
     }
 
-    let negativeAttemptsRejected = false;
-    try {
-      await verified.$executeRawUnsafe(
-        `UPDATE "DocumentMetadata"
-         SET "processingAttempts" = -1
-         WHERE "companyId" = 'integration-legacy' AND "id" = 'legacy-completed'`,
-      );
-    } catch {
-      negativeAttemptsRejected = true;
-    }
-    if (!negativeAttemptsRejected) {
-      throw new Error('processingAttempts constraint did not reject a negative value.');
-    }
+    await verified.$executeRawUnsafe(
+      `DO $constraint_check$
+       BEGIN
+         BEGIN
+           UPDATE "DocumentMetadata"
+           SET "processingAttempts" = -1
+           WHERE "companyId" = 'integration-legacy' AND "id" = 'legacy-completed';
+           RAISE EXCEPTION 'processingAttempts constraint accepted a negative value';
+         EXCEPTION
+           WHEN check_violation THEN NULL;
+         END;
+       END
+       $constraint_check$`,
+    );
   } finally {
     await verified.$disconnect();
   }
