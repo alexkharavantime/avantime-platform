@@ -18,7 +18,11 @@
     "documents:worker-check": "tsx scripts/check-document-worker.ts",
     "documents:migration-rehearsal": "tsx scripts/document-migration-rehearsal.ts",
     "documents:integration-clean": "tsx scripts/cleanup-document-integration.ts",
-    "test:integration": "tsx scripts/run-document-integration-tests.ts"
+    "test:integration": "tsx scripts/run-document-integration-tests.ts",
+    "test:ocr-integration": "RUN_DOCUMENT_OCR_INTEGRATION_TESTS=1 tsx --test tests/integration/document-ocr.integration.test.ts",
+    "documents:ocr-check": "tsx scripts/check-document-ocr.ts",
+    "documents:intelligence-health": "tsx scripts/check-document-health.ts",
+    "documents:reprocess": "tsx scripts/reprocess-document.ts"
   },
   "dependencies": {
     "@avantime/database": "*",

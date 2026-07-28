@@ -854,7 +854,7 @@ Production-файлы хранятся в приватном S3-совмести
 - выбрать и подключить production external queue adapter, process supervision и queue monitoring;
 - внедрить организационную изоляцию данных;
 - реализовать историю диалогов;
-- выполнить [TASK-003](./tasks/TASK-003.md): OCR, embeddings, vector storage и hybrid retrieval;
+- использовать завершённый foundation [TASK-003](./tasks/TASK-003.md): OCR/runtime validation и Document Intelligence metadata; AI Gateway, embeddings, vector storage, hybrid retrieval и citations выполнять в [TASK-004](./tasks/TASK-004.md);
 - унифицировать аудит, ошибки и логи;
 - покрыть критические сценарии тестами.
 

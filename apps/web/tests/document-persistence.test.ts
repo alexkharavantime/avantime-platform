@@ -300,6 +300,29 @@ test('processing migration normalizes legacy attempts before adding the constrai
   );
 });
 
+test('document intelligence migration preserves legacy rows with safe constrained defaults', async () => {
+  const migration = await readFile(
+    path.join(
+      process.cwd(),
+      '..',
+      '..',
+      'packages',
+      'database',
+      'prisma',
+      'migrations',
+      '20260728120000_document_intelligence',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+  assert.match(migration, /ADD COLUMN "detectedDocumentType"[\s\S]*DEFAULT 'UNKNOWN'/);
+  assert.match(migration, /"intelligenceVersion" = 'legacy-task-002'/);
+  assert.match(migration, /DocumentMetadata_detectionConfidence_check/);
+  assert.match(migration, /DocumentMetadata_pageCount_check/);
+  assert.match(migration, /DocumentMetadata_extractedCharacterCount_check/);
+  assert.doesNotMatch(migration, /DROP TABLE|DROP COLUMN|DELETE FROM/i);
+});
+
 test('soft-deleted metadata is excluded from normal PostgreSQL get and list', async () => {
   const repository = postgresqlRepository(new FakeDocumentMetadataDelegate());
   const data = Buffer.from('soft delete');

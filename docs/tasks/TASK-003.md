@@ -1,87 +1,102 @@
-# TASK-003. Document Intelligence and Hybrid RAG
+# TASK-003. Document Intelligence и OCR
 
 ## Статус
 
-Draft
+Done
 
 ## Ветка
 
-Не определена.
+`feature/task-003-document-intelligence`
 
 ## Цель
 
-Спроектировать и реализовать следующий функциональный этап Document Platform: извлечение знаний из разных типов документов и безопасный hybrid RAG с проверяемыми citations.
+Добавить безопасное определение фактического формата и типа документа, оценку качества извлечённого текста и локальный OCR fallback поверх tenant-aware pipeline TASK-002.
 
 ## Контекст
 
-TASK-002 формирует tenant-aware storage, metadata, processing lifecycle и operational boundaries. Текущий pipeline обрабатывает PDF, использует лексический поиск и не имеет OCR, embeddings, vector storage или AI Gateway. TASK-003 начинается только после завершения инфраструктурной валидации TASK-002 и принятия связанных архитектурных решений.
+TASK-002 завершила границы storage, metadata repository, queue/worker, retry/quarantine и PostgreSQL/MinIO validation. До этой итерации worker извлекал только текст PDF и не различал текстовый PDF, скан и изображение.
 
-## Scope
+## Scope первой итерации
 
-- OCR для сканированных документов;
-- определение типа и способа обработки документа;
-- создание tenant-aware embeddings;
-- выбор и подключение vector storage;
-- semantic search;
-- hybrid retrieval, объединяющий lexical и semantic results;
-- citations с проверяемой привязкой к документу и chunk;
-- интеграция retrieval/answer flow с AI Gateway;
-- evaluation dataset без production-sensitive данных;
-- автоматические relevance и security tests.
+- PDF, PNG и JPEG с server-side signature detection;
+- typed metadata Document Intelligence и безопасная Prisma migration;
+- детерминированное определение типа документа без AI;
+- централизованная оценка качества и нормализация текста;
+- provider-neutral OCR contracts и локальный Tesseract/Poppler adapter;
+- OCR fallback в существующем worker lifecycle;
+- ADMIN-only reprocess одного документа и dry-run;
+- readiness, unit и отдельные OCR integration checks;
+- минимальное отображение intelligence metadata в Knowledge Center;
+- эксплуатационная и архитектурная документация.
 
 ## Out of scope
 
-- изменение storage/processing contracts TASK-002 без отдельного ADR;
-- ослабление tenant isolation или текущей `ADMIN`-границы Document API;
-- объединение `/portal` и `/dashboard`;
-- расширение общей RBAC;
-- выбор production external queue provider;
-- публичный UI, не связанный с Document Intelligence;
-- использование реальных клиентских документов в evaluation dataset.
+- embeddings, vector storage, semantic/hybrid retrieval и citations — перенесены в [TASK-004](./TASK-004.md);
+- RAG/AI Gateway, OpenAI/Gemini classification — перенесены в [TASK-004](./TASK-004.md);
+- S3/queue provider changes, OCR cloud provider;
+- Word/Excel processing, mass reprocess, OCR UI editor;
+- расширение RBAC, объединение `/portal` и `/dashboard`, публичный UI.
 
 ## Требования безопасности
 
-- каждый chunk, embedding, retrieval result и citation содержит обязательный `companyId`;
-- tenant определяется только из server-side session/context;
-- retrieval работает deny-by-default при отсутствии tenant или разрешения;
-- удалённые, quarantined и недоступные документы не участвуют в поиске;
-- prompts, traces и evaluation artifacts не раскрывают содержимое документов и секреты;
-- AI Gateway применяет утверждённые provider, data classification и audit policies;
-- security tests проверяют межкорпоративный доступ на каждом этапе retrieval.
+- tenant берётся только из server-side session/worker configuration;
+- маршруты не принимают `companyId` клиента;
+- checksum проверяется storage adapter до извлечения и OCR;
+- MIME определяется по сигнатуре, а клиентские MIME/расширение считаются подсказкой;
+- OCR запускается без shell, с allowlist языков, лимитами размера/страниц и timeout;
+- временные файлы имеют случайный каталог и удаляются в `finally`;
+- содержимое документа, stdout/stderr OCR, пути и секреты не журналируются;
+- unsupported/permanent errors не создают бесконечные retry;
+- производная не переводит документ в `COMPLETED` до атомарного завершения pipeline.
 
 ## Критерии готовности
 
-- [ ] Утверждены ADR для embeddings/vector storage, OCR и AI Gateway integration.
-- [ ] Реализовано определение типа документа и OCR fallback.
-- [ ] Embeddings и vector records tenant-aware и удаляются согласованно с metadata lifecycle.
-- [ ] Semantic и hybrid retrieval не возвращают данные другого tenant.
-- [ ] Каждый ответ содержит проверяемые citations на разрешённые chunks.
-- [ ] Подготовлен безопасный evaluation dataset и измеримые relevance thresholds.
-- [ ] Пройдены relevance, regression, tenant isolation и prompt/data leakage tests.
-- [ ] Обновлены архитектурная, эксплуатационная и продуктовая документация.
+- [x] Добавлены typed intelligence metadata и безопасная migration.
+- [x] Добавлены format/type detection, text quality и normalization services.
+- [x] Добавлены OCR contracts и локальный Tesseract/Poppler adapter.
+- [x] Worker использует OCR fallback без изменения tenant boundary.
+- [x] Добавлен ADMIN-only single-document reprocess с dry-run.
+- [x] Пройдены unit tests и production build.
+- [x] Повторно пройдены TASK-002 integration checks после добавления migration.
+- [x] Фактически пройдён отдельный OCR integration check в окружении с Tesseract/Poppler.
+- [x] Обновлена связанная документация и завершена security review кода первой итерации.
 
 ## План реализации
 
-1. Зафиксировать ADR и критерии качества retrieval.
-2. Определить type detection и OCR contracts.
-3. Спроектировать tenant-aware embedding/vector lifecycle.
-4. Реализовать semantic retrieval и объединение с lexical search.
-5. Добавить citations и интеграцию через AI Gateway.
-6. Создать evaluation dataset и автоматические relevance/security gates.
-7. Провести нагрузочную, стоимостьную и эксплуатационную оценку.
+1. Расширить metadata и migration с безопасными legacy defaults.
+2. Ввести contracts detection, quality, normalization и OCR.
+3. Подключить orchestration к worker после checksum verification.
+4. Добавить reprocess, health и минимальное отображение metadata.
+5. Добавить unit/integration regression tests.
+6. Выполнить migration rehearsal, TASK-002 regression и OCR validation.
+7. Передать следующий этап embeddings/hybrid RAG в TASK-004.
 
 ## Риски
 
-- извлечённый OCR-текст и embeddings могут содержать чувствительные данные;
-- неверные tenant filters в vector search создают риск межкорпоративной утечки;
-- качество retrieval зависит от chunking, модели embeddings и evaluation coverage;
-- citations могут быть формально корректными, но не подтверждать ответ;
-- provider changes влияют на стоимость, latency и воспроизводимость оценки;
-- удаление и переиндексация должны быть согласованы с lifecycle TASK-002.
+- качество OCR зависит от установленных language packs и качества изображения;
+- Tesseract требует Poppler для PDF rasterization;
+- синхронная обработка одной job ограничивает throughput;
+- rule-based type detection намеренно допускает `UNKNOWN` и manual review;
+- OCR-текст содержит те же чувствительные данные, что исходный документ;
+- OCR integration требует отдельно подготовленный runtime; воспроизводимый gate запускается в Docker.
 
 ## Результат выполнения
 
-Задание создано как `Draft`. Реализация в рамках текущей итерации не выполнялась.
+Реализованы domain contracts, metadata/migration, основной worker pipeline, ADMIN reprocess, раздельные core/OCR readiness components, Knowledge Center metadata, unit и отдельные integration boundaries. `typecheck`, `lint`, 73 unit tests, Prisma migration deploy, production build и `git diff --check` прошли.
+
+PostgreSQL/MinIO/local queue regression suite прошёл: 16 из 16 integration tests, отдельные document health и worker checks вернули `ready`. Воспроизводимый Docker OCR gate также прошёл: image с Tesseract, Poppler и language packs обработал валидный синтетический PNG, 1 из 1 real OCR test.
+
+Production readiness не ослаблен: production требует явно настроенный OCR provider, запрещает `disabled`/optional OCR и включает OCR runtime в overall readiness. Core document processing и OCR/Document Intelligence readiness разделены, поэтому обычный PostgreSQL/MinIO integration environment проверяет core pipeline без обязательного OCR container и при этом не скрывает состояние OCR component.
+
+Исходный scope и все критерии готовности TASK-003 выполнены. AI Gateway, embeddings, vector storage, semantic/hybrid RAG, citations и evaluation оформлены отдельным [TASK-004](./TASK-004.md).
+
+## Известные ограничения
+
+- Document API остаётся только `ADMIN`;
+- загрузка job и OCR выполняются worker последовательно;
+- поиск остаётся лексическим;
+- Word/Excel только распознаются как неподдерживаемые;
+- локальный OCR требует внешние Tesseract и Poppler, бинарные файлы в Git не добавляются.
 
 ## Связанные документы
 
@@ -92,6 +107,8 @@ TASK-002 формирует tenant-aware storage, metadata, processing lifecycle
 - [Roadmap](../ROADMAP.md)
 - [Product Backlog](../PRODUCT_BACKLOG.md)
 - [Project Status](../PROJECT_STATUS.md)
+- [Document Intelligence](../DOCUMENT_INTELLIGENCE.md)
 - [Document Processing](../DOCUMENT_PROCESSING.md)
 - [Document Operations](../DOCUMENT_OPERATIONS.md)
 - [TASK-002](./TASK-002.md)
+- [TASK-004](./TASK-004.md)

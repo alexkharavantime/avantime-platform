@@ -196,35 +196,50 @@ enum ArticleStatus {
 }
 
 model DocumentMetadata {
-  id                    String                   @db.VarChar(200)
-  companyId             String                   @db.VarChar(200)
-  uploadedBy            String                   @db.VarChar(200)
-  originalName          String
-  storedName            String                   @db.VarChar(255)
-  mimeType              String                   @db.VarChar(255)
-  size                  Int
-  status                DocumentProcessingStatus @default(UPLOADED)
-  checksum              String                   @db.VarChar(64)
-  processingAttempts    Int                      @default(0)
-  lastErrorCode         String?                  @db.VarChar(100)
-  lastErrorMessage      String?
-  processingStartedAt   DateTime?
-  processingCompletedAt DateTime?
-  nextRetryAt           DateTime?
-  quarantinedAt         DateTime?
-  workerId              String?                  @db.VarChar(200)
-  pages                 Int?
-  textLength            Int?
-  chunksCount           Int?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  deletedAt             DateTime?
+  id                      String                       @db.VarChar(200)
+  companyId               String                       @db.VarChar(200)
+  uploadedBy              String                       @db.VarChar(200)
+  originalName            String
+  storedName              String                       @db.VarChar(255)
+  mimeType                String                       @db.VarChar(255)
+  size                    Int
+  status                  DocumentProcessingStatus     @default(UPLOADED)
+  checksum                String                       @db.VarChar(64)
+  processingAttempts      Int                          @default(0)
+  lastErrorCode           String?                      @db.VarChar(100)
+  lastErrorMessage        String?
+  processingStartedAt     DateTime?
+  processingCompletedAt   DateTime?
+  nextRetryAt             DateTime?
+  quarantinedAt           DateTime?
+  workerId                String?                      @db.VarChar(200)
+  pages                   Int?
+  textLength              Int?
+  chunksCount             Int?
+  detectedDocumentType    DocumentType                 @default(UNKNOWN)
+  detectedMimeType        String?                      @db.VarChar(255)
+  detectionConfidence     Float?
+  textExtractionMethod    DocumentTextExtractionMethod @default(NONE)
+  ocrStatus               DocumentOcrStatus            @default(PENDING)
+  ocrProvider             String?                      @db.VarChar(100)
+  ocrLanguage             String?                      @db.VarChar(100)
+  ocrStartedAt            DateTime?
+  ocrCompletedAt          DateTime?
+  pageCount               Int?
+  extractedCharacterCount Int?
+  requiresManualReview    Boolean                      @default(true)
+  intelligenceVersion     String                       @default("document-intelligence-v1") @db.VarChar(100)
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  deletedAt               DateTime?
 
   @@id([companyId, id])
   @@index([companyId, status])
   @@index([companyId, nextRetryAt])
   @@index([companyId, quarantinedAt])
   @@index([companyId, createdAt])
+  @@index([companyId, detectedDocumentType])
+  @@index([companyId, requiresManualReview])
   @@index([createdAt])
   @@index([deletedAt])
 }
@@ -237,4 +252,34 @@ enum DocumentProcessingStatus {
   FAILED
   QUARANTINED
   DELETED
+}
+
+enum DocumentType {
+  INVOICE
+  CREDIT_NOTE
+  CONTRACT
+  ACT
+  ORDER
+  DELIVERY_NOTE
+  BANK_STATEMENT
+  RECEIPT
+  REPORT
+  LETTER
+  IMAGE
+  UNKNOWN
+}
+
+enum DocumentTextExtractionMethod {
+  PDF_TEXT
+  OCR
+  NONE
+}
+
+enum DocumentOcrStatus {
+  NOT_REQUIRED
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  UNAVAILABLE
 }

@@ -5,6 +5,8 @@ import {
   validateDocumentRetryPolicy,
   type DocumentRetryPolicy,
 } from './document-retry-policy';
+import type { DocumentOcrConfiguration } from './document-ocr';
+import type { DocumentTextQualityConfiguration } from './document-text-quality';
 import { assertSafeDocumentSegment, type S3DocumentStorageConfig } from './document-storage';
 
 export type DocumentStorageDriver = 'local' | 's3';
@@ -20,6 +22,11 @@ export type DocumentConfiguration = {
   retryPolicy: DocumentRetryPolicy;
   queueLeaseDurationMs: number;
   workerPollIntervalMs: number;
+  ocr: DocumentOcrConfiguration;
+  ocrRequiredForReadiness: boolean;
+  textQuality: DocumentTextQualityConfiguration;
+  detectionMinimumConfidence: number;
+  intelligenceVersion: string;
   s3?: S3DocumentStorageConfig;
 };
 
@@ -53,6 +60,37 @@ function parsePositiveInteger(value: string | undefined, fallback: number, name:
     throw new Error(`${name} must be a positive integer.`);
   }
   return parsed;
+}
+
+function parseRatio(value: string | undefined, fallback: number, name: string) {
+  if (!value?.trim()) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error(`${name} must be a number between 0 and 1.`);
+  }
+  return parsed;
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean, name: string) {
+  const normalized = value?.trim();
+  if (!normalized) return fallback;
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`${name} must be true or false.`);
+}
+
+function parseOcrLanguages(value: string | undefined) {
+  const languages = (value?.trim() || 'eng,rus')
+    .split(',')
+    .map((language) => language.trim())
+    .filter(Boolean);
+  if (
+    languages.length === 0 ||
+    languages.some((language) => !['eng', 'rus', 'lav'].includes(language))
+  ) {
+    throw new Error('DOCUMENT_OCR_LANGUAGES contains an unsupported language.');
+  }
+  return [...new Set(languages)];
 }
 
 function loadS3Configuration(
@@ -138,6 +176,27 @@ export function loadDocumentConfiguration(
       'DOCUMENT_PROCESSING_MAX_RETRY_MS',
     ),
   });
+  if (production) requireEnvironmentValue(environment, 'DOCUMENT_OCR_DRIVER');
+  const ocrDriver = parseDriver(
+    environment.DOCUMENT_OCR_DRIVER,
+    'disabled',
+    ['local', 'disabled'] as const,
+    'DOCUMENT_OCR_DRIVER',
+  );
+  if (production && ocrDriver === 'disabled') {
+    throw new Error('Production document OCR must use a configured provider.');
+  }
+  const ocrRequiredForReadiness = parseBoolean(
+    environment.DOCUMENT_OCR_REQUIRED_FOR_READINESS,
+    production,
+    'DOCUMENT_OCR_REQUIRED_FOR_READINESS',
+  );
+  if (production && !ocrRequiredForReadiness) {
+    throw new Error('Production document OCR must be required for readiness.');
+  }
+  if (ocrDriver === 'disabled' && ocrRequiredForReadiness) {
+    throw new Error('Disabled document OCR cannot be required for readiness.');
+  }
 
   return {
     storageDriver,
@@ -158,6 +217,50 @@ export function loadDocumentConfiguration(
       1_000,
       'DOCUMENT_PROCESSING_POLL_MS',
     ),
+    ocr: {
+      driver: ocrDriver,
+      languages: parseOcrLanguages(environment.DOCUMENT_OCR_LANGUAGES),
+      timeoutMs: parsePositiveInteger(
+        environment.DOCUMENT_OCR_TIMEOUT_MS,
+        120_000,
+        'DOCUMENT_OCR_TIMEOUT_MS',
+      ),
+      maximumPages: parsePositiveInteger(
+        environment.DOCUMENT_OCR_MAX_PAGES,
+        50,
+        'DOCUMENT_OCR_MAX_PAGES',
+      ),
+      maximumFileSize: parsePositiveInteger(
+        environment.DOCUMENT_OCR_MAX_FILE_SIZE,
+        20 * 1024 * 1024,
+        'DOCUMENT_OCR_MAX_FILE_SIZE',
+      ),
+    },
+    ocrRequiredForReadiness,
+    textQuality: {
+      minimumCharacters: parsePositiveInteger(
+        environment.DOCUMENT_TEXT_MIN_CHARACTERS,
+        80,
+        'DOCUMENT_TEXT_MIN_CHARACTERS',
+      ),
+      minimumPrintableRatio: parseRatio(
+        environment.DOCUMENT_TEXT_MIN_PRINTABLE_RATIO,
+        0.9,
+        'DOCUMENT_TEXT_MIN_PRINTABLE_RATIO',
+      ),
+      minimumAlphanumericRatio: parseRatio(
+        environment.DOCUMENT_TEXT_MIN_ALPHANUMERIC_RATIO,
+        0.2,
+        'DOCUMENT_TEXT_MIN_ALPHANUMERIC_RATIO',
+      ),
+    },
+    detectionMinimumConfidence: parseRatio(
+      environment.DOCUMENT_DETECTION_MIN_CONFIDENCE,
+      0.7,
+      'DOCUMENT_DETECTION_MIN_CONFIDENCE',
+    ),
+    intelligenceVersion:
+      environment.DOCUMENT_INTELLIGENCE_VERSION?.trim() || 'document-intelligence-v1',
     s3: storageDriver === 's3' ? loadS3Configuration(environment) : undefined,
   };
 }

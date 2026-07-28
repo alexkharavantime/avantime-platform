@@ -17,7 +17,10 @@ async function main() {
     'integration',
   );
   const tests = (await readdir(integrationTestsDirectory))
-    .filter((file) => file.endsWith('.integration.test.ts'))
+    .filter(
+      (file) =>
+        file.endsWith('.integration.test.ts') && file !== 'document-ocr.integration.test.ts',
+    )
     .sort()
     .map((file) => path.join(integrationTestsDirectory, file));
   if (tests.length === 0) {

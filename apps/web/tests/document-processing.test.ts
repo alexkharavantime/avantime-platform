@@ -21,6 +21,7 @@ import {
   createDocumentProcessingWorker,
   createDocumentServices,
   enqueueUploadedDocument,
+  reprocessDocument,
   type DocumentServices,
 } from '../lib/document-services';
 
@@ -119,6 +120,45 @@ test('local queue enqueue is idempotent for one tenant document', async () => {
     assert.equal(first?.enqueued, true);
     assert.equal(second?.enqueued, false);
     assert.equal(first?.job.id, second?.job.id);
+    assert.equal((await fixture.services.queue.list(companyA)).length, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test('single-document reprocess is tenant-aware, dry-run safe and idempotent', async () => {
+  const fixture = await createFixture();
+  try {
+    await createQueuedDocument(fixture.services, companyA, 'reprocess-one');
+    const worker = createDocumentProcessingWorker(fixture.services, {
+      extractor: async () => extracted,
+    });
+    assert.equal((await worker.runOnce(companyA, 'reprocess-worker')).outcome, 'COMPLETED');
+
+    assert.equal(
+      (await reprocessDocument(companyA, 'reprocess-one', { dryRun: true }, fixture.services))
+        .outcome,
+      'WOULD_REPROCESS',
+    );
+    assert.equal(
+      (await fixture.services.metadata.findById(companyA, 'reprocess-one'))?.status,
+      'COMPLETED',
+    );
+    assert.equal(
+      (await reprocessDocument(companyB, 'reprocess-one', { dryRun: false }, fixture.services))
+        .outcome,
+      'NOT_FOUND',
+    );
+    assert.equal(
+      (await reprocessDocument(companyA, 'reprocess-one', { dryRun: false }, fixture.services))
+        .outcome,
+      'QUEUED',
+    );
+    assert.equal(
+      (await reprocessDocument(companyA, 'reprocess-one', { dryRun: false }, fixture.services))
+        .outcome,
+      'ALREADY_QUEUED',
+    );
     assert.equal((await fixture.services.queue.list(companyA)).length, 1);
   } finally {
     await fixture.cleanup();
@@ -406,7 +446,7 @@ test('invalid document status transition is rejected centrally', async () => {
         companyA,
         'invalid-transition',
         ['COMPLETED'],
-        'QUEUED',
+        'PROCESSING',
       ),
       /invalid document status transition/i,
     );
@@ -576,6 +616,37 @@ test('production queue configuration fails fast without a complete external adap
     /DOCUMENT_PROCESSING_QUEUE_NAME is required/,
   );
 
+  assert.throws(
+    () =>
+      loadDocumentConfiguration({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://example.test/avantime',
+        OBJECT_STORAGE_ENDPOINT: 'https://objects.example.test',
+        OBJECT_STORAGE_REGION: 'test-1',
+        OBJECT_STORAGE_BUCKET: 'private-documents',
+        OBJECT_STORAGE_ACCESS_KEY: 'test-access',
+        OBJECT_STORAGE_SECRET_KEY: 'test-secret',
+        DOCUMENT_PROCESSING_QUEUE_NAME: 'documents',
+      }),
+    /DOCUMENT_OCR_DRIVER is required/,
+  );
+  assert.throws(
+    () =>
+      loadDocumentConfiguration({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://example.test/avantime',
+        OBJECT_STORAGE_ENDPOINT: 'https://objects.example.test',
+        OBJECT_STORAGE_REGION: 'test-1',
+        OBJECT_STORAGE_BUCKET: 'private-documents',
+        OBJECT_STORAGE_ACCESS_KEY: 'test-access',
+        OBJECT_STORAGE_SECRET_KEY: 'test-secret',
+        DOCUMENT_PROCESSING_QUEUE_NAME: 'documents',
+        DOCUMENT_OCR_DRIVER: 'local',
+        DOCUMENT_OCR_REQUIRED_FOR_READINESS: 'false',
+      }),
+    /Production document OCR must be required for readiness/,
+  );
+
   const configuration = loadDocumentConfiguration({
     NODE_ENV: 'production',
     DATABASE_URL: 'postgresql://example.test/avantime',
@@ -585,6 +656,7 @@ test('production queue configuration fails fast without a complete external adap
     OBJECT_STORAGE_ACCESS_KEY: 'test-access',
     OBJECT_STORAGE_SECRET_KEY: 'test-secret',
     DOCUMENT_PROCESSING_QUEUE_NAME: 'documents',
+    DOCUMENT_OCR_DRIVER: 'local',
   });
   assert.throws(
     () => createDocumentServices(configuration),
@@ -617,6 +689,7 @@ test('future external queue adapter can be injected through the stable contract'
     OBJECT_STORAGE_ACCESS_KEY: 'test-access',
     OBJECT_STORAGE_SECRET_KEY: 'test-secret',
     DOCUMENT_PROCESSING_QUEUE_NAME: 'documents',
+    DOCUMENT_OCR_DRIVER: 'local',
   });
   const externalQueue: ExternalDocumentProcessingQueue = {
     kind: 'external',

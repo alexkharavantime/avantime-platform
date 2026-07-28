@@ -9,7 +9,7 @@ type ExtractPdfResult = {
   chunksCount: number;
 };
 
-function splitTextIntoChunks(
+export function splitTextIntoChunks(
   sourceText: string,
   chunkSize = 1200,
   overlap = 200,
@@ -35,14 +35,9 @@ function splitTextIntoChunks(
       const paragraphBreak = text.lastIndexOf('\n\n', end);
       const sentenceBreak = text.lastIndexOf('. ', end);
 
-      const preferredBreak = Math.max(
-        paragraphBreak,
-        sentenceBreak,
-      );
+      const preferredBreak = Math.max(paragraphBreak, sentenceBreak);
 
-      if (
-        preferredBreak > start + Math.floor(chunkSize * 0.6)
-      ) {
+      if (preferredBreak > start + Math.floor(chunkSize * 0.6)) {
         end = preferredBreak + 1;
       }
     }
@@ -71,9 +66,7 @@ function splitTextIntoChunks(
   return chunks;
 }
 
-export async function extractPdfText(
-  pdfBuffer: Buffer,
-): Promise<ExtractPdfResult> {
+export async function extractPdfText(pdfBuffer: Buffer): Promise<ExtractPdfResult> {
   const parser = new PDFParse({
     data: pdfBuffer,
   });

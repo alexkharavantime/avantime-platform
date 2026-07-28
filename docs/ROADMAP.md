@@ -317,7 +317,7 @@
 
 ## Version 2.2 — Knowledge Center и управляемый AI
 
-Функциональный объём OCR, document type detection, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation formalized в [TASK-003](./tasks/TASK-003.md). Он начинается после фактического infrastructure gate TASK-002 и не относится к её завершению.
+[TASK-003](./tasks/TASK-003.md) завершила OCR, document type detection, intelligence metadata и раздельные core/OCR readiness components после infrastructure gate TASK-002. AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation перенесены в [TASK-004](./tasks/TASK-004.md).
 
 ### Основная цель
 
@@ -432,7 +432,7 @@
 **Что ещё необходимо сделать:**
 
 - перенести прототип в production-хранилища;
-- выполнить TASK-003: OCR, embeddings, semantic/hybrid retrieval, citations и evaluation;
+- развивать завершённый OCR/Document Intelligence foundation TASK-003 и выполнить TASK-004: AI Gateway, embeddings, vector storage, semantic/hybrid retrieval, citations и evaluation;
 - внедрить права на всех уровнях;
 - поддержать дополнительные форматы;
 - создать версии, редакционный процесс и аналитику;
