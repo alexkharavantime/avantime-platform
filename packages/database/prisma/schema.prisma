@@ -213,6 +213,11 @@ model DocumentMetadata {
   nextRetryAt             DateTime?
   quarantinedAt           DateTime?
   workerId                String?                      @db.VarChar(200)
+  workerVersion           String?                      @db.VarChar(100)
+  deploymentGeneration    String?                      @db.VarChar(100)
+  processingFencingToken  Int                          @default(0)
+  workerHeartbeatAt       DateTime?
+  processingLeaseUntil    DateTime?
   pages                   Int?
   textLength              Int?
   chunksCount             Int?
@@ -237,6 +242,12 @@ model DocumentMetadata {
   embeddingAttempts       Int                          @default(0)
   lastEmbeddingErrorCode  String?                      @db.VarChar(100)
   embeddingContentHash    String?                      @db.VarChar(64)
+  embeddingWorkerId       String?                      @db.VarChar(200)
+  embeddingWorkerVersion  String?                      @db.VarChar(100)
+  embeddingDeploymentGeneration String?                @db.VarChar(100)
+  embeddingFencingToken   Int                          @default(0)
+  embeddingHeartbeatAt    DateTime?
+  embeddingLeaseUntil     DateTime?
   createdAt               DateTime                     @default(now())
   updatedAt               DateTime                     @updatedAt
   deletedAt               DateTime?
@@ -251,6 +262,8 @@ model DocumentMetadata {
   @@index([companyId, detectedDocumentType])
   @@index([companyId, requiresManualReview])
   @@index([companyId, embeddingStatus])
+  @@index([workerHeartbeatAt])
+  @@index([embeddingHeartbeatAt])
   @@index([createdAt])
   @@index([deletedAt])
 }
@@ -319,6 +332,11 @@ model DocumentChunkEmbedding {
   contentPreview   String
   pageStart        Int?
   pageEnd          Int?
+  sourceSegmentIndex Int?
+  extractionMethod String?  @db.VarChar(50)
+  sourceCoordinates Json?
+  provenanceConfidence Float?
+  provenanceVersion String? @db.VarChar(50)
   embeddingModel   String   @db.VarChar(200)
   embeddingVersion String   @db.VarChar(100)
   dimensions       Int
@@ -336,11 +354,17 @@ model DocumentEmbeddingJob {
   id          String                     @id @default(cuid()) @db.VarChar(200)
   companyId   String                     @db.VarChar(200)
   documentId  String                     @db.VarChar(200)
+  correlationId String                   @default(cuid()) @db.VarChar(200)
+  jobVersion  Int                        @default(1)
   status      DocumentEmbeddingJobStatus @default(QUEUED)
   attempts    Int                        @default(0)
   availableAt DateTime                   @default(now())
   leaseOwner  String?                    @db.VarChar(200)
   leaseUntil  DateTime?
+  fencingToken Int                       @default(0)
+  heartbeatAt DateTime?
+  workerVersion String?                  @db.VarChar(100)
+  deploymentGeneration String?           @db.VarChar(100)
   createdAt   DateTime                   @default(now())
   updatedAt   DateTime                   @updatedAt
   document    DocumentMetadata           @relation(fields: [companyId, documentId], references: [companyId, id], onDelete: Cascade)
@@ -348,4 +372,98 @@ model DocumentEmbeddingJob {
   @@unique([companyId, documentId])
   @@index([companyId, status, availableAt])
   @@index([leaseUntil])
+  @@index([heartbeatAt])
+}
+
+model AiUsageLedger {
+  id                 String   @id @default(cuid()) @db.VarChar(200)
+  companyId          String   @db.VarChar(200)
+  userId             String?  @db.VarChar(200)
+  correlationId      String   @db.VarChar(200)
+  idempotencyKey     String   @db.VarChar(250)
+  requestType        String   @db.VarChar(50)
+  provider           String   @db.VarChar(100)
+  model              String   @db.VarChar(200)
+  inputTokens        Int      @default(0)
+  outputTokens       Int      @default(0)
+  embeddingUnits     Int      @default(0)
+  estimatedCostEur   Decimal  @default(0) @db.Decimal(18, 8)
+  actualCostEur      Decimal? @db.Decimal(18, 8)
+  currency           String   @default("EUR") @db.VarChar(3)
+  status             String   @db.VarChar(30)
+  occurredAt         DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, occurredAt])
+  @@index([companyId, provider, occurredAt])
+}
+
+model AiBudgetPolicy {
+  companyId          String   @id @db.VarChar(200)
+  dailyLimitEur      Decimal  @db.Decimal(18, 8)
+  monthlyLimitEur    Decimal  @db.Decimal(18, 8)
+  providerLimits     Json?
+  warningThreshold   Float    @default(0.8)
+  hardStopThreshold  Float    @default(1)
+  updatedBy          String?  @db.VarChar(200)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+model AiBudgetReservation {
+  id                 String   @id @default(cuid()) @db.VarChar(200)
+  companyId          String   @db.VarChar(200)
+  userId             String?  @db.VarChar(200)
+  provider           String   @db.VarChar(100)
+  correlationId      String   @db.VarChar(200)
+  idempotencyKey     String   @db.VarChar(250)
+  estimatedCostEur   Decimal  @db.Decimal(18, 8)
+  currency           String   @default("EUR") @db.VarChar(3)
+  status             String   @db.VarChar(30)
+  expiresAt          DateTime
+  reconciledAt       DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, status, expiresAt])
+  @@index([companyId, provider, status])
+}
+
+model ProductionAuditEvent {
+  id                 String   @id @default(cuid()) @db.VarChar(200)
+  companyId          String?  @db.VarChar(200)
+  actorId            String?  @db.VarChar(200)
+  action             String   @db.VarChar(100)
+  targetType         String   @db.VarChar(100)
+  targetId           String?  @db.VarChar(200)
+  result             String   @db.VarChar(30)
+  correlationId      String   @db.VarChar(200)
+  safeMetadata       Json?
+  previousState      Json?
+  newState           Json?
+  occurredAt         DateTime @default(now())
+
+  @@index([companyId, occurredAt])
+  @@index([action, occurredAt])
+  @@index([correlationId])
+}
+
+model RecoveryOperation {
+  id                 String   @id @default(cuid()) @db.VarChar(200)
+  operationType      String   @db.VarChar(50)
+  environment        String   @db.VarChar(50)
+  status             String   @db.VarChar(30)
+  checksum           String?  @db.VarChar(128)
+  objectCount        Int?
+  databaseBackupAt   DateTime?
+  objectBackupAt     DateTime?
+  startedAt          DateTime @default(now())
+  completedAt        DateTime?
+  safeDetails        Json?
+
+  @@index([operationType, status, startedAt])
 }

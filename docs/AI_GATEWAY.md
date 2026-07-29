@@ -18,13 +18,13 @@ AI Gateway — единственная server-side граница вызова 
 Gateway применяет:
 
 - timeout и один повтор только для transient ошибок;
-- tenant/user rate limit;
-- дневной tenant budget;
+- Redis-backed tenant/user/provider burst, minute/day limits в production;
+- race-safe daily/monthly/provider budget reservation в EUR;
 - лимиты input context и output tokens;
 - correlation ID, usage metadata и оценочную стоимость;
 - отдельную readiness-проверку embedding и answer providers.
 
-Development limits хранятся в памяти одного процесса. Распределённый rate limit, долговечный cost ledger, автоматический provider fallback и внешняя metrics platform не входят в TASK-004.
+Development limits могут храниться в памяти одного процесса. TASK-005 добавляет production Redis limiter, PostgreSQL append-only usage/cost ledger и budget reservation до provider call. Автоматический provider fallback остаётся отдельным решением.
 
 ## Production fail-fast
 
@@ -33,7 +33,7 @@ Production требует явные:
 - `DOCUMENT_EMBEDDING_DRIVER` и `RAG_ANSWER_DRIVER`, отличные от `fake`/`disabled`;
 - provider credentials для выбранных adapters;
 - `DOCUMENT_VECTOR_DRIVER=pgvector`;
-- `DOCUMENT_EMBEDDING_QUEUE_DRIVER=postgresql`;
+- Redis-backed external document/embedding queues и `REDIS_URL` с TLS/authentication;
 - `DATABASE_URL`;
 - `DOCUMENT_RAG_REQUIRED_FOR_READINESS=true`.
 
@@ -41,7 +41,7 @@ Production требует явные:
 
 ## Наблюдаемость
 
-`AiOperationalEventSink` принимает только структурированные metadata: tenant ID, correlation ID, outcome, latency, количество результатов/chunks, tokens, estimated cost и безопасный error code. Встроенная in-memory реализация используется для локальной сводки; production sink и retention policy относятся к следующему инфраструктурному этапу.
+`AiOperationalEventSink` и TASK-005 `ProductionTelemetry` принимают только структурированные metadata: hashed tenant reference, correlation ID, outcome, latency, количество результатов/chunks, tokens, estimated cost и безопасный error code. No-op/console adapters предназначены для development; OpenTelemetry-compatible adapter подключает выбранный production collector. Persistent usage/audit хранятся отдельно от технической telemetry.
 
 ## Связанные документы
 
@@ -50,3 +50,6 @@ Production требует явные:
 - [Architecture Decisions](./DECISIONS.md)
 - [Document Operations](./DOCUMENT_OPERATIONS.md)
 - [TASK-004](./tasks/TASK-004.md)
+- [TASK-005](./tasks/TASK-005.md)
+- [AI Cost Control](./AI_COST_CONTROL.md)
+- [Observability](./OBSERVABILITY.md)

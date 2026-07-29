@@ -19,6 +19,7 @@ import {
   ApiRateLimitError,
   resetApiRateLimitsForTests,
 } from '../lib/api-rate-limit';
+import { MemoryAiCostController } from '../lib/ai-control';
 import {
   enqueueDocumentEmbedding,
   hashChunkContent,
@@ -89,6 +90,7 @@ async function fixture(
     rag: {
       embeddingProvider: provider,
       answerProvider: provider,
+      costController: new MemoryAiCostController(100, 1_000),
       environment,
     },
   });
@@ -180,6 +182,31 @@ test('unchanged chunks are not embedded twice and changed chunks are updated', a
       vectors.find((vector) => vector.chunkId === 'chunk-1')?.contentHash,
       hashChunkContent('Avantime provides secure hybrid automation.'),
     );
+  } finally {
+    await current.cleanup();
+  }
+});
+
+test('document embedding reserves budget independently for every batch', async () => {
+  const current = await fixture({
+    DOCUMENT_EMBEDDING_BATCH_SIZE: '2',
+  });
+  try {
+    assert.ok(current.services.rag);
+    await addCompletedDocument(current.services, tenantA, 'multi-batch-document', [
+      chunk('batch-chunk-1', 0, 'First independently budgeted embedding batch chunk.'),
+      chunk('batch-chunk-2', 1, 'Second chunk in the first embedding batch.'),
+      chunk('batch-chunk-3', 2, 'Third chunk requiring a second embedding batch.'),
+    ]);
+    await enqueueDocumentEmbedding(tenantA, 'multi-batch-document', current.services.rag.embedding);
+
+    const result = await current.services.rag
+      .createEmbeddingWorker()
+      .runOnce(tenantA, 'multi-batch-worker');
+
+    assert.equal(result.outcome, 'COMPLETED');
+    assert.equal(result.embeddedChunks, 3);
+    assert.equal(current.provider.embeddingCalls, 2);
   } finally {
     await current.cleanup();
   }

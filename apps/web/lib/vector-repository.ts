@@ -12,6 +12,11 @@ export type VectorRecord = {
   contentPreview: string;
   pageStart: number | null;
   pageEnd: number | null;
+  sourceSegmentIndex?: number | null;
+  extractionMethod?: string | null;
+  sourceCoordinates?: { x: number; y: number; width: number; height: number } | null;
+  provenanceConfidence?: number | null;
+  provenanceVersion?: string | null;
   embeddingModel: string;
   embeddingVersion: string;
   dimensions: number;
@@ -130,6 +135,27 @@ function validateRecord(record: VectorRecord) {
   }
   if (record.contentPreview.length > 1_000) {
     throw new Error('contentPreview must not exceed 1000 characters.');
+  }
+  for (const [name, value] of [
+    ['pageStart', record.pageStart],
+    ['pageEnd', record.pageEnd],
+    ['sourceSegmentIndex', record.sourceSegmentIndex],
+  ] as const) {
+    if (value !== null && value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+      throw new Error(`${name} must be a non-negative integer or null.`);
+    }
+  }
+  if (record.pageStart !== null && record.pageEnd !== null && record.pageStart > record.pageEnd) {
+    throw new Error('pageStart must not be greater than pageEnd.');
+  }
+  if (
+    record.provenanceConfidence !== null &&
+    record.provenanceConfidence !== undefined &&
+    (!Number.isFinite(record.provenanceConfidence) ||
+      record.provenanceConfidence < 0 ||
+      record.provenanceConfidence > 1)
+  ) {
+    throw new Error('provenanceConfidence must be between 0 and 1.');
   }
 }
 
@@ -341,6 +367,11 @@ export class InMemoryVectorRepository implements VectorRepository {
       contentPreview: record.contentPreview,
       pageStart: record.pageStart,
       pageEnd: record.pageEnd,
+      sourceSegmentIndex: record.sourceSegmentIndex ?? null,
+      extractionMethod: record.extractionMethod ?? null,
+      sourceCoordinates: record.sourceCoordinates ?? null,
+      provenanceConfidence: record.provenanceConfidence ?? null,
+      provenanceVersion: record.provenanceVersion ?? null,
       embeddingModel: record.embeddingModel,
       embeddingVersion: record.embeddingVersion,
       dimensions: record.dimensions,
@@ -367,6 +398,11 @@ type DatabaseVectorRow = {
   contentPreview: string;
   pageStart: number | null;
   pageEnd: number | null;
+  sourceSegmentIndex: number | null;
+  extractionMethod: string | null;
+  sourceCoordinates: { x: number; y: number; width: number; height: number } | null;
+  provenanceConfidence: number | null;
+  provenanceVersion: string | null;
   embeddingModel: string;
   embeddingVersion: string;
   dimensions: number;
@@ -387,10 +423,13 @@ export class PostgreSQLVectorRepository implements VectorRepository {
       await database.$executeRawUnsafe(
         `INSERT INTO "DocumentChunkEmbedding" (
           "companyId", "documentId", "chunkId", "chunkIndex", "contentHash",
-          "contentPreview", "pageStart", "pageEnd", "embeddingModel",
-          "embeddingVersion", "dimensions", "embedding", "createdAt", "updatedAt"
+          "contentPreview", "pageStart", "pageEnd", "sourceSegmentIndex",
+          "extractionMethod", "sourceCoordinates", "provenanceConfidence",
+          "provenanceVersion", "embeddingModel", "embeddingVersion", "dimensions",
+          "embedding", "createdAt", "updatedAt"
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::vector,
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13,
+          $14, $15, $16, $17::vector,
           CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         ON CONFLICT (
@@ -401,6 +440,11 @@ export class PostgreSQLVectorRepository implements VectorRepository {
           "contentPreview" = EXCLUDED."contentPreview",
           "pageStart" = EXCLUDED."pageStart",
           "pageEnd" = EXCLUDED."pageEnd",
+          "sourceSegmentIndex" = EXCLUDED."sourceSegmentIndex",
+          "extractionMethod" = EXCLUDED."extractionMethod",
+          "sourceCoordinates" = EXCLUDED."sourceCoordinates",
+          "provenanceConfidence" = EXCLUDED."provenanceConfidence",
+          "provenanceVersion" = EXCLUDED."provenanceVersion",
           "dimensions" = EXCLUDED."dimensions",
           "embedding" = EXCLUDED."embedding",
           "updatedAt" = CURRENT_TIMESTAMP`,
@@ -412,6 +456,11 @@ export class PostgreSQLVectorRepository implements VectorRepository {
         record.contentPreview,
         record.pageStart,
         record.pageEnd,
+        record.sourceSegmentIndex ?? null,
+        record.extractionMethod ?? null,
+        record.sourceCoordinates ? JSON.stringify(record.sourceCoordinates) : null,
+        record.provenanceConfidence ?? null,
+        record.provenanceVersion ?? null,
         record.embeddingModel,
         record.embeddingVersion,
         record.dimensions,
@@ -466,6 +515,11 @@ export class PostgreSQLVectorRepository implements VectorRepository {
         e."contentPreview",
         e."pageStart",
         e."pageEnd",
+        e."sourceSegmentIndex",
+        e."extractionMethod",
+        e."sourceCoordinates",
+        e."provenanceConfidence",
+        e."provenanceVersion",
         e."embeddingModel",
         e."embeddingVersion",
         e."dimensions",
@@ -517,7 +571,9 @@ export class PostgreSQLVectorRepository implements VectorRepository {
     const rows = await database.$queryRawUnsafe<DatabaseVectorRow[]>(
       `SELECT
         "documentId", "chunkId", "chunkIndex", "contentHash", "contentPreview",
-        "pageStart", "pageEnd", "embeddingModel", "embeddingVersion", "dimensions"
+        "pageStart", "pageEnd", "sourceSegmentIndex", "extractionMethod",
+        "sourceCoordinates", "provenanceConfidence", "provenanceVersion",
+        "embeddingModel", "embeddingVersion", "dimensions"
       FROM "DocumentChunkEmbedding"
       WHERE "companyId" = $1 AND "documentId" = $2
       ${filters.length > 0 ? `AND ${filters.join(' AND ')}` : ''}
@@ -649,6 +705,11 @@ export class PostgreSQLVectorRepository implements VectorRepository {
       contentPreview: row.contentPreview,
       pageStart: row.pageStart,
       pageEnd: row.pageEnd,
+      sourceSegmentIndex: row.sourceSegmentIndex,
+      extractionMethod: row.extractionMethod,
+      sourceCoordinates: row.sourceCoordinates,
+      provenanceConfidence: row.provenanceConfidence,
+      provenanceVersion: row.provenanceVersion,
       embeddingModel: row.embeddingModel,
       embeddingVersion: row.embeddingVersion,
       dimensions: row.dimensions,

@@ -18,6 +18,43 @@ services:
       retries: 30
     restart: 'no'
 
+  postgres-restore:
+    image: pgvector/pgvector:pg16
+    profiles: ['restore']
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: avantime_restore_rehearsal
+    ports:
+      - '127.0.0.1:${RESTORE_POSTGRES_PORT:-55433}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d avantime_restore_rehearsal']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: 'no'
+
+  redis:
+    image: redis:8.4.0-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - ${REDIS_PASSWORD:-avantime_redis_test_only}
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-56379}:6379'
+    volumes:
+      - redis-integration-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" --no-auth-warning ping | grep PONG']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-avantime_redis_test_only}
+    restart: 'no'
+
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
@@ -47,13 +84,17 @@ services:
       - >
         mc alias set integration http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
         mc mb --ignore-existing "integration/$${MINIO_BUCKET}";
+        mc mb --ignore-existing "integration/$${MINIO_BACKUP_BUCKET}";
         mc anonymous set none "integration/$${MINIO_BUCKET}";
+        mc anonymous set none "integration/$${MINIO_BACKUP_BUCKET}";
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
+      MINIO_BACKUP_BUCKET: ${MINIO_BACKUP_BUCKET:-avantime-backups-integration}
     restart: 'no'
 
 volumes:
   postgres-integration-data:
   minio-integration-data:
+  redis-integration-data:

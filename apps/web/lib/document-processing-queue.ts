@@ -7,9 +7,13 @@ import { assertDocumentTenantContext, assertSafeDocumentSegment } from './docume
 export type DocumentProcessingJob = {
   id: string;
   documentId: string;
+  version?: 1;
+  correlationId?: string;
   enqueuedAt: string;
   availableAt: string;
   attempts: number;
+  fencingToken?: number;
+  leaseExpiresAt?: string | null;
 };
 
 export type DocumentEnqueueResult = {
@@ -28,12 +32,31 @@ export interface DocumentProcessingQueue {
       leaseDurationMs?: number;
     },
   ): Promise<DocumentProcessingJob | null>;
-  acknowledge(tenant: DocumentTenantContext, jobId: string, workerId: string): Promise<void>;
+  renew?(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+    leaseDurationMs: number,
+  ): Promise<DocumentProcessingJob>;
+  assertLease?(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+  ): Promise<void>;
+  acknowledge(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken?: number,
+  ): Promise<void>;
   release(
     tenant: DocumentTenantContext,
     jobId: string,
     workerId: string,
     availableAt: string,
+    fencingToken?: number,
   ): Promise<void>;
   removeForDocument(tenant: DocumentTenantContext, documentId: string): Promise<void>;
   list(tenant: DocumentTenantContext): Promise<DocumentProcessingJob[]>;
@@ -45,9 +68,12 @@ export interface ExternalDocumentProcessingQueue extends DocumentProcessingQueue
 }
 
 type StoredDocumentProcessingJob = DocumentProcessingJob & {
+  version: 1;
+  correlationId: string;
+  fencingToken: number;
+  leaseExpiresAt: string | null;
   state: 'QUEUED' | 'CLAIMED';
   workerId: string | null;
-  leaseExpiresAt: string | null;
 };
 
 const fileLocks = new Map<string, Promise<void>>();
@@ -84,19 +110,28 @@ function toPublicJob(job: StoredDocumentProcessingJob): DocumentProcessingJob {
   return {
     id: job.id,
     documentId: job.documentId,
+    version: job.version,
+    correlationId: job.correlationId,
     enqueuedAt: job.enqueuedAt,
     availableAt: job.availableAt,
     attempts: job.attempts,
+    fencingToken: job.fencingToken,
+    leaseExpiresAt: job.leaseExpiresAt,
   };
 }
 
 function validateStoredJob(job: StoredDocumentProcessingJob) {
   assertSafeDocumentSegment(job.id, 'job id');
   assertSafeDocumentSegment(job.documentId, 'document id');
+  assertSafeDocumentSegment(job.correlationId, 'correlationId');
+  if (job.version !== 1) throw new Error('Queue job version is unsupported.');
   parseDate(job.enqueuedAt, 'enqueuedAt');
   parseDate(job.availableAt, 'availableAt');
   if (!Number.isSafeInteger(job.attempts) || job.attempts < 0) {
     throw new Error('Queue job attempts must be a non-negative safe integer.');
+  }
+  if (!Number.isSafeInteger(job.fencingToken) || job.fencingToken < 0) {
+    throw new Error('Queue job fencingToken must be a non-negative safe integer.');
   }
   if (job.state !== 'QUEUED' && job.state !== 'CLAIMED') {
     throw new Error('Queue job has an unsupported state.');
@@ -129,9 +164,12 @@ export class LocalDocumentProcessingQueue implements DocumentProcessingQueue {
       const job: StoredDocumentProcessingJob = {
         id: crypto.randomUUID(),
         documentId,
+        version: 1,
+        correlationId: crypto.randomUUID(),
         enqueuedAt: now,
         availableAt: now,
         attempts: 0,
+        fencingToken: 0,
         state: 'QUEUED',
         workerId: null,
         leaseExpiresAt: null,
@@ -180,21 +218,76 @@ export class LocalDocumentProcessingQueue implements DocumentProcessingQueue {
       claimable.workerId = workerId;
       claimable.leaseExpiresAt = new Date(now.getTime() + leaseDurationMs).toISOString();
       claimable.attempts += 1;
+      claimable.fencingToken += 1;
       await this.write(filePath, jobs);
       return toPublicJob(claimable);
     });
   }
 
-  async acknowledge(tenant: DocumentTenantContext, jobId: string, workerId: string) {
+  async renew(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+    leaseDurationMs: number,
+  ) {
     const filePath = this.queueFile(tenant);
-    assertSafeDocumentSegment(jobId, 'job id');
-    assertSafeDocumentSegment(workerId, 'workerId');
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    if (!Number.isSafeInteger(leaseDurationMs) || leaseDurationMs <= 0) {
+      throw new Error('Queue lease duration must be a positive integer.');
+    }
+    return withFileLock(filePath, async () => {
+      const jobs = await this.read(filePath);
+      const job = jobs.find((item) => item.id === jobId);
+      if (!job) throw new Error('Queue job was not found.');
+      this.assertClaimOwner(job, workerId, fencingToken);
+      if (
+        !job.leaseExpiresAt ||
+        parseDate(job.leaseExpiresAt, 'leaseExpiresAt').getTime() <= Date.now()
+      ) {
+        throw new Error('Queue lease has expired.');
+      }
+      job.leaseExpiresAt = new Date(Date.now() + leaseDurationMs).toISOString();
+      await this.write(filePath, jobs);
+      return toPublicJob(job);
+    });
+  }
+
+  async assertLease(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+  ) {
+    const filePath = this.queueFile(tenant);
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    await withFileLock(filePath, async () => {
+      const job = (await this.read(filePath)).find((item) => item.id === jobId);
+      if (!job) throw new Error('Queue job was not found.');
+      this.assertClaimOwner(job, workerId, fencingToken);
+      if (
+        !job.leaseExpiresAt ||
+        parseDate(job.leaseExpiresAt, 'leaseExpiresAt').getTime() <= Date.now()
+      ) {
+        throw new Error('Queue lease has expired.');
+      }
+    });
+  }
+
+  async acknowledge(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken?: number,
+  ) {
+    const filePath = this.queueFile(tenant);
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
 
     await withFileLock(filePath, async () => {
       const jobs = await this.read(filePath);
       const index = jobs.findIndex((job) => job.id === jobId);
       if (index === -1) return;
-      this.assertClaimOwner(jobs[index], workerId);
+      this.assertClaimOwner(jobs[index], workerId, fencingToken ?? jobs[index].fencingToken);
       jobs.splice(index, 1);
       await this.write(filePath, jobs);
     });
@@ -205,17 +298,17 @@ export class LocalDocumentProcessingQueue implements DocumentProcessingQueue {
     jobId: string,
     workerId: string,
     availableAt: string,
+    fencingToken?: number,
   ) {
     const filePath = this.queueFile(tenant);
-    assertSafeDocumentSegment(jobId, 'job id');
-    assertSafeDocumentSegment(workerId, 'workerId');
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
     parseDate(availableAt, 'availableAt');
 
     await withFileLock(filePath, async () => {
       const jobs = await this.read(filePath);
       const job = jobs.find((item) => item.id === jobId);
       if (!job) throw new Error('Queue job was not found.');
-      this.assertClaimOwner(job, workerId);
+      this.assertClaimOwner(job, workerId, fencingToken ?? job.fencingToken);
       job.state = 'QUEUED';
       job.workerId = null;
       job.leaseExpiresAt = null;
@@ -278,9 +371,25 @@ export class LocalDocumentProcessingQueue implements DocumentProcessingQueue {
     await rename(temporaryFile, filePath);
   }
 
-  private assertClaimOwner(job: StoredDocumentProcessingJob, workerId: string) {
-    if (job.state !== 'CLAIMED' || job.workerId !== workerId) {
+  private assertClaimOwner(
+    job: StoredDocumentProcessingJob,
+    workerId: string,
+    fencingToken?: number,
+  ) {
+    if (
+      job.state !== 'CLAIMED' ||
+      job.workerId !== workerId ||
+      (fencingToken !== undefined && job.fencingToken !== fencingToken)
+    ) {
       throw new Error('Queue job is not claimed by this worker.');
+    }
+  }
+
+  private assertLeaseArguments(jobId: string, workerId: string, fencingToken?: number) {
+    assertSafeDocumentSegment(jobId, 'job id');
+    assertSafeDocumentSegment(workerId, 'workerId');
+    if (fencingToken !== undefined && (!Number.isSafeInteger(fencingToken) || fencingToken <= 0)) {
+      throw new Error('Queue fencingToken must be a positive safe integer.');
     }
   }
 }

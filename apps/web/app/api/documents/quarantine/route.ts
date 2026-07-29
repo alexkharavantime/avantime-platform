@@ -9,6 +9,7 @@ import {
   retryDocumentProcessing,
 } from '../../../../lib/document-quarantine';
 import { getDocumentServices } from '../../../../lib/document-services';
+import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
 
 export const runtime = 'nodejs';
 
@@ -87,6 +88,13 @@ export async function POST(request: Request) {
         },
       );
     }
+    await appendCriticalDocumentAudit(tenant, {
+      action: `document.quarantine.${payload.action}`,
+      targetType: 'document',
+      targetId: payload.documentId,
+      result: 'SUCCEEDED',
+      safeMetadata: { resultingStatus: document.status },
+    });
 
     return NextResponse.json({
       document: toDocumentApiItem(document),

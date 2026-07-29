@@ -6,7 +6,7 @@ import { DocumentProcessingError } from './document-processing-errors';
 import type { DocumentTextQualityService } from './document-text-quality';
 import { normalizeDocumentText } from './document-text-normalization';
 import type { DocumentTypeDetector } from './document-type-detection';
-import { extractPdfText, splitTextIntoChunks } from './pdf-extractor';
+import { extractPdfText, splitPagesIntoChunks } from './pdf-extractor';
 
 export type DocumentIntelligenceResult = {
   text: string;
@@ -49,6 +49,7 @@ export class DefaultDocumentIntelligenceService implements DocumentIntelligenceS
     }
 
     let text = '';
+    let pageTexts: string[] = [];
     let pageCount = file.format === 'PDF' ? 0 : 1;
     let extractionMethod: DocumentIntelligenceMetadata['textExtractionMethod'] = 'NONE';
     let ocrStatus: DocumentIntelligenceMetadata['ocrStatus'] = 'PENDING';
@@ -60,6 +61,7 @@ export class DefaultDocumentIntelligenceService implements DocumentIntelligenceS
     if (file.format === 'PDF') {
       const extracted = await extractPdfText(content);
       text = extracted.text;
+      pageTexts = extracted.pageTexts ?? [extracted.text];
       pageCount = extracted.pages;
     }
 
@@ -72,6 +74,7 @@ export class DefaultDocumentIntelligenceService implements DocumentIntelligenceS
         mimeType: file.detectedMimeType as 'application/pdf' | 'image/png' | 'image/jpeg',
       });
       text = recognized.text;
+      pageTexts = recognized.text.split(/\f/);
       pageCount = recognized.pageCount;
       ocrProvider = recognized.provider;
       ocrLanguage = recognized.language;
@@ -83,7 +86,13 @@ export class DefaultDocumentIntelligenceService implements DocumentIntelligenceS
       extractionMethod = 'PDF_TEXT';
     }
 
-    const normalized = normalizeDocumentText(text);
+    const paged = splitPagesIntoChunks(
+      pageTexts.length > 0
+        ? pageTexts.map((page) => normalizeDocumentText(page))
+        : [normalizeDocumentText(text)],
+      extractionMethod === 'OCR' ? 'OCR' : 'PDF_TEXT',
+    );
+    const normalized = paged.text;
     const finalQuality = this.dependencies.quality.assess({ text: normalized, pageCount });
     if (mustOcr && !finalQuality.sufficient) {
       throw new DocumentProcessingError(
@@ -98,7 +107,7 @@ export class DefaultDocumentIntelligenceService implements DocumentIntelligenceS
     });
     const requiresManualReview =
       file.mismatch || finalQuality.requiresManualReview || type.requiresManualReview;
-    const chunks = splitTextIntoChunks(normalized);
+    const chunks = paged.chunks;
 
     return {
       text: normalized,

@@ -12,6 +12,7 @@ import { decideDocumentRetry, type DocumentRetryPolicy } from './document-retry-
 import type { DocumentStorage } from './document-storage';
 import { extractPdfText } from './pdf-extractor';
 import type { DocumentIntelligenceService } from './document-intelligence';
+import { WorkerLeaseHeartbeat } from './worker-lease';
 
 export type DocumentExtractor = typeof extractPdfText;
 
@@ -40,6 +41,9 @@ export type DocumentProcessingWorkerDependencies = {
   intelligence?: DocumentIntelligenceService;
   now?: () => Date;
   leaseDurationMs?: number;
+  heartbeatIntervalMs?: number;
+  workerVersion?: string;
+  deploymentGeneration?: string;
   afterCompleted?: (tenant: DocumentTenantContext, documentId: string) => Promise<void>;
 };
 
@@ -67,9 +71,10 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
     workerId: string,
     job: DocumentProcessingJob,
   ): Promise<DocumentWorkerRunResult> {
+    const fencingToken = job.fencingToken ?? Math.max(1, job.attempts);
     let document = await this.dependencies.metadata.findById(tenant, job.documentId);
     if (!document) {
-      await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
+      await this.dependencies.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       return {
         outcome: 'SKIPPED',
         documentId: job.documentId,
@@ -82,7 +87,7 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
       document.status === 'FAILED' ||
       document.status === 'QUARANTINED'
     ) {
-      await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
+      await this.dependencies.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       return {
         outcome: 'SKIPPED',
         documentId: document.id,
@@ -98,7 +103,7 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
         'QUEUED',
       );
       if (!document) {
-        await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
+        await this.dependencies.queue.acknowledge(tenant, job.id, workerId, fencingToken);
         return {
           outcome: 'SKIPPED',
           documentId: job.documentId,
@@ -108,6 +113,9 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
     }
 
     const processingStartedAt = this.now().toISOString();
+    const leaseDurationMs = this.dependencies.leaseDurationMs ?? 5 * 60_000;
+    const workerVersion = this.dependencies.workerVersion ?? 'development';
+    const deploymentGeneration = this.dependencies.deploymentGeneration ?? 'local';
     const claimed = await this.dependencies.metadata.transitionStatus(
       tenant,
       document.id,
@@ -120,12 +128,17 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
         nextRetryAt: null,
         quarantinedAt: null,
         workerId,
+        workerVersion,
+        deploymentGeneration,
+        processingFencingToken: fencingToken,
+        workerHeartbeatAt: processingStartedAt,
+        processingLeaseUntil: job.leaseExpiresAt,
         lastErrorCode: null,
         lastErrorMessage: null,
       },
     );
     if (!claimed) {
-      await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
+      await this.dependencies.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       return {
         outcome: 'SKIPPED',
         documentId: document.id,
@@ -133,6 +146,41 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
       };
     }
 
+    const leaseGuard = {
+      workerId,
+      fencingToken,
+    };
+    const heartbeat = new WorkerLeaseHeartbeat(
+      {
+        renew: async () => {
+          const renewed = await this.dependencies.queue.renew?.(
+            tenant,
+            job.id,
+            workerId,
+            fencingToken,
+            leaseDurationMs,
+          );
+          if (!renewed) return;
+          const updated = await this.dependencies.metadata.transitionStatus(
+            tenant,
+            claimed.id,
+            ['PROCESSING'],
+            'PROCESSING',
+            {
+              workerHeartbeatAt: this.now().toISOString(),
+              processingLeaseUntil: renewed.leaseExpiresAt,
+            },
+            leaseGuard,
+          );
+          if (!updated) throw new Error('Document processing fence is no longer current.');
+        },
+        assertOwned: () =>
+          this.dependencies.queue.assertLease?.(tenant, job.id, workerId, fencingToken) ??
+          Promise.resolve(),
+      },
+      this.dependencies.heartbeatIntervalMs ?? Math.max(1_000, Math.floor(leaseDurationMs / 3)),
+    );
+    heartbeat.start();
     let completedSuccessfully = false;
     try {
       const original = await this.dependencies.storage.read(
@@ -158,6 +206,7 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
         text: extracted.text,
         chunks: extracted.chunks,
       });
+      await heartbeat.assertOwned();
 
       const completed = await this.dependencies.metadata.transitionStatus(
         tenant,
@@ -173,9 +222,12 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
           nextRetryAt: null,
           quarantinedAt: null,
           workerId: null,
+          workerHeartbeatAt: null,
+          processingLeaseUntil: null,
           lastErrorCode: null,
           lastErrorMessage: null,
         },
+        leaseGuard,
       );
       if (!completed) {
         await this.dependencies.processing.delete(tenant, claimed.id);
@@ -192,7 +244,8 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
       } catch {
         // Indexing has its own lifecycle and must not roll back completed extraction.
       }
-      await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
+      await heartbeat.stop();
+      await this.dependencies.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       return {
         outcome: 'COMPLETED',
         documentId: claimed.id,
@@ -202,6 +255,7 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
       if (completedSuccessfully) {
         throw error;
       }
+      await heartbeat.stop();
 
       try {
         await this.dependencies.processing.delete(tenant, claimed.id);
@@ -243,9 +297,16 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
             nextRetryAt: decision.nextRetryAt,
             quarantinedAt: null,
           },
+          leaseGuard,
         );
         if (!queued) throw new Error('Unable to schedule document processing retry.');
-        await this.dependencies.queue.release(tenant, job.id, workerId, decision.nextRetryAt);
+        await this.dependencies.queue.release(
+          tenant,
+          job.id,
+          workerId,
+          decision.nextRetryAt,
+          fencingToken,
+        );
         return {
           outcome: 'RETRY_SCHEDULED',
           documentId: claimed.id,
@@ -265,9 +326,10 @@ export class DefaultDocumentProcessingWorker implements DocumentProcessingWorker
           nextRetryAt: null,
           quarantinedAt: status === 'QUARANTINED' ? this.now().toISOString() : null,
         },
+        leaseGuard,
       );
       if (!updated) throw new Error('Unable to persist document processing failure.');
-      await this.dependencies.queue.acknowledge(tenant, job.id, workerId);
+      await this.dependencies.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       return {
         outcome: status === 'QUARANTINED' ? 'QUARANTINED' : 'FAILED',
         documentId: claimed.id,

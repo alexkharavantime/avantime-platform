@@ -1,3 +1,5 @@
+import { getPrisma } from '@avantime/database';
+
 import { loadDocumentConfiguration, type DocumentConfiguration } from './document-configuration';
 import type { DocumentTenantContext } from './document-model';
 import {
@@ -41,6 +43,13 @@ import { DefaultDocumentTypeDetector } from './document-type-detection';
 import { loadRagConfiguration, type RagConfiguration } from './rag-configuration';
 import { createRagServices, type RagServiceDependencies, type RagServices } from './rag-services';
 import { enqueueDocumentEmbedding } from './document-embedding';
+import {
+  createLazyRedisCommandClient,
+  RedisDocumentProcessingQueue,
+  RedisEmbeddingJobQueue,
+  type RedisCommandClient,
+} from './redis-lease-queue';
+import { PostgreSQLAiCostController, RedisAiRateLimiter } from './ai-control';
 
 export type DocumentPersistenceServices = {
   storage: DocumentStorage;
@@ -66,6 +75,7 @@ export type DocumentServiceDependencies = {
   ocrProvider?: DocumentOcrProvider;
   ragConfiguration?: RagConfiguration;
   rag?: RagServiceDependencies;
+  redisClient?: RedisCommandClient;
 };
 
 let configuredServices: DocumentServices | undefined;
@@ -100,14 +110,25 @@ export function createDocumentServices(
   dependencies: DocumentServiceDependencies = {},
 ): DocumentServices {
   const persistence = createDocumentPersistenceServices(configuration, dependencies);
+  const redisClient =
+    dependencies.redisClient ??
+    ((configuration.queueDriver === 'external' || dependencies.ragConfiguration?.production) &&
+    (configuration.redisUrl || process.env.REDIS_URL)
+      ? createLazyRedisCommandClient(configuration.redisUrl || process.env.REDIS_URL || '')
+      : undefined);
   let queue: DocumentProcessingQueue;
   if (configuration.queueDriver === 'external') {
-    if (!dependencies.processingQueue || dependencies.processingQueue.kind !== 'external') {
+    const configuredQueue =
+      dependencies.processingQueue ??
+      (redisClient && configuration.queueName
+        ? new RedisDocumentProcessingQueue(redisClient, configuration.queueName)
+        : undefined);
+    if (!configuredQueue || configuredQueue.kind !== 'external') {
       throw new Error(
         'An external DocumentProcessingQueue adapter is required for this configuration.',
       );
     }
-    const externalQueue = dependencies.processingQueue as ExternalDocumentProcessingQueue;
+    const externalQueue = configuredQueue as ExternalDocumentProcessingQueue;
     if (externalQueue.queueName !== configuration.queueName) {
       throw new Error('External processing queue name does not match the configuration.');
     }
@@ -146,7 +167,27 @@ export function createDocumentServices(
     ...baseRagConfiguration,
     dataDirectory: configuration.dataDirectory,
   };
-  const rag = createRagServices(ragConfiguration, documentServices, dependencies.rag);
+  const productionRagDependencies: RagServiceDependencies = ragConfiguration.production
+    ? {
+        embeddingQueue:
+          dependencies.rag?.embeddingQueue ??
+          (redisClient ? new RedisEmbeddingJobQueue(redisClient) : undefined),
+        rateLimiter:
+          dependencies.rag?.rateLimiter ??
+          (redisClient ? new RedisAiRateLimiter(redisClient) : undefined),
+        costController:
+          dependencies.rag?.costController ??
+          new PostgreSQLAiCostController(
+            dependencies.rag?.loadDatabase ?? (async () => await getPrisma()),
+            ragConfiguration.limits.dailyBudgetEur,
+            ragConfiguration.limits.monthlyBudgetEur,
+          ),
+      }
+    : {};
+  const rag = createRagServices(ragConfiguration, documentServices, {
+    ...dependencies.rag,
+    ...productionRagDependencies,
+  });
   return {
     ...documentServices,
     rag,
@@ -164,6 +205,8 @@ export function createDocumentProcessingWorker(
     extractor?: DocumentExtractor;
     now?: () => Date;
     afterCompleted?: (tenant: DocumentTenantContext, documentId: string) => Promise<void>;
+    workerVersion?: string;
+    deploymentGeneration?: string;
   } = {},
 ) {
   return new DefaultDocumentProcessingWorker({
@@ -188,6 +231,8 @@ export function createDocumentProcessingWorker(
             }
           }
         : undefined),
+    workerVersion: dependencies.workerVersion ?? process.env.WORKER_VERSION,
+    deploymentGeneration: dependencies.deploymentGeneration ?? process.env.DEPLOYMENT_GENERATION,
     ...dependencies,
   });
 }

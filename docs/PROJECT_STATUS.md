@@ -10,7 +10,7 @@
 
 ### 🎯 Текущая цель проекта
 
-Подготовить безопасное модульное ядро Avantime Platform Version 2.0: объединить клиентский портал и dashboard, подключить production infrastructure к tenant-aware document/RAG contracts и внедрить RBAC и наблюдаемость поверх готового AI Gateway.
+Проверить завершённую TASK-005 reference architecture на managed staging infrastructure, затем продолжить production identity/RBAC и объединение Knowledge Center.
 
 ### 📈 Общий процент готовности
 
@@ -18,21 +18,21 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. завершена TASK-004: единый AI Gateway, embeddings, PostgreSQL/pgvector и hybrid RAG;
-2. добавлены server-generated citations, prompt-injection boundary и tenant/leakage regression gates;
-3. PostgreSQL/MinIO/pgvector/RAG, migration, health и real OCR integration gates фактически пройдены.
+1. TASK-005 завершена после authoritative dependency review и повторного full gate suite;
+2. добавлены Redis queues/fencing, distributed AI limits, EUR cost ledger, audit и page provenance;
+3. добавлены backup/restore rehearsal, pgvector strategy, production images/manifests, CI gates и runbooks.
 
 ### 🚧 Три главных риска
 
-1. PostgreSQL/S3 contracts проверены через local PostgreSQL/MinIO, но выбранные production providers, external queue и обязательный CI gate отсутствуют; Document API остаётся `ADMIN`-only;
+1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners; Document API остаётся `ADMIN`-only;
 2. параллельные `/portal` и `/dashboard`, а также раздельные article/document knowledge models увеличивают архитектурный долг;
-3. production external queue, distributed AI limits/metrics, backup/restore и disaster recovery ещё не реализованы.
+3. accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12, а initial SLO не подтверждены production-like измерениями.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. **INFRA-003/INFRA-002:** выбрать external queue provider, distributed adapter, metrics и alerts;
-2. **INFRA-001/SEC-006:** развернуть private S3/PostgreSQL environment и проверить backup/restore;
-3. **CI:** закрепить PostgreSQL/MinIO/pgvector/RAG и OCR suites обязательными CI gates.
+1. Развернуть reference topology в managed staging и подтвердить backup/PITR/alerts.
+2. Повторить dependency review `AR-DEP-2026-001/002` не позднее 2026-08-12.
+3. Продолжить production identity/RBAC и единую knowledge permission model.
 
 ---
 
@@ -41,11 +41,11 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.10                                                                                      |
-| Дата последнего обновления       | 2026-07-28                                                                                |
+| Версия документа                 | 1.14                                                                                      |
+| Дата последнего обновления       | 2026-07-29                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-004-hybrid-rag`                                                             |
-| Последний commit                 | `d873e26 feat(documents): add document intelligence and OCR pipeline (#8)`                |
+| Текущая ветка Git                | `feature/task-005-production-readiness`                                                   |
+| Последний commit                 | `d07deb2 feat(ai): add tenant-aware embeddings and hybrid RAG (#9)`                       |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
 | Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
@@ -126,6 +126,18 @@ PostgreSQL/MinIO integration environment фактически запущен. Mi
 
 TASK-004 завершает AI-001 для текущих AI routes. Более широкие AI-002/AI-003 provider policies, AI-007 для статей/клиентских ролей, AI-008 для статей, AI-009 production capacity/backup и DOC-002 external processing queue остаются `In Progress`.
 
+[TASK-005](./tasks/TASK-005.md) завершена в application/code/documentation scope:
+реализованы Redis queues/fencing, distributed AI limits, PostgreSQL cost/budget
+ledger, backup/restore guards, isolated rehearsal, telemetry/audit, page
+provenance, load-test/ANN decision, configuration hardening,
+containers/manifests, CI gates и runbooks. Authoritative npm audit
+классифицирован; `AR-DEP-2026-001/002` приняты до 2026-08-12.
+
+Подтверждены 103/103 unit/security tests, 18/18 full integration,
+отдельные production Redis/cost/audit и Hybrid RAG suites, real OCR, migration и
+restore rehearsals, health/operations, typecheck, lint, static security gates,
+production build на 59 entries и все пять production Docker targets.
+
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
@@ -170,7 +182,7 @@ TASK-004 завершает AI-001 для текущих AI routes. Более �
 | Публичный сайт          | In Progress |        65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности                                          |
 | Личный кабинет          | In Progress |        65% | Обращения изолированы по компании, dashboard требует сессию; требуется объединение двух оболочек                                                       |
 | Административная панель | In Progress |        55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI                                             |
-| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector и hybrid RAG готовы; production policies, articles, agents и durable cost controls остаются                  |
+| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются             |
 | База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                                |
 | Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                            |
 | Jira                    | In Progress |        35% | Реализовано создание issue; двусторонняя синхронизация отсутствует                                                                                     |
@@ -179,9 +191,9 @@ TASK-004 завершает AI-001 для текущих AI routes. Более �
 | API                     | In Progress |        50% | Добавлены ADMIN document search/RAG/indexing/reindex APIs; внешняя версионируемая API Platform отсутствует                                             |
 | Безопасность            | In Progress |        65% | Dashboard и внутренние API закрыты; document persistence tenant-aware и проверен локально, но полная RBAC и production provider validation отсутствуют |
 | UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                             |
-| Инфраструктура          | In Progress |        40% | Добавлены local PostgreSQL/MinIO validation, persistence/worker contracts и health; нет production providers, external queue, backup и наблюдаемости   |
-| Тестирование            | In Progress |        60% | 90 unit/security, 17 PostgreSQL/MinIO/pgvector/RAG и real OCR test проходят; обязательный CI gate и покрытие остальных доменов ещё отсутствуют         |
-| Развёртывание           | Planned     |        15% | Локальный запуск описан частично; production deployment и rollback не формализованы                                                                    |
+| Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены        |
+| Тестирование            | In Progress |        62% | Проходят 103 unit/security, 18 full integration, отдельные RAG/Redis/OCR, migration/restore и static security gates; advisories классифицированы       |
+| Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                        |
 
 ---
 
@@ -457,7 +469,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 |       4 | Провести staging provider validation и backup/restore test         | P0        | Безопасный переход без потери tenant-принадлежности | Средняя                   |
 |       5 | Проверить production AI providers и distributed limits             | P0        | Эксплуатационная готовность AI Gateway              | Высокая                   |
 |       6 | Объединить `/portal` и `/dashboard` по этапам                      | P0        | Цельный UX и устранение дублирования                | Высокая                   |
-|       7 | Подключить external queue, мониторинг и корреляционные ID          | P0        | Production-ready обработка и диагностика            | Высокая                   |
+|       7 | Развернуть Redis queues и telemetry adapters в managed staging     | P0        | Проверяемая production-обработка и диагностика      | Высокая                   |
 |       8 | Расширить security и integration tests критических сценариев       | P0        | Проверяемая готовность Version 2.0                  | Высокая                   |
 
 ---
@@ -466,6 +478,9 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                    |
 | ---------- | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-29 | 1.14   | Codex, по поручению владельца проекта | TASK-005 завершена: authoritative npm audit классифицирован, compatible transitive patch применён, AR-DEP-2026-001/002 приняты до 2026-08-12, full gate suite повторно пройден               |
+| 2026-07-29 | 1.13   | Codex, по поручению владельца проекта | После восстановления повторно подтверждены 103 unit/security, integration, OCR, migration/restore, pgvector, build и пять Docker targets; dependency review остаётся blocker                 |
+| 2026-07-28 | 1.12   | Codex, по поручению владельца проекта | Зафиксированы TASK-005 production reliability contracts и фактические unit/integration/OCR/migration/restore/security gates; dependency review и повторный final build остаются blockers     |
 | 2026-07-28 | 1.10   | Codex, по поручению владельца проекта | TASK-004 завершена: AI Gateway, embeddings, pgvector, hybrid RAG, citations, evaluation и раздельная readiness прошли unit/integration/migration/build gates                                 |
 | 2026-07-28 | 1.9    | Codex, по поручению владельца проекта | TASK-003 переведена в Done после успешных core/OCR readiness, PostgreSQL/MinIO и real Tesseract/Poppler gates; AI Gateway, embeddings и hybrid RAG перенесены в TASK-004                     |
 | 2026-07-28 | 1.8    | Codex, по поручению владельца проекта | Исправлена нормализация legacy processingAttempts; успешно выполнены migration rehearsal и 16 PostgreSQL/MinIO/E2E tests; TASK-002 переведена в Done                                         |
@@ -574,5 +589,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 - [Product Backlog](./PRODUCT_BACKLOG.md) — эпики, задачи, приоритеты и статусы;
 - [Architecture 2.0](./ARCHITECTURE_2_0.md) — целевая архитектура и план перехода;
 - [Architecture Decision Records](./DECISIONS.md) — принятые и предлагаемые архитектурные решения;
+- [TASK-005](./tasks/TASK-005.md) — текущая production-readiness задача;
+- [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md) — environment-specific go-live gates;
 - [Codex Rules](./CODEX_RULES.md) — правила работы Codex в проекте;
 - [AGENTS.md](../AGENTS.md) — обязательные инструкции для агентов.

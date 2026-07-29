@@ -10,7 +10,7 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     env:
-      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      SESSION_SECRET: ci-only-session-secret-with-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,3 +22,55 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: cp .env.integration.example .env.integration
+      - run: npm run integration:up
+      - run: npm run db:generate
+      - run: npm run documents:migration-rehearsal
+      - run: npm run test:integration
+      - run: npm run test:rag-integration
+      - run: npm run test:production-integration
+      - run: npm run pgvector:load-test -- --integration --smoke
+      - run: npm run restore:rehearsal:integration
+      - if: always()
+        run: npm run integration:down
+
+  ocr-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f docker/ocr-integration.Dockerfile -t avantime-ocr-integration .
+      - run: docker run --rm avantime-ocr-integration
+
+  security-and-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=optional --audit-level=critical
+      - run: npm run security:secret-scan -w @avantime/web
+      - run: npm run security:migration-scan -w @avantime/web
+      - run: npm run backup:dry-run
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/avantime_integration
+          BACKUP_ENVIRONMENT: ci
+          BACKUP_OUTPUT_DIR: /tmp/avantime-ci-backups
+          BACKUP_ENCRYPTION_REQUIRED: 'true'
+      - run: docker build --target web -f docker/production.Dockerfile -t avantime-platform:ci .
+      - run: docker build --target document-worker -f docker/production.Dockerfile -t avantime-document-worker:ci .
+      - run: docker build --target embedding-worker -f docker/production.Dockerfile -t avantime-embedding-worker:ci .
+      - run: docker build --target migration -f docker/production.Dockerfile -t avantime-migration:ci .
+      - run: docker build --target operations -f docker/production.Dockerfile -t avantime-operations:ci .

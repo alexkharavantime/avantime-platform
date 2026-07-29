@@ -5,6 +5,14 @@ import OpenAI from 'openai';
 
 import type { AiOperationalEventSink } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
+import {
+  MemoryAiCostController,
+  MemoryAiRateLimiter,
+  type AiBudgetReservation,
+  type AiCostController,
+  type AiRequestType,
+  type DistributedAiRateLimiter,
+} from './ai-control';
 import type { DocumentTenantContext } from './document-model';
 import type { AiProviderDriver, RagConfiguration } from './rag-configuration';
 
@@ -17,6 +25,7 @@ export type EmbeddingRequest = {
   dimensions: number;
   purpose: EmbeddingPurpose;
   correlationId: string;
+  usageIdempotencyKey?: string;
 };
 
 export type AiUsage = {
@@ -115,54 +124,6 @@ export class AiGatewayError extends Error {
   ) {
     super(safeMessage);
     this.name = 'AiGatewayError';
-  }
-}
-
-type RateLimitEntry = {
-  minute: number;
-  count: number;
-};
-
-class AiUsageGuard {
-  private readonly minuteUsage = new Map<string, RateLimitEntry>();
-  private readonly dailyCost = new Map<string, { day: string; cost: number }>();
-
-  constructor(
-    private readonly perMinute: number,
-    private readonly dailyBudgetEur: number,
-    private readonly now: () => Date,
-  ) {}
-
-  assertAllowed(tenant: DocumentTenantContext) {
-    const now = this.now();
-    const minute = Math.floor(now.getTime() / 60_000);
-    const key = `${tenant.companyId}:${tenant.userId}`;
-    const entry = this.minuteUsage.get(key);
-    if (entry?.minute === minute && entry.count >= this.perMinute) {
-      throw new AiGatewayError('AI_RATE_LIMITED', true, 'Лимит AI-запросов временно исчерпан.');
-    }
-    this.minuteUsage.set(key, {
-      minute,
-      count: entry?.minute === minute ? entry.count + 1 : 1,
-    });
-
-    if (this.dailyBudgetEur > 0) {
-      const day = now.toISOString().slice(0, 10);
-      const budget = this.dailyCost.get(tenant.companyId);
-      if (budget?.day === day && budget.cost >= this.dailyBudgetEur) {
-        throw new AiGatewayError('AI_BUDGET_EXCEEDED', false, 'Дневной бюджет AI исчерпан.');
-      }
-    }
-  }
-
-  record(tenant: DocumentTenantContext, cost: number) {
-    if (cost <= 0) return;
-    const day = this.now().toISOString().slice(0, 10);
-    const current = this.dailyCost.get(tenant.companyId);
-    this.dailyCost.set(tenant.companyId, {
-      day,
-      cost: current?.day === day ? current.cost + cost : cost,
-    });
   }
 }
 
@@ -526,7 +487,8 @@ function providerForDriver(
 }
 
 export class DefaultAiGateway implements AiGateway {
-  private readonly usageGuard: AiUsageGuard;
+  private readonly rateLimiter: DistributedAiRateLimiter;
+  private readonly costController: AiCostController;
 
   constructor(
     private readonly configuration: RagConfiguration,
@@ -534,12 +496,19 @@ export class DefaultAiGateway implements AiGateway {
     private readonly answerProvider: RagAnswerProvider,
     private readonly events: AiOperationalEventSink = new NoopAiOperationalEventSink(),
     now: () => Date = () => new Date(),
+    controls: {
+      rateLimiter?: DistributedAiRateLimiter;
+      costController?: AiCostController;
+    } = {},
   ) {
-    this.usageGuard = new AiUsageGuard(
-      configuration.limits.rateLimitPerMinute,
-      configuration.limits.dailyBudgetEur,
-      now,
-    );
+    this.rateLimiter = controls.rateLimiter ?? new MemoryAiRateLimiter(now);
+    this.costController =
+      controls.costController ??
+      new MemoryAiCostController(
+        configuration.limits.dailyBudgetEur,
+        configuration.limits.monthlyBudgetEur,
+        now,
+      );
   }
 
   async createDocumentEmbeddings(request: Omit<EmbeddingRequest, 'model' | 'dimensions'>) {
@@ -566,7 +535,19 @@ export class DefaultAiGateway implements AiGateway {
   }
 
   async generateRagAnswer(request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'>) {
-    this.usageGuard.assertAllowed(request.tenant);
+    const estimatedInput = estimateTokens([
+      request.question,
+      request.systemInstructions,
+      ...request.sources.map((source) => source.excerpt),
+    ]);
+    const reservation = await this.authorize(
+      request.tenant,
+      this.answerProvider.id,
+      this.configuration.answer.model,
+      'rag_answer',
+      request.correlationId,
+      estimateCost(estimatedInput, this.configuration.answer.maximumOutputTokens),
+    );
     const startedAt = Date.now();
     try {
       const result = await this.withRetry(() =>
@@ -584,7 +565,7 @@ export class DefaultAiGateway implements AiGateway {
       if (!result.answer.trim()) {
         throw new AiGatewayError('AI_INVALID_RESPONSE', false, 'AI provider не вернул ответ.');
       }
-      this.usageGuard.record(request.tenant, result.usage.estimatedCostEur);
+      await this.recordUsage(reservation, result.usage, 0);
       this.events.record({
         name: 'provider_call',
         occurredAt: new Date().toISOString(),
@@ -598,6 +579,7 @@ export class DefaultAiGateway implements AiGateway {
       });
       return result;
     } catch (error) {
+      await this.costController.release(reservation);
       const normalized = classifyProviderError(error);
       this.events.record({
         name: 'provider_call',
@@ -624,7 +606,16 @@ export class DefaultAiGateway implements AiGateway {
     if (request.texts.length === 0) {
       throw new AiGatewayError('AI_REQUEST_REJECTED', false, 'Embedding input is empty.');
     }
-    this.usageGuard.assertAllowed(request.tenant);
+    const requestType: AiRequestType =
+      request.purpose === 'document' ? 'document_embedding' : 'query_embedding';
+    const reservation = await this.authorize(
+      request.tenant,
+      this.embeddingProvider.id,
+      request.model,
+      requestType,
+      request.correlationId,
+      estimateCost(estimateTokens(request.texts), 0),
+    );
     const startedAt = Date.now();
     try {
       const result = await this.withRetry(() =>
@@ -633,7 +624,7 @@ export class DefaultAiGateway implements AiGateway {
         ),
       );
       validateEmbeddingResult(result, request.texts.length, request.dimensions);
-      this.usageGuard.record(request.tenant, result.usage.estimatedCostEur);
+      await this.recordUsage(reservation, result.usage, request.texts.length);
       this.events.record({
         name: 'provider_call',
         occurredAt: new Date().toISOString(),
@@ -646,6 +637,7 @@ export class DefaultAiGateway implements AiGateway {
       });
       return result;
     } catch (error) {
+      await this.costController.release(reservation);
       const normalized = classifyProviderError(error);
       this.events.record({
         name: 'provider_call',
@@ -672,6 +664,61 @@ export class DefaultAiGateway implements AiGateway {
     }
     throw lastError;
   }
+
+  private async authorize(
+    tenant: DocumentTenantContext,
+    provider: string,
+    model: string,
+    requestType: AiRequestType,
+    correlationId: string,
+    estimatedCostEur: number,
+    usageIdempotencyKey?: string,
+  ) {
+    let allowed = false;
+    try {
+      allowed = await this.rateLimiter.consume({
+        tenant,
+        provider,
+        requestType,
+        minuteLimit: this.configuration.limits.rateLimitPerMinute,
+        dailyLimit: this.configuration.limits.rateLimitPerDay,
+        burstLimit: this.configuration.limits.burstLimit,
+      });
+    } catch {
+      throw new AiGatewayError('AI_RATE_LIMITED', true, 'Distributed AI rate limiter недоступен.');
+    }
+    if (!allowed) {
+      throw new AiGatewayError('AI_RATE_LIMITED', true, 'Лимит AI-запросов временно исчерпан.');
+    }
+    const reservation = await this.costController.reserve({
+      tenant,
+      provider,
+      model,
+      requestType,
+      correlationId,
+      idempotencyKey: usageIdempotencyKey ?? `${requestType}:${correlationId}`,
+      estimatedCostEur,
+    });
+    if (!reservation) {
+      throw new AiGatewayError('AI_BUDGET_EXCEEDED', false, 'Бюджет AI исчерпан.');
+    }
+    return reservation;
+  }
+
+  private async recordUsage(
+    reservation: AiBudgetReservation,
+    usage: AiUsage,
+    embeddingUnits: number,
+  ) {
+    await this.costController.reconcile({
+      reservation,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      embeddingUnits,
+      estimatedCostEur: usage.estimatedCostEur,
+      status: 'SUCCEEDED',
+    });
+  }
 }
 
 export function createAiGateway(
@@ -682,6 +729,8 @@ export function createAiGateway(
     events?: AiOperationalEventSink;
     environment?: Record<string, string | undefined>;
     now?: () => Date;
+    rateLimiter?: DistributedAiRateLimiter;
+    costController?: AiCostController;
   } = {},
 ) {
   const environment = options.environment ?? process.env;
@@ -697,5 +746,9 @@ export function createAiGateway(
     answerProvider,
     options.events,
     options.now,
+    {
+      rateLimiter: options.rateLimiter,
+      costController: options.costController,
+    },
   );
 }

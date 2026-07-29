@@ -1,6 +1,6 @@
 # Обработка документов
 
-Документ описывает tenant-aware очередь, отдельный worker, retries, quarantine и инфраструктурную валидацию pipeline TASK-002/TASK-003. TASK-004 добавляет отдельный embedding lifecycle после успешного сохранения chunks, не смешивая его с processing status. Production external document-processing queue по-прежнему не входит.
+Документ описывает tenant-aware очередь, отдельный worker, retries, quarantine и инфраструктурную валидацию pipeline TASK-002/TASK-003. TASK-004 добавляет отдельный embedding lifecycle после успешного сохранения chunks, не смешивая его с processing status. TASK-005 добавляет Redis production queues, heartbeat и fencing.
 
 ## Статусная модель
 
@@ -33,7 +33,7 @@ Job содержит только внутренние идентификато�
 
 `LocalDocumentProcessingQueue` хранит очередь в `.data/document-tenants/{companyId}/processing-queue.json`. Она предназначена только для development и тестов, сохраняет job между перезапусками и восстанавливает просроченный lease. Для неё разрешён только один локальный процесс worker; межпроцессная распределённая блокировка не гарантируется.
 
-`ExternalDocumentProcessingQueue` является production-контрактом. Конкретный провайдер, инфраструктура и adapter пока не выбраны. Production запрещает local queue и завершается понятной ошибкой без external adapter.
+`ExternalDocumentProcessingQueue` является production-контрактом. TASK-005 реализует Redis adapter с atomic server-time lease, renewal, fencing, delayed retry и crash recovery. Production запрещает local queue и требует authenticated TLS Redis configuration.
 
 ## Upload lifecycle
 
@@ -63,7 +63,7 @@ Worker запускается отдельным процессом и обра�
 
 При частичной записи производные объекты удаляются, а документ не получает статус `COMPLETED`. Если worker остановился после claim, lease позволяет следующему запуску безопасно восстановить job. Повторный job для уже терминального документа подтверждается без повторной обработки.
 
-Worker пишет в stdout только status, document/job identifiers и безопасный error code. Содержимое документов, секреты, provider messages и stack traces не логируются.
+Worker пишет в stdout только status, document/job identifiers и безопасный error code. Содержимое документов, секреты, provider messages и stack traces не логируются. Heartbeat обновляет lease долгой операции; critical metadata/completion updates проверяют fencing token, worker identity и lease.
 
 `SIGINT` и `SIGTERM` переводят worker в graceful shutdown: текущий `runOnce` завершается, новый job не claim, а idle polling прерывается сразу. Аварийно оставленный lease восстанавливается существующим lease recovery. Distributed heartbeat и fencing не реализованы.
 
@@ -179,12 +179,12 @@ Production требует PostgreSQL metadata, S3 storage, external queue config
 
 ## Ограничения
 
-- внешний queue provider и distributed adapter не выбраны;
+- конкретный managed Redis provider выбирается в deployment environment;
 - local queue не предназначена для нескольких процессов или узлов;
-- production auto-start, process manager, metrics и alerts не реализованы;
+- production auto-start/process manager остаётся обязанностью deployment platform;
 - PostgreSQL/MinIO integration tests реализованы, но требуют отдельного Docker-запуска;
 - обработка ограничена PDF и существующим extractor;
-- OCR fallback для PDF/PNG/JPEG и отдельный TASK-004 embedding/pgvector/hybrid RAG lifecycle реализованы; page provenance для chunks пока nullable;
+- OCR fallback для PDF/PNG/JPEG, TASK-004 embedding/pgvector/hybrid RAG lifecycle и TASK-005 page provenance реализованы; legacy/unsupported provenance может быть nullable;
 - Document API остаётся `ADMIN`-only;
 - worker обрабатывает один явно настроенный tenant за процесс.
 
@@ -193,6 +193,8 @@ Production требует PostgreSQL metadata, S3 storage, external queue config
 - [TASK-002](./tasks/TASK-002.md)
 - [TASK-003](./tasks/TASK-003.md)
 - [TASK-004](./tasks/TASK-004.md)
+- [TASK-005](./tasks/TASK-005.md)
+- [Queue Operations](./QUEUE_OPERATIONS.md)
 - [Document Operations](./DOCUMENT_OPERATIONS.md)
 - [Document Intelligence](./DOCUMENT_INTELLIGENCE.md)
 - [AI Gateway](./AI_GATEWAY.md)

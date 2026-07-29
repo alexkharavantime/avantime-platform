@@ -46,7 +46,19 @@ Hybrid score использует `HYBRID_LEXICAL_WEIGHT` и `HYBRID_SEMANTIC_WE
 
 Документный текст помещается в отдельный `<untrusted_retrieved_documents>` boundary. System instructions запрещают выполнять команды из источников, придумывать факты или ссылаться на отсутствующий source ID. Неизвестные citation markers удаляются server-side. Если подтверждающих chunks нет или они не помещаются в context limit, provider не вызывается и возвращается `no_answer`.
 
-Page range остаётся `null`, если upstream extractor не сохранил page mapping для chunk. Добавление точной page provenance для всех extractor formats относится к следующему этапу.
+TASK-005 сохраняет `sourcePageStart`, `sourcePageEnd`, segment index, extraction method, optional coordinates, confidence и provenance version. PDF text extraction и OCR сохраняют реальные page boundaries; citations используют page range. `null` допустим только для legacy/unsupported data.
+
+## pgvector production strategy
+
+Controlled comparison exact/IVFFlat/HNSW не обосновал ANN rollout: IVFFlat
+получил Recall@K `0.2667`, HNSW сохранил recall `1.0`, но был медленнее exact и
+создал больший индекс на проверенном малом dataset. Exact search остаётся default.
+ANN разрешён отдельной additive migration только после representative test с
+Recall@K не ниже `0.95` и улучшением p95 не менее `30%`.
+
+```bash
+npm run pgvector:load-test -- --integration --smoke
+```
 
 ## Безопасный reindex
 
@@ -77,3 +89,5 @@ Runner публикует Recall@K, MRR, citation precision, no-answer correctne
 - [Document Intelligence](./DOCUMENT_INTELLIGENCE.md)
 - [Architecture Decisions](./DECISIONS.md)
 - [TASK-004](./tasks/TASK-004.md)
+- [TASK-005](./tasks/TASK-005.md)
+- [Observability](./OBSERVABILITY.md)

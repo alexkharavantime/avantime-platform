@@ -10,9 +10,13 @@ import type { VectorDatabaseClient, VectorDatabaseLoader } from './vector-reposi
 export type EmbeddingJob = {
   id: string;
   documentId: string;
+  version?: 1;
+  correlationId?: string;
   enqueuedAt: string;
   availableAt: string;
   attempts: number;
+  fencingToken?: number;
+  leaseExpiresAt?: string | null;
 };
 
 export type EmbeddingEnqueueResult = {
@@ -21,7 +25,7 @@ export type EmbeddingEnqueueResult = {
 };
 
 export interface EmbeddingJobQueue {
-  readonly kind: 'local' | 'postgresql';
+  readonly kind: 'local' | 'postgresql' | 'external';
   enqueue(tenant: DocumentTenantContext, documentId: string): Promise<EmbeddingEnqueueResult>;
   claim(
     tenant: DocumentTenantContext,
@@ -31,12 +35,31 @@ export interface EmbeddingJobQueue {
       leaseDurationMs?: number;
     },
   ): Promise<EmbeddingJob | null>;
-  acknowledge(tenant: DocumentTenantContext, jobId: string, workerId: string): Promise<void>;
+  renew?(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+    leaseDurationMs: number,
+  ): Promise<EmbeddingJob>;
+  assertLease?(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken?: number,
+  ): Promise<void>;
+  acknowledge(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken?: number,
+  ): Promise<void>;
   release(
     tenant: DocumentTenantContext,
     jobId: string,
     workerId: string,
     availableAt: string,
+    fencingToken?: number,
   ): Promise<void>;
   removeForDocument(tenant: DocumentTenantContext, documentId: string): Promise<void>;
   list(tenant: DocumentTenantContext): Promise<EmbeddingJob[]>;
@@ -44,9 +67,12 @@ export interface EmbeddingJobQueue {
 }
 
 type StoredEmbeddingJob = EmbeddingJob & {
+  version: 1;
+  correlationId: string;
+  fencingToken: number;
+  leaseExpiresAt: string | null;
   state: 'QUEUED' | 'CLAIMED';
   workerId: string | null;
-  leaseExpiresAt: string | null;
 };
 
 const fileLocks = new Map<string, Promise<void>>();
@@ -78,19 +104,28 @@ function toPublicJob(job: StoredEmbeddingJob): EmbeddingJob {
   return {
     id: job.id,
     documentId: job.documentId,
+    version: job.version,
+    correlationId: job.correlationId,
     enqueuedAt: job.enqueuedAt,
     availableAt: job.availableAt,
     attempts: job.attempts,
+    fencingToken: job.fencingToken,
+    leaseExpiresAt: job.leaseExpiresAt,
   };
 }
 
 function validateStoredJob(job: StoredEmbeddingJob) {
   assertSafeDocumentSegment(job.id, 'embedding job id');
   assertSafeDocumentSegment(job.documentId, 'document id');
+  assertSafeDocumentSegment(job.correlationId, 'correlationId');
+  if (job.version !== 1) throw new Error('Embedding job version is unsupported.');
   parseDate(job.enqueuedAt, 'enqueuedAt');
   parseDate(job.availableAt, 'availableAt');
   if (!Number.isSafeInteger(job.attempts) || job.attempts < 0) {
     throw new Error('Embedding job attempts must be a non-negative integer.');
+  }
+  if (!Number.isSafeInteger(job.fencingToken) || job.fencingToken < 0) {
+    throw new Error('Embedding fencingToken must be a non-negative integer.');
   }
   if (!['QUEUED', 'CLAIMED'].includes(job.state)) {
     throw new Error('Embedding job state is invalid.');
@@ -115,9 +150,12 @@ export class LocalEmbeddingJobQueue implements EmbeddingJobQueue {
       const job: StoredEmbeddingJob = {
         id: crypto.randomUUID(),
         documentId,
+        version: 1,
+        correlationId: crypto.randomUUID(),
         enqueuedAt: now,
         availableAt: now,
         attempts: 0,
+        fencingToken: 0,
         state: 'QUEUED',
         workerId: null,
         leaseExpiresAt: null,
@@ -160,18 +198,75 @@ export class LocalEmbeddingJobQueue implements EmbeddingJobQueue {
       job.workerId = workerId;
       job.leaseExpiresAt = new Date(now.getTime() + leaseDurationMs).toISOString();
       job.attempts += 1;
+      job.fencingToken += 1;
       await this.write(filePath, jobs);
       return toPublicJob(job);
     });
   }
 
-  async acknowledge(tenant: DocumentTenantContext, jobId: string, workerId: string) {
+  async renew(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+    leaseDurationMs: number,
+  ) {
     const filePath = this.queueFile(tenant);
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    if (!Number.isSafeInteger(leaseDurationMs) || leaseDurationMs <= 0) {
+      throw new Error('Embedding lease duration must be a positive integer.');
+    }
+    return withFileLock(filePath, async () => {
+      const jobs = await this.read(filePath);
+      const job = jobs.find((item) => item.id === jobId);
+      if (!job) throw new Error('Embedding job was not found.');
+      this.assertOwner(job, workerId, fencingToken);
+      if (
+        !job.leaseExpiresAt ||
+        parseDate(job.leaseExpiresAt, 'leaseExpiresAt').getTime() <= Date.now()
+      ) {
+        throw new Error('Embedding lease has expired.');
+      }
+      job.leaseExpiresAt = new Date(Date.now() + leaseDurationMs).toISOString();
+      await this.write(filePath, jobs);
+      return toPublicJob(job);
+    });
+  }
+
+  async assertLease(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+  ) {
+    const filePath = this.queueFile(tenant);
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    await withFileLock(filePath, async () => {
+      const job = (await this.read(filePath)).find((item) => item.id === jobId);
+      if (!job) throw new Error('Embedding job was not found.');
+      this.assertOwner(job, workerId, fencingToken);
+      if (
+        !job.leaseExpiresAt ||
+        parseDate(job.leaseExpiresAt, 'leaseExpiresAt').getTime() <= Date.now()
+      ) {
+        throw new Error('Embedding lease has expired.');
+      }
+    });
+  }
+
+  async acknowledge(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken?: number,
+  ) {
+    const filePath = this.queueFile(tenant);
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
     await withFileLock(filePath, async () => {
       const jobs = await this.read(filePath);
       const index = jobs.findIndex((job) => job.id === jobId);
       if (index === -1) return;
-      this.assertOwner(jobs[index], workerId);
+      this.assertOwner(jobs[index], workerId, fencingToken ?? jobs[index].fencingToken);
       jobs.splice(index, 1);
       await this.write(filePath, jobs);
     });
@@ -182,6 +277,7 @@ export class LocalEmbeddingJobQueue implements EmbeddingJobQueue {
     jobId: string,
     workerId: string,
     availableAt: string,
+    fencingToken?: number,
   ) {
     const filePath = this.queueFile(tenant);
     parseDate(availableAt, 'availableAt');
@@ -189,7 +285,7 @@ export class LocalEmbeddingJobQueue implements EmbeddingJobQueue {
       const jobs = await this.read(filePath);
       const job = jobs.find((item) => item.id === jobId);
       if (!job) throw new Error('Embedding job was not found.');
-      this.assertOwner(job, workerId);
+      this.assertOwner(job, workerId, fencingToken ?? job.fencingToken);
       job.state = 'QUEUED';
       job.workerId = null;
       job.leaseExpiresAt = null;
@@ -251,10 +347,21 @@ export class LocalEmbeddingJobQueue implements EmbeddingJobQueue {
     await rename(temporaryFile, filePath);
   }
 
-  private assertOwner(job: StoredEmbeddingJob, workerId: string) {
-    assertSafeDocumentSegment(workerId, 'workerId');
-    if (job.state !== 'CLAIMED' || job.workerId !== workerId) {
+  private assertOwner(job: StoredEmbeddingJob, workerId: string, fencingToken?: number) {
+    if (
+      job.state !== 'CLAIMED' ||
+      job.workerId !== workerId ||
+      (fencingToken !== undefined && job.fencingToken !== fencingToken)
+    ) {
       throw new Error('Embedding job is not claimed by this worker.');
+    }
+  }
+
+  private assertLeaseArguments(jobId: string, workerId: string, fencingToken?: number) {
+    assertSafeDocumentSegment(jobId, 'embedding job id');
+    assertSafeDocumentSegment(workerId, 'workerId');
+    if (fencingToken !== undefined && (!Number.isSafeInteger(fencingToken) || fencingToken <= 0)) {
+      throw new Error('Embedding fencingToken must be a positive integer.');
     }
   }
 }
@@ -263,6 +370,9 @@ type DatabaseEmbeddingJob = {
   id: string;
   documentId: string;
   attempts: number;
+  correlationId: string;
+  fencingToken: number;
+  leaseUntil: Date | null;
   availableAt: Date;
   createdAt: Date;
 };
@@ -271,7 +381,11 @@ function mapDatabaseJob(job: DatabaseEmbeddingJob): EmbeddingJob {
   return {
     id: job.id,
     documentId: job.documentId,
+    version: 1,
+    correlationId: job.correlationId,
     attempts: job.attempts,
+    fencingToken: job.fencingToken,
+    leaseExpiresAt: job.leaseUntil?.toISOString() ?? null,
     availableAt: job.availableAt.toISOString(),
     enqueuedAt: job.createdAt.toISOString(),
   };
@@ -289,22 +403,26 @@ export class PostgreSQLEmbeddingJobQueue implements EmbeddingJobQueue {
     const database = await this.database(tenant);
     assertSafeDocumentSegment(documentId, 'document id');
     const id = crypto.randomUUID();
+    const correlationId = crypto.randomUUID();
     const inserted = await database.$queryRawUnsafe<DatabaseEmbeddingJob[]>(
       `INSERT INTO "DocumentEmbeddingJob" (
-        "id", "companyId", "documentId", "status", "attempts",
+        "id", "companyId", "documentId", "correlationId", "status", "attempts",
         "availableAt", "createdAt", "updatedAt"
-      ) VALUES ($1, $2, $3, 'QUEUED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES ($1, $2, $3, $4, 'QUEUED', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT ("companyId", "documentId") DO NOTHING
-      RETURNING "id", "documentId", "attempts", "availableAt", "createdAt"`,
+      RETURNING "id", "documentId", "attempts", "correlationId", "fencingToken",
+                "leaseUntil", "availableAt", "createdAt"`,
       id,
       tenant.companyId,
       documentId,
+      correlationId,
     );
     const rows =
       inserted.length > 0
         ? inserted
         : await database.$queryRawUnsafe<DatabaseEmbeddingJob[]>(
-            `SELECT "id", "documentId", "attempts", "availableAt", "createdAt"
+            `SELECT "id", "documentId", "attempts", "correlationId", "fencingToken",
+                    "leaseUntil", "availableAt", "createdAt"
              FROM "DocumentEmbeddingJob"
              WHERE "companyId" = $1 AND "documentId" = $2`,
             tenant.companyId,
@@ -353,10 +471,13 @@ export class PostgreSQLEmbeddingJobQueue implements EmbeddingJobQueue {
           "leaseOwner" = $3,
           "leaseUntil" = $4,
           "attempts" = job."attempts" + 1,
+          "fencingToken" = job."fencingToken" + 1,
+          "heartbeatAt" = $2,
           "updatedAt" = $2
       FROM candidate
       WHERE job."id" = candidate."id"
-      RETURNING job."id", job."documentId", job."attempts", job."availableAt", job."createdAt"`,
+      RETURNING job."id", job."documentId", job."attempts", job."correlationId",
+                job."fencingToken", job."leaseUntil", job."availableAt", job."createdAt"`,
       tenant.companyId,
       now,
       workerId,
@@ -365,18 +486,83 @@ export class PostgreSQLEmbeddingJobQueue implements EmbeddingJobQueue {
     return rows[0] ? mapDatabaseJob(rows[0]) : null;
   }
 
-  async acknowledge(tenant: DocumentTenantContext, jobId: string, workerId: string) {
+  async renew(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+    leaseDurationMs: number,
+  ) {
     const database = await this.database(tenant);
-    assertSafeDocumentSegment(jobId, 'embedding job id');
-    assertSafeDocumentSegment(workerId, 'workerId');
-    await database.$executeRawUnsafe(
-      `DELETE FROM "DocumentEmbeddingJob"
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    if (!Number.isSafeInteger(leaseDurationMs) || leaseDurationMs <= 0) {
+      throw new Error('Embedding lease duration must be a positive integer.');
+    }
+    const rows = await database.$queryRawUnsafe<DatabaseEmbeddingJob[]>(
+      `UPDATE "DocumentEmbeddingJob"
+       SET "leaseUntil" = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 millisecond'),
+           "heartbeatAt" = CURRENT_TIMESTAMP,
+           "updatedAt" = CURRENT_TIMESTAMP
        WHERE "companyId" = $1 AND "id" = $2
-         AND "status" = 'PROCESSING' AND "leaseOwner" = $3`,
+         AND "status" = 'PROCESSING' AND "leaseOwner" = $3
+         AND "fencingToken" = $4 AND "leaseUntil" > CURRENT_TIMESTAMP
+       RETURNING "id", "documentId", "attempts", "correlationId", "fencingToken",
+                 "leaseUntil", "availableAt", "createdAt"`,
       tenant.companyId,
       jobId,
       workerId,
+      fencingToken,
+      leaseDurationMs,
     );
+    if (!rows[0]) throw new Error('Embedding lease is no longer owned by this worker.');
+    return mapDatabaseJob(rows[0]);
+  }
+
+  async assertLease(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken?: number,
+  ) {
+    const database = await this.database(tenant);
+    if (fencingToken === undefined) {
+      throw new Error('PostgreSQL embedding queue requires a fencingToken.');
+    }
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    const rows = await database.$queryRawUnsafe<Array<{ valid: boolean }>>(
+      `SELECT EXISTS (
+         SELECT 1 FROM "DocumentEmbeddingJob"
+         WHERE "companyId" = $1 AND "id" = $2
+           AND "status" = 'PROCESSING' AND "leaseOwner" = $3
+           AND "fencingToken" = $4 AND "leaseUntil" > CURRENT_TIMESTAMP
+       ) AS "valid"`,
+      tenant.companyId,
+      jobId,
+      workerId,
+      fencingToken,
+    );
+    if (!rows[0]?.valid) throw new Error('Embedding lease is no longer owned by this worker.');
+  }
+
+  async acknowledge(
+    tenant: DocumentTenantContext,
+    jobId: string,
+    workerId: string,
+    fencingToken: number,
+  ) {
+    const database = await this.database(tenant);
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
+    const deleted = await database.$executeRawUnsafe(
+      `DELETE FROM "DocumentEmbeddingJob"
+       WHERE "companyId" = $1 AND "id" = $2
+         AND "status" = 'PROCESSING' AND "leaseOwner" = $3
+         AND "fencingToken" = $4 AND "leaseUntil" > CURRENT_TIMESTAMP`,
+      tenant.companyId,
+      jobId,
+      workerId,
+      fencingToken,
+    );
+    if (deleted === 0) throw new Error('Embedding lease is no longer owned by this worker.');
   }
 
   async release(
@@ -384,18 +570,25 @@ export class PostgreSQLEmbeddingJobQueue implements EmbeddingJobQueue {
     jobId: string,
     workerId: string,
     availableAt: string,
+    fencingToken?: number,
   ) {
     const database = await this.database(tenant);
+    if (fencingToken === undefined) {
+      throw new Error('PostgreSQL embedding queue requires a fencingToken.');
+    }
+    this.assertLeaseArguments(jobId, workerId, fencingToken);
     const parsed = parseDate(availableAt, 'availableAt');
     const updated = await database.$executeRawUnsafe(
       `UPDATE "DocumentEmbeddingJob"
        SET "status" = 'QUEUED', "leaseOwner" = NULL, "leaseUntil" = NULL,
-           "availableAt" = $4, "updatedAt" = CURRENT_TIMESTAMP
+           "heartbeatAt" = NULL, "availableAt" = $5, "updatedAt" = CURRENT_TIMESTAMP
        WHERE "companyId" = $1 AND "id" = $2
-         AND "status" = 'PROCESSING' AND "leaseOwner" = $3`,
+         AND "status" = 'PROCESSING' AND "leaseOwner" = $3
+         AND "fencingToken" = $4 AND "leaseUntil" > CURRENT_TIMESTAMP`,
       tenant.companyId,
       jobId,
       workerId,
+      fencingToken,
       parsed,
     );
     if (updated === 0) throw new Error('Embedding job is not claimed by this worker.');
@@ -414,7 +607,8 @@ export class PostgreSQLEmbeddingJobQueue implements EmbeddingJobQueue {
   async list(tenant: DocumentTenantContext) {
     const database = await this.database(tenant);
     const rows = await database.$queryRawUnsafe<DatabaseEmbeddingJob[]>(
-      `SELECT "id", "documentId", "attempts", "availableAt", "createdAt"
+      `SELECT "id", "documentId", "attempts", "correlationId", "fencingToken",
+              "leaseUntil", "availableAt", "createdAt"
        FROM "DocumentEmbeddingJob"
        WHERE "companyId" = $1
        ORDER BY "createdAt" ASC`,
@@ -440,5 +634,13 @@ export class PostgreSQLEmbeddingJobQueue implements EmbeddingJobQueue {
     const database = await this.loadDatabase();
     if (!database) throw new Error('PostgreSQL embedding queue is unavailable.');
     return database;
+  }
+
+  private assertLeaseArguments(jobId: string, workerId: string, fencingToken: number) {
+    assertSafeDocumentSegment(jobId, 'embedding job id');
+    assertSafeDocumentSegment(workerId, 'workerId');
+    if (!Number.isSafeInteger(fencingToken) || fencingToken <= 0) {
+      throw new Error('Embedding fencingToken must be a positive integer.');
+    }
   }
 }

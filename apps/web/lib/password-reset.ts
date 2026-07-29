@@ -15,11 +15,19 @@ export async function createPasswordReset(email: string) {
     try {
       const prisma = await getPrisma();
       const user = await prisma?.user.findUnique({ where: { email: normalized } });
-      if (prisma && user) await prisma.passwordResetToken.create({ data: { tokenHash, userId: user.id, expiresAt } });
-    } catch (error) { console.warn('Cannot persist password reset token.', error); }
+      if (prisma && user)
+        await prisma.passwordResetToken.create({ data: { tokenHash, userId: user.id, expiresAt } });
+    } catch {
+      console.warn('Cannot persist password reset token.');
+    }
   }
   demoTokens.set(tokenHash, { email: normalized, expiresAt: expiresAt.getTime(), used: false });
-  await recordSystemEvent({ level: 'INFO', category: 'AUTH', message: 'Запрошено восстановление пароля', actorEmail: normalized });
+  await recordSystemEvent({
+    level: 'INFO',
+    category: 'AUTH',
+    message: 'Запрошено восстановление пароля',
+    actorEmail: normalized,
+  });
   return token;
 }
 
@@ -28,20 +36,41 @@ export async function resetPassword(token: string, password: string) {
   if (process.env.DATABASE_URL) {
     try {
       const prisma = await getPrisma();
-      const item = await prisma?.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
+      const item = await prisma?.passwordResetToken.findUnique({
+        where: { tokenHash },
+        include: { user: true },
+      });
       if (prisma && item && !item.usedAt && item.expiresAt > new Date()) {
         await prisma.$transaction([
-          prisma.user.update({ where: { id: item.userId }, data: { passwordHash: hashPassword(password) } }),
-          prisma.passwordResetToken.update({ where: { id: item.id }, data: { usedAt: new Date() } }),
+          prisma.user.update({
+            where: { id: item.userId },
+            data: { passwordHash: hashPassword(password) },
+          }),
+          prisma.passwordResetToken.update({
+            where: { id: item.id },
+            data: { usedAt: new Date() },
+          }),
         ]);
-        await recordSystemEvent({ level: 'INFO', category: 'AUTH', message: 'Пароль успешно изменён', actorEmail: item.user.email });
+        await recordSystemEvent({
+          level: 'INFO',
+          category: 'AUTH',
+          message: 'Пароль успешно изменён',
+          actorEmail: item.user.email,
+        });
         return true;
       }
-    } catch (error) { console.warn('Cannot reset password in database.', error); }
+    } catch {
+      console.warn('Cannot reset password in database.');
+    }
   }
   const demo = demoTokens.get(tokenHash);
   if (!demo || demo.used || demo.expiresAt < Date.now()) return false;
   demo.used = true;
-  await recordSystemEvent({ level: 'INFO', category: 'AUTH', message: 'Демонстрационный пароль изменён', actorEmail: demo.email });
+  await recordSystemEvent({
+    level: 'INFO',
+    category: 'AUTH',
+    message: 'Демонстрационный пароль изменён',
+    actorEmail: demo.email,
+  });
   return true;
 }

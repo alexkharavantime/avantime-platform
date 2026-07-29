@@ -94,7 +94,7 @@ Document health возвращает отдельные `core` и `documentIntel
 
 ## Ограничения
 
-Завершённая [TASK-004](./tasks/TASK-004.md) использует актуальные chunks этого pipeline для tenant-aware embeddings, `pgvector`, semantic/hybrid retrieval и server-generated citations. Embedding/RAG readiness отделён от core и OCR readiness; сбой индексации не меняет завершённый processing/OCR result. Cloud OCR по-прежнему требует отдельного решения.
+Завершённая [TASK-004](./tasks/TASK-004.md) использует актуальные chunks этого pipeline для tenant-aware embeddings, `pgvector`, semantic/hybrid retrieval и server-generated citations. TASK-005 добавляет page provenance и production worker heartbeat/fencing. Embedding/RAG readiness отделён от core и OCR readiness; сбой индексации не меняет завершённый processing/OCR result. Cloud OCR по-прежнему требует отдельного решения.
 
 ## Связанные документы
 
@@ -105,3 +105,4 @@ Document health возвращает отдельные `core` и `documentIntel
 - [TASK-002](./tasks/TASK-002.md)
 - [TASK-003](./tasks/TASK-003.md)
 - [TASK-004](./tasks/TASK-004.md)
+- [TASK-005](./tasks/TASK-005.md)
