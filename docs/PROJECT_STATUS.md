@@ -10,7 +10,9 @@
 
 ### 🎯 Текущая цель проекта
 
-Проверить завершённую TASK-005 reference architecture на managed staging infrastructure, затем продолжить production identity/RBAC и объединение Knowledge Center.
+Завершить TASK-006 managed staging/go-live validation, не ослабляя production
+boundaries TASK-005, затем продолжить production identity/RBAC и объединение
+Knowledge Center.
 
 ### 📈 Общий процент готовности
 
@@ -18,21 +20,31 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-005 завершена после authoritative dependency review и повторного full gate suite;
-2. добавлены Redis queues/fencing, distributed AI limits, EUR cost ledger, audit и page provenance;
-3. добавлены backup/restore rehearsal, pgvector strategy, production images/manifests, CI gates и runbooks.
+1. TASK-005 объединена в `main` после authoritative dependency review и full gate suite;
+2. TASK-006 добавляет production-like staging Compose, isolated configuration/secrets и go-live evidence contracts;
+3. локально повторно подтверждены пять migrations, 18 integration tests, production/RAG integration и real OCR.
+
+После восстановления Docker повторно прошли 18/18 integration, production/RAG
+integration, real OCR, migration rehearsal, staging smoke/load, encrypted backup
+dry-run и isolated restore. Пять production targets пересобраны, SBOM и Grype
+reports привязаны к новым совпадающим IDs. Counts уменьшены с
+`82/144/144/127/144/115` до `3/11/0/0/0/11`; esbuild/embedded-Go полностью
+удалён из runtime images.
 
 ### 🚧 Три главных риска
 
-1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners; Document API остаётся `ADMIN`-only;
+1. Managed staging, DNS/TLS, provider, monitoring/alert, backup/restore и owner evidence ещё отсутствуют; go-live `BLOCKED`;
 2. параллельные `/portal` и `/dashboard`, а также раздельные article/document knowledge models увеличивают архитектурный долг;
-3. accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12, а initial SLO не подтверждены production-like измерениями.
+3. authoritative npm audit повторно дал 12 high/0 critical, accepted risks
+   истекают 2026-08-12; Grype post-remediation scan оставил непринятые
+   OCR OS critical/high findings только в document-worker production runtime.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Развернуть reference topology в managed staging и подтвердить backup/PITR/alerts.
-2. Повторить dependency review `AR-DEP-2026-001/002` не позднее 2026-08-12.
-3. Продолжить production identity/RBAC и единую knowledge permission model.
+1. Получить решение Security Owner или fixed Alpine packages для unfixed
+   GLib/SQLite/TIFF OCR findings.
+2. Развернуть topology в managed staging и подтвердить TLS, providers, backup/PITR, monitoring и alerts.
+3. Получить owner approvals; только затем оценивать production go-live.
 
 ---
 
@@ -41,11 +53,11 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.14                                                                                      |
+| Версия документа                 | 1.17                                                                                      |
 | Дата последнего обновления       | 2026-07-29                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-005-production-readiness`                                                   |
-| Последний commit                 | `d07deb2 feat(ai): add tenant-aware embeddings and hybrid RAG (#9)`                       |
+| Текущая ветка Git                | `feature/task-006-staging-go-live`                                                        |
+| Последний commit                 | `61cde23 feat(ops): add TASK-005 production readiness foundations (#10)`                  |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
 | Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
@@ -137,6 +149,17 @@ containers/manifests, CI gates и runbooks. Authoritative npm audit
 отдельные production Redis/cost/audit и Hybrid RAG suites, real OCR, migration и
 restore rehearsals, health/operations, typecheck, lint, static security gates,
 production build на 59 entries и все пять production Docker targets.
+
+[TASK-006](./tasks/TASK-006.md) находится `In Progress`. Выбран
+production-like Docker Compose staging path (ADR-0025), добавлены isolated
+configuration/secrets/TLS/provider/alert guards, synthetic dataset,
+migration/smoke/load/evidence commands и formal go-live model. Все ранее
+заблокированные локальные integration/migration/smoke/load/backup/restore gates
+повторно прошли. Production images пересобраны и просканированы по новым IDs;
+старые base/tooling и esbuild/Go findings исправлены; 11 OCR OS matches в
+production document-worker не приняты. Локальные результаты не закрывают managed staging, external
+TLS/provider, monitoring/alert, managed backup/restore, image security и owner
+gates.
 
 Проверки четвёртой итерации TASK-002:
 
@@ -478,6 +501,9 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                    |
 | ---------- | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-29 | 1.17   | Codex, по поручению владельца проекта | TASK-006 compiled runtime удалил tsx/esbuild/TypeScript; no-cache images и Syft/Grype пересозданы; осталось 11 непринятых OCR-native findings в document-worker                              |
+| 2026-07-29 | 1.16   | Codex, по поручению владельца проекта | TASK-006 local gates повторно прошли; production images пересобраны, новые SBOM/Grype IDs совпадают; image gate остаётся BLOCKED на esbuild/Go и OCR OS findings                             |
+| 2026-07-29 | 1.15   | Codex, по поручению владельца проекта | TASK-006 начата: выбран staging Compose path, добавлены isolation/security/evidence contracts; go-live остаётся BLOCKED до external environment и approvals                                  |
 | 2026-07-29 | 1.14   | Codex, по поручению владельца проекта | TASK-005 завершена: authoritative npm audit классифицирован, compatible transitive patch применён, AR-DEP-2026-001/002 приняты до 2026-08-12, full gate suite повторно пройден               |
 | 2026-07-29 | 1.13   | Codex, по поручению владельца проекта | После восстановления повторно подтверждены 103 unit/security, integration, OCR, migration/restore, pgvector, build и пять Docker targets; dependency review остаётся blocker                 |
 | 2026-07-28 | 1.12   | Codex, по поручению владельца проекта | Зафиксированы TASK-005 production reliability contracts и фактические unit/integration/OCR/migration/restore/security gates; dependency review и повторный final build остаются blockers     |
@@ -589,7 +615,8 @@ Version 2.0 не готова к production-релизу. Процент отр�
 - [Product Backlog](./PRODUCT_BACKLOG.md) — эпики, задачи, приоритеты и статусы;
 - [Architecture 2.0](./ARCHITECTURE_2_0.md) — целевая архитектура и план перехода;
 - [Architecture Decision Records](./DECISIONS.md) — принятые и предлагаемые архитектурные решения;
-- [TASK-005](./tasks/TASK-005.md) — текущая production-readiness задача;
+- [TASK-005](./tasks/TASK-005.md) — завершённая production-readiness задача;
+- [TASK-006](./tasks/TASK-006.md) — текущая staging/go-live validation задача;
 - [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md) — environment-specific go-live gates;
 - [Codex Rules](./CODEX_RULES.md) — правила работы Codex в проекте;
 - [AGENTS.md](../AGENTS.md) — обязательные инструкции для агентов.

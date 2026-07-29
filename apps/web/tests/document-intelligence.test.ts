@@ -152,6 +152,22 @@ test('unsupported office containers are detected but not processed', () => {
   );
 });
 
+test('TIFF remains forbidden even though the native OCR libraries contain TIFF support', () => {
+  for (const [content, name] of [
+    [Buffer.from([0x49, 0x49, 0x2a, 0x00]), 'scan-little-endian.tiff'],
+    [Buffer.from([0x4d, 0x4d, 0x00, 0x2a]), 'scan-big-endian.tif'],
+  ] as const) {
+    const detected = detectDocumentFile({
+      content,
+      originalName: name,
+      declaredMimeType: 'image/tiff',
+    });
+    assert.equal(detected.format, 'UNKNOWN');
+    assert.equal(detected.processable, false);
+    assert.equal(detected.mismatch, true);
+  }
+});
+
 test('quality assessment rejects garbage even when it is long', () => {
   const result = quality.assess({ text: '#'.repeat(300), pageCount: 1 });
   assert.equal(result.sufficient, false);

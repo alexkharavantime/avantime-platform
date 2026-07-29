@@ -131,6 +131,30 @@ Start with [Production Architecture](./docs/PRODUCTION_ARCHITECTURE.md),
 Reference manifests contain no real credentials and are not evidence that a
 managed production environment is ready.
 
+## Staging and go-live validation
+
+TASK-006 selects a provider-neutral, production-like Docker Compose staging
+path. Its configuration, deployment and evidence commands are safe plans by
+default and reject production hostnames, placeholder secrets and non-staging
+tenant IDs.
+
+```bash
+npm run staging:config-check -- --example
+npm run staging:compose-check -- --example
+npm run staging:deploy:plan -- --example
+npm run staging:dataset
+npm run staging:smoke -- --integration
+npm run staging:load-smoke -- --integration
+npm run staging:evidence -- --example
+```
+
+The example environment is intentionally non-deployable. Real deployment,
+provider connectivity, alerts, backup/restore and approvals require separate
+environment-scoped confirmations. Start with
+[Staging Architecture](./docs/STAGING_ARCHITECTURE.md),
+[Staging Deployment](./docs/STAGING_DEPLOYMENT.md) and
+[Go-Live Checklist](./docs/GO_LIVE_CHECKLIST.md).
+
 ## Document integration validation
 
 PostgreSQL/MinIO integration infrastructure is isolated from the normal development

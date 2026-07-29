@@ -1,0 +1,348 @@
+name: avantime-staging
+
+x-runtime: &runtime
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=512m,mode=1770
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  stop_grace_period: 6m
+  deploy:
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+        pids: 256
+      reservations:
+        cpus: '0.25'
+        memory: 256M
+
+x-application-environment: &application-environment
+  NODE_ENV: production
+  DEPLOYMENT_ENVIRONMENT: staging
+  STAGING_ENVIRONMENT_ID: ${STAGING_ENVIRONMENT_ID:?required}
+  STAGING_LABEL: ${STAGING_LABEL:?required}
+  STAGING_TENANT_ALLOWLIST: ${STAGING_TENANT_ALLOWLIST:?required}
+  STAGING_PROVIDER_MODE: ${STAGING_PROVIDER_MODE:?required}
+  STAGING_ALLOW_FAKE_PROVIDER: ${STAGING_ALLOW_FAKE_PROVIDER:-false}
+  STAGING_SECRETS_SOURCE: file
+  SESSION_SECRET_FILE: /run/secrets/session_secret
+  DATABASE_URL_FILE: /run/secrets/database_url
+  REDIS_URL_FILE: /run/secrets/redis_url
+  OBJECT_STORAGE_ACCESS_KEY_FILE: /run/secrets/object_storage_access_key
+  OBJECT_STORAGE_SECRET_KEY_FILE: /run/secrets/object_storage_secret_key
+  BACKUP_ENCRYPTION_KEY_FILE: /run/secrets/backup_encryption_key
+  AUDIT_INTEGRITY_KEY_FILE: /run/secrets/audit_integrity_key
+  APP_URL: https://${STAGING_TLS_HOSTNAME:?required}
+  DOCUMENT_STORAGE_DRIVER: s3
+  DOCUMENT_METADATA_DRIVER: postgresql
+  DOCUMENT_PROCESSING_QUEUE_DRIVER: external
+  DOCUMENT_PROCESSING_QUEUE_NAME: ${DOCUMENT_PROCESSING_QUEUE_NAME:-staging-document-processing}
+  DOCUMENT_PROCESSING_LEASE_MS: ${DOCUMENT_PROCESSING_LEASE_MS:-300000}
+  DOCUMENT_PROCESSING_POLL_MS: ${DOCUMENT_PROCESSING_POLL_MS:-1000}
+  DOCUMENT_WORKER_TENANT_ID: ${DOCUMENT_WORKER_TENANT_ID:?required}
+  DOCUMENT_WORKER_ID: ${DOCUMENT_WORKER_ID:?required}
+  WORKER_VERSION: ${WORKER_VERSION:?required}
+  DEPLOYMENT_GENERATION: ${DEPLOYMENT_GENERATION:?required}
+  DOCUMENT_OCR_DRIVER: local
+  DOCUMENT_OCR_REQUIRED_FOR_READINESS: 'true'
+  DOCUMENT_OCR_LANGUAGES: ${DOCUMENT_OCR_LANGUAGES:-eng,lav,rus}
+  OBJECT_STORAGE_ENDPOINT: http://object-storage:9000
+  OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-us-east-1}
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:?required}
+  OBJECT_STORAGE_FORCE_PATH_STYLE: 'true'
+  DOCUMENT_EMBEDDING_DRIVER: ${DOCUMENT_EMBEDDING_DRIVER:?required}
+  DOCUMENT_EMBEDDING_MODEL: ${DOCUMENT_EMBEDDING_MODEL:?required}
+  DOCUMENT_EMBEDDING_DIMENSIONS: ${DOCUMENT_EMBEDDING_DIMENSIONS:?required}
+  DOCUMENT_EMBEDDING_VERSION: ${DOCUMENT_EMBEDDING_VERSION:?required}
+  DOCUMENT_EMBEDDING_QUEUE_DRIVER: redis
+  DOCUMENT_VECTOR_DRIVER: pgvector
+  RAG_ANSWER_DRIVER: ${RAG_ANSWER_DRIVER:?required}
+  RAG_ANSWER_MODEL: ${RAG_ANSWER_MODEL:?required}
+  DOCUMENT_RAG_REQUIRED_FOR_READINESS: 'true'
+  AI_RATE_LIMIT_DRIVER: redis
+  AI_COST_LEDGER_DRIVER: postgresql
+  AI_DAILY_BUDGET_EUR: ${AI_DAILY_BUDGET_EUR:?required}
+  AI_MONTHLY_BUDGET_EUR: ${AI_MONTHLY_BUDGET_EUR:?required}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+
+x-application-secrets: &application-secrets
+  - session_secret
+  - database_url
+  - redis_url
+  - object_storage_access_key
+  - object_storage_secret_key
+  - backup_encryption_key
+  - audit_integrity_key
+
+services:
+  migration:
+    <<: *runtime
+    image: avantime-migration:task-006-staging
+    environment:
+      <<: *application-environment
+    secrets: *application-secrets
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+
+  web:
+    <<: *runtime
+    image: avantime-web:task-006-staging
+    environment:
+      <<: *application-environment
+    secrets: *application-secrets
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    expose:
+      - '3000'
+    networks:
+      - application
+      - data
+      - telemetry
+      - egress
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/health/documents']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  document-worker:
+    <<: *runtime
+    image: avantime-document-worker:task-006-staging
+    environment:
+      <<: *application-environment
+    secrets: *application-secrets
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+    networks:
+      - data
+      - telemetry
+
+  embedding-worker:
+    <<: *runtime
+    image: avantime-embedding-worker:task-006-staging
+    environment:
+      <<: *application-environment
+    secrets: *application-secrets
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks:
+      - data
+      - telemetry
+      - egress
+
+  reverse-proxy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    read_only: true
+    environment:
+      STAGING_TLS_HOSTNAME: ${STAGING_TLS_HOSTNAME:?required}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./docker/staging/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    networks:
+      - public
+      - application
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+          pids: 128
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: avantime_staging
+      POSTGRES_DB: avantime_staging
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U avantime_staging -d avantime_staging']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+          pids: 256
+
+  redis:
+    image: redis:8.4.0-alpine
+    command: ['redis-server', '/run/secrets/redis_configuration']
+    secrets:
+      - redis_configuration
+      - redis_password
+    volumes:
+      - redis-data:/data
+    networks:
+      - data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$(cat /run/secrets/redis_password)" ping']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+          pids: 128
+
+  object-storage:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/object_storage_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/object_storage_secret_key
+    secrets:
+      - object_storage_access_key
+      - object_storage_secret_key
+    volumes:
+      - object-data:/data
+    networks:
+      - data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+          pids: 128
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.130.1
+    command: ['--config=/etc/otelcol-contrib/config.yaml']
+    volumes:
+      - ./docker/staging/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+    read_only: true
+    networks:
+      - telemetry
+    expose:
+      - '4317'
+      - '4318'
+      - '9464'
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+          pids: 128
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.path=/prometheus']
+    volumes:
+      - ./docker/staging/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    read_only: true
+    networks:
+      - telemetry
+    expose:
+      - '9090'
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+          pids: 128
+
+  backup:
+    <<: *runtime
+    image: avantime-operations:task-006-staging
+    command: ['node', 'production-entrypoints/backup-production.mjs', '--execute']
+    environment:
+      <<: *application-environment
+      BACKUP_ENVIRONMENT: ${STAGING_ENVIRONMENT_ID:?required}
+      BACKUP_OUTPUT_DIR: /var/lib/avantime-backups
+      BACKUP_ENCRYPTION_REQUIRED: 'true'
+    secrets: *application-secrets
+    volumes:
+      - backup-data:/var/lib/avantime-backups
+    restart: 'no'
+    networks:
+      - data
+
+networks:
+  public:
+  application:
+    internal: true
+  data:
+    internal: true
+  telemetry:
+    internal: true
+  egress:
+
+volumes:
+  postgres-data:
+  redis-data:
+  object-data:
+  backup-data:
+  prometheus-data:
+  caddy-data:
+  caddy-config:
+
+secrets:
+  session_secret:
+    file: ./.staging-secrets/session_secret
+  database_url:
+    file: ./.staging-secrets/database_url
+  redis_url:
+    file: ./.staging-secrets/redis_url
+  postgres_password:
+    file: ./.staging-secrets/postgres_password
+  redis_password:
+    file: ./.staging-secrets/redis_password
+  redis_configuration:
+    file: ./.staging-secrets/redis_configuration
+  object_storage_access_key:
+    file: ./.staging-secrets/object_storage_access_key
+  object_storage_secret_key:
+    file: ./.staging-secrets/object_storage_secret_key
+  backup_encryption_key:
+    file: ./.staging-secrets/backup_encryption_key
+  audit_integrity_key:
+    file: ./.staging-secrets/audit_integrity_key

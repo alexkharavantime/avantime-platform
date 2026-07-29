@@ -26,7 +26,14 @@ services:
     <<: *runtime
     image: avantime-platform-migration:task-005
     command:
-      ['npx', 'prisma', 'migrate', 'deploy', '--schema', 'packages/database/prisma/schema.prisma']
+      [
+        'node',
+        'node_modules/prisma/build/index.js',
+        'migrate',
+        'deploy',
+        '--schema',
+        'packages/database/prisma/schema.prisma',
+      ]
     restart: 'no'
     depends_on:
       postgres:
@@ -148,7 +155,7 @@ services:
   backup:
     <<: *runtime
     image: avantime-platform-operations:task-005
-    command: ['npm', 'run', 'backup:create', '--', '--execute']
+    command: ['node', 'production-entrypoints/backup-production.mjs', '--execute']
     environment:
       BACKUP_OUTPUT_DIR: /var/lib/avantime-backups
     volumes:

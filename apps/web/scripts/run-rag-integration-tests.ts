@@ -20,7 +20,7 @@ async function main() {
     cwd: repositoryRoot,
     environment,
   });
-  await runIntegrationCommand('npx', ['tsx', '--test', testFile], {
+  await runIntegrationCommand(process.execPath, ['--import', 'tsx', '--test', testFile], {
     cwd: repositoryRoot,
     environment,
   });

@@ -8,8 +8,9 @@ import {
 async function main() {
   const { repositoryRoot, environment } = await loadDocumentIntegrationEnvironment();
   await runIntegrationCommand(
-    'npx',
+    process.execPath,
     [
+      '--import',
       'tsx',
       '--test',
       path.join(

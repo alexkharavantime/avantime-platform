@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "classification": "synthetic-only",
+  "tenants": ["staging-tenant-en", "staging-tenant-lv", "staging-tenant-ru"],
+  "assets": [
+    {
+      "id": "text-en",
+      "tenant": "staging-tenant-en",
+      "filename": "text-layer-en.pdf",
+      "language": "en",
+      "format": "PDF",
+      "scenario": "text-layer-page-provenance"
+    },
+    {
+      "id": "text-lv",
+      "tenant": "staging-tenant-lv",
+      "filename": "text-layer-lv.pdf",
+      "language": "lv",
+      "format": "PDF",
+      "scenario": "text-layer-page-provenance"
+    },
+    {
+      "id": "text-ru",
+      "tenant": "staging-tenant-ru",
+      "filename": "text-layer-ru.pdf",
+      "language": "ru",
+      "format": "PDF",
+      "scenario": "text-layer-page-provenance"
+    },
+    {
+      "id": "scan-en",
+      "tenant": "staging-tenant-en",
+      "filename": "scanned-en.pdf",
+      "language": "en",
+      "format": "PDF",
+      "scenario": "ocr-page-provenance"
+    },
+    {
+      "id": "png-en",
+      "tenant": "staging-tenant-en",
+      "filename": "ocr-en.png",
+      "language": "en",
+      "format": "PNG",
+      "scenario": "ocr-image"
+    },
+    {
+      "id": "jpeg-neutral",
+      "tenant": "staging-tenant-lv",
+      "filename": "neutral-image.jpg",
+      "language": "none",
+      "format": "JPEG",
+      "scenario": "manual-review"
+    }
+  ],
+  "negativeCases": [
+    "no-answer",
+    "prompt-injection-treated-as-untrusted-source",
+    "cross-tenant-access-denied",
+    "soft-deleted-excluded",
+    "quarantined-excluded",
+    "changed-chunk-reindex"
+  ],
+  "containsPersonalData": false,
+  "containsCommercialData": false
+}

@@ -1068,6 +1068,24 @@ Backup/restore, disaster recovery, telemetry/audit, load testing и deployment
 описаны отдельными operational documents. Reference architecture не означает,
 что managed infrastructure, owners или SLO уже подтверждены.
 
+# 13. Staging и go-live boundary TASK-006
+
+TASK-006 добавляет orchestration/evidence слой без изменения доменных
+boundaries. По ADR-0025 основной путь — production-like Docker Compose:
+stateless web, отдельные document/OCR и embedding workers, one-shot migration,
+PostgreSQL/pgvector, private S3-compatible storage, Redis, TLS reverse proxy,
+OTLP/Prometheus и isolated encrypted backup.
+
+Staging имеет отдельный environment ID, `staging-*` tenant allowlist, database,
+buckets, Redis и secret versions. Production hostnames/secret fingerprints
+отклоняются. Единственная публичная граница — HTTPS ingress; data, workers и
+monitoring остаются private. Deployment, provider connectivity, alerts,
+backup/restore и approvals требуют раздельных confirmations/evidence.
+
+Локальные/CI проверки формируют partial evidence, но не переводят go-live в
+`READY`. Pending external TLS/provider/monitoring/backup/owner gates дают
+`BLOCKED`.
+
 # Связанные документы
 
 - [Production Architecture](./PRODUCTION_ARCHITECTURE.md)
@@ -1077,4 +1095,7 @@ Backup/restore, disaster recovery, telemetry/audit, load testing и deployment
 - [Backup and Restore](./BACKUP_RESTORE.md)
 - [Observability](./OBSERVABILITY.md)
 - [Security Hardening](./SECURITY_HARDENING.md)
+- [Staging Architecture](./STAGING_ARCHITECTURE.md)
+- [Go-Live Evidence](./GO_LIVE_EVIDENCE.md)
 - [TASK-005](./tasks/TASK-005.md)
+- [TASK-006](./tasks/TASK-006.md)

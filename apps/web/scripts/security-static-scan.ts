@@ -23,6 +23,13 @@ async function main() {
 
   for (const file of files) {
     if (mode === 'migrations' && !file.endsWith('/migration.sql')) continue;
+    if (
+      mode === 'architecture' &&
+      !file.startsWith('apps/web/') &&
+      file !== 'docker-compose.staging.yml'
+    ) {
+      continue;
+    }
     let content: string;
     try {
       content = await readFile(new URL(file, repositoryRoot), 'utf8');
@@ -43,6 +50,27 @@ async function main() {
       /\b(?:DROP\s+(?:TABLE|COLUMN|DATABASE)|TRUNCATE\s+TABLE)\b/i.test(content)
     ) {
       findings.push(`${file}: destructive migration statement`);
+    }
+    if (
+      mode === 'architecture' &&
+      /from\s+['"](?:openai|@google\/genai)['"]/.test(content) &&
+      file !== 'apps/web/lib/ai-gateway.ts'
+    ) {
+      findings.push(`${file}: direct AI provider import outside AI Gateway`);
+    }
+    if (
+      mode === 'architecture' &&
+      file.includes('/app/api/') &&
+      /companyId\s*:\s*(?:body|input|payload|request)\.companyId/.test(content)
+    ) {
+      findings.push(`${file}: client-supplied companyId reaches a server operation`);
+    }
+    if (
+      mode === 'architecture' &&
+      file === 'docker-compose.staging.yml' &&
+      /-\s*['"]?(?:5432|6379|9000|9090|4317|4318):/.test(content)
+    ) {
+      findings.push(`${file}: internal service port is publicly published`);
     }
   }
 
