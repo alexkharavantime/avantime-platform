@@ -92,21 +92,27 @@ jobs:
           - name: web
             dockerfile: docker/production.Dockerfile
             target: web
+            classification: production_runtime
           - name: document-worker
             dockerfile: docker/production.Dockerfile
             target: document-worker
+            classification: production_runtime
           - name: embedding-worker
             dockerfile: docker/production.Dockerfile
             target: embedding-worker
+            classification: production_runtime
           - name: migration
             dockerfile: docker/production.Dockerfile
             target: migration
+            classification: migration_runtime
           - name: operations
             dockerfile: docker/production.Dockerfile
             target: operations
+            classification: operations_runtime
           - name: ocr-integration
             dockerfile: docker/ocr-integration.Dockerfile
             target: ''
+            classification: ephemeral_test_only
     steps:
       - uses: actions/checkout@v4
       - name: Build production target
@@ -132,17 +138,34 @@ jobs:
           image: avantime-${{ matrix.name }}:ci
           fail-build: true
           severity-cutoff: high
-          output-format: sarif
-          output-file: avantime-${{ matrix.name }}.sarif
+          output-format: json
+          output-file: avantime-${{ matrix.name }}.grype.json
           cache-db: true
+      - name: Enforce exact container vulnerability policy
+        id: container-policy
+        if: always()
+        run: |
+          node apps/web/scripts/enforce-container-vulnerability-policy.mjs \
+            --target="${{ matrix.name }}" \
+            --classification="${{ matrix.classification }}" \
+            --report="avantime-${{ matrix.name }}.grype.json" \
+            --policy=security/container-vulnerability-policy.json \
+            --output="avantime-${{ matrix.name }}.policy.json"
+      - name: Record accepted production risk
+        if: always() && steps.container-policy.outputs.decision == 'accepted_active_risk'
+        run: |
+          echo "::warning title=Active production risk acceptance::${{ matrix.name }} passed only under ${{ steps.container-policy.outputs.risk_id }} through ${{ steps.container-policy.outputs.expires_at }}."
+      - name: Record tracked non-production warning
+        if: always() && steps.container-policy.outputs.decision == 'tracked_test_only_findings'
+        run: |
+          echo "::warning title=Tracked ephemeral test-image findings::${{ matrix.name }} is not published or used in production; findings remain tracked under ${{ steps.container-policy.outputs.risk_id }} through ${{ steps.container-policy.outputs.expires_at }}."
       - name: Retain vulnerability report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: avantime-${{ matrix.name }}-vulnerability-report
-          path: avantime-${{ matrix.name }}.sarif
+          path: |
+            avantime-${{ matrix.name }}.grype.json
+            avantime-${{ matrix.name }}.policy.json
           if-no-files-found: error
           retention-days: 30
-      - name: Enforce image vulnerability gate
-        if: steps.image-scan.outcome == 'failure'
-        run: exit 1

@@ -50,6 +50,8 @@
     "security:migration-scan": "node --import tsx scripts/security-static-scan.ts migrations",
     "security:architecture-scan": "node --import tsx scripts/security-static-scan.ts architecture",
     "security:dependency-revalidation": "node --import tsx scripts/run-dependency-revalidation.ts",
+    "security:container-policy": "node scripts/enforce-container-vulnerability-policy.mjs",
+    "test:container-policy": "node --import tsx --test tests/container-vulnerability-policy.test.ts",
     "docs:links-check": "node --import tsx scripts/check-documentation-links.ts",
     "staging:config-check": "node --import tsx scripts/staging-command.ts config-check",
     "staging:compose-check": "node --import tsx scripts/staging-command.ts compose-check",

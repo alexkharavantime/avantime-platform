@@ -17,15 +17,21 @@ formal decision.
 When local image artifacts exist, the generator imports
 `.artifacts/image-security/sbom/manifest.json` and
 `.artifacts/image-security/scans/summary.json`, records every image ID and
-checksum, and verifies that SBOM/scan IDs match. A blocked scan is emitted as a
-failed blocking gate; it is never converted to acceptance by evidence
+checksum, links every raw Grype report to its
+`avantime-<target>.policy.json` result, and verifies that SBOM/scan IDs match.
+The policy result exposes the target classification, publication/production
+flags, exact decision, risk/tracking ID and expiry. A blocked scan is emitted as
+a failed blocking gate; it is never converted to acceptance by evidence
 generation. The current 2026-07-29 package therefore records the factual final
 image reports and remains `BLOCKED`. Its matching final IDs report
 `3/11/0/0/0/11` critical/high matches for
 web/document-worker/embedding-worker/migration/operations/OCR-test. The web
-records are covered by active `AR-DEP-2026-002`; the 11 production OCR-native
-document-worker records are unaccepted and keep the image gate failed. The
-regenerated sanitized package validates with SHA-256
+records pass only through active `AR-DEP-2026-002`; the identical OCR test-image
+set is a visible non-production warning tracked by `TR-OCR-TEST-2026-001`.
+Neither changes the fact that the 11 production OCR-native document-worker
+records are unaccepted and keep the image gate failed. Unknown/additional
+critical or high records and expired policy records fail closed. The regenerated
+sanitized package validates with SHA-256
 `e057ad2fed28ab6916b3c3fd9a11bea4a251604ca84bea5a3f89ad6c4ef78ac5`.
 
 Generated artifacts live under ignored `.artifacts/staging/<environment-id>`,

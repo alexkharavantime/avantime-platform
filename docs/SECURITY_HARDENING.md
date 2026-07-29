@@ -68,6 +68,14 @@ TASK-006 uses pinned Syft/Grype CI actions and a pinned local Grype image.
 Critical/high findings fail closed; the TASK-005 npm exceptions do not cover OS,
 Node runtime, OpenSSL or unrelated bundled-tooling findings.
 
+CI and the local release scanner enforce
+[`security/container-vulnerability-policy.json`](../security/container-vulnerability-policy.json)
+with the same evaluator. A decision must match the exact image target,
+production/test classification, CVE/GHSA, package, severity, risk/tracking ID
+and expiry. Missing/malformed reports, classification mismatches, expired
+records, severity escalation, and unknown or additional critical/high findings
+block. No image, package or severity has a blanket ignore.
+
 ### Current TASK-005 review status
 
 The authoritative 2026-07-29 npm audit against the official npm registry reports
@@ -104,6 +112,14 @@ entrypoints are compiled in the builder; final images contain no `tsx`,
 `esbuild`, embedded Go toolchain, TypeScript, global npm/npx or source maps.
 Final Grype high/critical counts are web 3, document-worker 11,
 embedding-worker 0, migration 0, operations 0 and test-only OCR 11.
+
+The web check may pass only while the exact PostCSS/Sharp set is covered by
+active `AR-DEP-2026-002`, which expires at `2026-08-12T23:59:59Z`. The
+document-worker check remains blocked by unaccepted
+`RISK-OCR-NATIVE-2026-001`. The OCR integration image is explicitly
+non-published, ephemeral and test-only: its identical native set produces a
+visible tracked warning under `TR-OCR-TEST-2026-001`, also expiring
+`2026-08-12T23:59:59Z`, rather than accepting or hiding production risk.
 
 Promotion remains blocked only on the unaccepted production OCR-native residue.
 The selected Alpine Tesseract/Poppler stack brings unfixed GLib

@@ -12,12 +12,18 @@ const repositoryRoot = getRepositoryRoot();
 const artifactRoot = path.join(repositoryRoot, '.artifacts', 'image-security');
 const dockerizedSyftImage = 'anchore/syft:v1.50.0';
 const dockerizedGrypeImage = 'anchore/grype:v0.112.0';
-const acceptedWebAdvisories = new Set([
-  'GHSA-6g55-p6wh-862q',
-  'GHSA-r28c-9q8g-f849',
-  'GHSA-f88m-g3jw-g9cj',
-]);
-const dependencyAcceptanceExpiresAt = new Date('2026-08-12T23:59:59Z');
+const vulnerabilityPolicy = path.join(
+  repositoryRoot,
+  'security',
+  'container-vulnerability-policy.json',
+);
+const vulnerabilityPolicyEvaluator = path.join(
+  repositoryRoot,
+  'apps',
+  'web',
+  'scripts',
+  'enforce-container-vulnerability-policy.mjs',
+);
 const images = [
   ['web', 'avantime-web:task-006-staging', 'production_runtime'],
   ['document-worker', 'avantime-document-worker:task-006-staging', 'production_runtime'],
@@ -68,6 +74,39 @@ async function inspectImage(image: string) {
     image,
   ]);
   return stdout.trim();
+}
+
+type PolicyResult = {
+  status: 'passed' | 'warning' | 'blocked';
+  decision: string;
+  riskId: string | null;
+  expiresAt: string | null;
+  classification: string;
+  published: boolean;
+  productionUse: boolean;
+};
+
+async function enforceVulnerabilityPolicy(name: string, scope: string, reportFilename: string) {
+  const outputFilename = path.join(artifactRoot, 'scans', `avantime-${name}.policy.json`);
+  try {
+    await executeFile(
+      process.execPath,
+      [
+        vulnerabilityPolicyEvaluator,
+        `--target=${name}`,
+        `--classification=${scope}`,
+        `--report=${reportFilename}`,
+        `--policy=${vulnerabilityPolicy}`,
+        `--output=${outputFilename}`,
+      ],
+      { cwd: repositoryRoot },
+    );
+  } catch (error) {
+    const exitCode = (error as { code?: number }).code;
+    if (exitCode !== 2) throw error;
+  }
+  const result = JSON.parse(await readFile(outputFilename, 'utf8')) as PolicyResult;
+  return { outputFilename, result };
 }
 
 async function generateSbom() {
@@ -130,35 +169,17 @@ async function scanImages() {
     recursive: true,
     mode: 0o700,
   });
-  const hasTrivy = await installed('trivy', ['--version']);
   const hasGrype = await installed('grype', ['version']);
   const hasDocker = await installed('docker', ['version']);
-  if (!hasTrivy && !hasGrype && !hasDocker) {
-    throw new Error('Neither Trivy, Grype nor Docker is installed.');
+  if (!hasGrype && !hasDocker) {
+    throw new Error('Neither Grype nor Docker is installed.');
   }
-  if (!hasTrivy && !hasGrype) await run('docker', ['pull', dockerizedGrypeImage]);
+  if (!hasGrype) await run('docker', ['pull', dockerizedGrypeImage]);
   const reports = [];
   for (const [name, image, scope] of images) {
     const imageId = await inspectImage(image);
-    const reportFormat = hasTrivy ? 'sarif' : 'grype-json';
-    const filename = path.join(
-      artifactRoot,
-      'scans',
-      `avantime-${name}.${hasTrivy ? 'sarif' : 'grype'}.json`,
-    );
-    if (hasTrivy) {
-      await run('trivy', [
-        'image',
-        '--format',
-        'sarif',
-        '--output',
-        filename,
-        '--severity',
-        'HIGH,CRITICAL',
-        '--ignore-unfixed=false',
-        image,
-      ]);
-    } else if (hasGrype) {
+    const filename = path.join(artifactRoot, 'scans', `avantime-${name}.grype.json`);
+    if (hasGrype) {
       await run('grype', [image, '--output', 'json', '--file', filename]);
     } else {
       await run('docker', [
@@ -181,29 +202,19 @@ async function scanImages() {
       ]);
     }
     const content = await readFile(filename);
-    const parsed = JSON.parse(content.toString('utf8')) as
-      | { runs?: Array<{ results?: unknown[] }> }
-      | { matches?: Array<{ vulnerability?: { severity?: string } }> };
-    const matches =
-      'matches' in parsed
-        ? (parsed.matches as
-            | Array<{
-                vulnerability?: {
-                  id?: string;
-                  severity?: string;
-                  fix?: { state?: string; versions?: string[] };
-                };
-              }>
-            | undefined)
-        : undefined;
-    const runs = 'runs' in parsed ? parsed.runs : undefined;
-    const relevantMatches = matches?.filter((match) =>
+    const parsed = JSON.parse(content.toString('utf8')) as {
+      matches?: Array<{
+        vulnerability?: {
+          id?: string;
+          severity?: string;
+          fix?: { state?: string; versions?: string[] };
+        };
+      }>;
+    };
+    const relevantMatches = parsed.matches?.filter((match) =>
       ['high', 'critical'].includes(match.vulnerability?.severity?.toLowerCase() ?? ''),
     );
-    const findingCount =
-      relevantMatches?.length ??
-      runs?.reduce((sum, run) => sum + (run.results?.length || 0), 0) ??
-      0;
+    const findingCount = relevantMatches?.length ?? 0;
     const criticalFindings =
       relevantMatches?.filter(
         (match) => match.vulnerability?.severity?.toLowerCase() === 'critical',
@@ -217,61 +228,41 @@ async function scanImages() {
           match.vulnerability?.fix?.state === 'fixed' ||
           (match.vulnerability?.fix?.versions?.length ?? 0) > 0,
       ).length ?? null;
-    const testOnly = scope === 'ephemeral_test_only';
-    const acceptedExistingWebRisk =
-      name === 'web' &&
-      new Date() <= dependencyAcceptanceExpiresAt &&
-      relevantMatches?.length === acceptedWebAdvisories.size &&
-      relevantMatches.every((match) => acceptedWebAdvisories.has(match.vulnerability?.id ?? ''));
+    const policy = await enforceVulnerabilityPolicy(name, scope, filename);
     reports.push({
       name,
       image,
       imageId,
       scope,
-      format: reportFormat,
+      format: 'grype-json',
       path: path.relative(repositoryRoot, filename),
       sha256: sha256(content),
+      policyResultPath: path.relative(repositoryRoot, policy.outputFilename),
       highOrCriticalFindings: findingCount,
       criticalFindings,
       highFindings,
       fixedFindings,
       unfixedFindings: fixedFindings === null ? null : findingCount - fixedFindings,
-      gateImpact:
-        findingCount === 0
-          ? 'passed'
-          : acceptedExistingWebRisk
-            ? 'accepted_active_risk'
-            : testOnly
-              ? 'tracked_test_only_non_promotion_risk'
-              : 'blocks_until_reachability_and_security_decision',
-      reviewDue: (testOnly && findingCount > 0) || acceptedExistingWebRisk ? '2026-08-12' : null,
-      acceptance:
-        findingCount === 0
-          ? 'not_required'
-          : acceptedExistingWebRisk
-            ? 'AR-DEP-2026-002'
-            : 'pending_security_review',
+      policyStatus: policy.result.status,
+      gateImpact: policy.result.decision,
+      reviewDue: policy.result.expiresAt?.slice(0, 10) ?? null,
+      riskOrTrackingId: policy.result.riskId,
+      published: policy.result.published,
+      productionUse: policy.result.productionUse,
     });
   }
-  const blocked = reports.some(
-    (report) =>
-      report.scope !== 'ephemeral_test_only' &&
-      report.highOrCriticalFindings > 0 &&
-      report.acceptance !== 'AR-DEP-2026-002',
-  );
+  const blocked = reports.some((report) => report.policyStatus === 'blocked');
   const summary = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    tool: hasTrivy ? 'trivy' : hasGrype ? 'grype' : dockerizedGrypeImage,
+    tool: hasGrype ? 'grype' : dockerizedGrypeImage,
     policy: {
-      productionRuntime:
-        'critical/high findings block until reachability is classified and Security Owner explicitly decides',
-      existingDependencyAcceptance:
-        'only the exact web PostCSS/Sharp advisory set is covered by active AR-DEP-2026-002; expiry fails closed',
-      migrationAndOperations:
-        'classified separately, but critical/high findings remain blocking until a reachability decision exists',
-      ephemeralTestOnly:
-        'never published or deployed; findings are tracked separately with a review deadline and do not automatically accept production risk',
+      path: path.relative(repositoryRoot, vulnerabilityPolicy),
+      matching:
+        'exact image target, production/test classification, CVE/GHSA, package, severity, risk/tracking ID and expiry',
+      default:
+        'unknown, additional, severity-escalated, expired or unaccepted high/critical findings block',
+      blanketIgnores: false,
     },
     status: blocked ? 'blocked' : 'passed',
     reports,

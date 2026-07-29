@@ -30,7 +30,9 @@ because it requires an unavailable Docker ID login.
 
 CI uses pinned Anchore SBOM/Grype actions, retains sanitized artifacts for 30
 days and never publishes images. Scans cover OS, npm and base-image packages,
-fixed/unfixed status and all runtime targets.
+fixed/unfixed status and all runtime targets. Each matrix job retains both the
+raw `avantime-<target>.grype.json` report and the evaluated
+`avantime-<target>.policy.json` decision.
 
 ## Policy
 
@@ -40,6 +42,12 @@ fixed/unfixed status and all runtime targets.
 - expired exceptions fail closed;
 - `AR-DEP-2026-001/002` apply only to their documented npm paths and do not
   accept unrelated OS findings;
+- the machine-readable
+  [`security/container-vulnerability-policy.json`](../security/container-vulnerability-policy.json)
+  matches the exact image target, production/test classification, advisory ID,
+  package, severity, risk/tracking ID and expiry;
+- unknown, additional or severity-escalated critical/high findings block;
+- there is no blanket ignore by image, severity or package;
 - no scanner performs automatic remediation.
 
 Image scopes are explicit:
@@ -50,6 +58,22 @@ Image scopes are explicit:
 | Migration runtime   | migration                              | Separate one-shot scope, but still blocking without a decision               |
 | Operations runtime  | operations                             | Separate restricted operator scope, but still blocking without a decision    |
 | Ephemeral test-only | OCR integration                        | Never published/deployed; tracked with a review deadline, not auto-accepted  |
+
+The shared CI/local evaluator fails closed if the target classification does
+not match the policy, the report is missing or malformed, a record is expired,
+or a finding is outside its exact set. Current expected matrix outcomes are:
+
+| Target          | Current policy result                                                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Web             | Pass only for the three exact PostCSS/Sharp records under active `AR-DEP-2026-002`; automatically block after `2026-08-12T23:59:59Z` |
+| OCR integration | Tracked warning under `TR-OCR-TEST-2026-001` through `2026-08-12T23:59:59Z`; raw scan remains mandatory and visible                  |
+| Document worker | Blocking failure under unaccepted `RISK-OCR-NATIVE-2026-001`                                                                         |
+| Other targets   | Pass only with zero critical/high findings; any such finding is unknown and blocking                                                 |
+
+`TR-OCR-TEST-2026-001` is a tracking record, not a production risk acceptance.
+It is valid only for the exact `ocr-integration` target classified
+`ephemeral_test_only`, which is neither published nor deployed. Expiry or any
+finding outside the approved native set makes that check blocking.
 
 The compatible production base declaration was updated from
 `node:22.17.1-alpine3.22` to
@@ -131,9 +155,9 @@ PDF/PNG/JPEG allowlist, explicit TIFF rejection, bounded pages/bytes/time,
 private object storage, non-root isolated worker, restricted network and
 resource limits. These controls do not constitute acceptance.
 
-The local scanner returns exit `2` when high/critical findings need review. A
-report existing, or scanning an obsolete image ID after a Dockerfile change, is
-not evidence of acceptance.
+The local scanner applies the same machine-readable policy and returns exit `2`
+when any target is blocked. A report existing, or scanning an obsolete image ID
+after a Dockerfile change, is not evidence of acceptance.
 
 ## Related documents
 

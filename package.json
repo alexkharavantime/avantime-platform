@@ -56,6 +56,8 @@
     "security:migration-scan": "npm run security:migration-scan -w @avantime/web",
     "security:architecture-scan": "npm run security:architecture-scan -w @avantime/web",
     "security:dependency-revalidation": "npm run security:dependency-revalidation -w @avantime/web",
+    "security:container-policy": "npm run security:container-policy -w @avantime/web --",
+    "test:container-policy": "npm run test:container-policy -w @avantime/web",
     "docs:links-check": "npm run docs:links-check -w @avantime/web",
     "staging:config-check": "npm run staging:config-check -w @avantime/web --",
     "staging:compose-check": "npm run staging:compose-check -w @avantime/web --",

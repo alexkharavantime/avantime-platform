@@ -577,7 +577,12 @@ type ImageSecurityManifest = {
 type ImageScanSummary = {
   generatedAt: string;
   tool: string;
-  policy: string;
+  policy: {
+    path: string;
+    matching: string;
+    default: string;
+    blanketIgnores: false;
+  };
   status: 'passed' | 'blocked';
   reports: Array<{
     name: string;
@@ -585,8 +590,14 @@ type ImageScanSummary = {
     imageId: string;
     path: string;
     sha256: string;
+    policyResultPath: string;
     highOrCriticalFindings: number;
-    acceptance: string;
+    policyStatus: 'passed' | 'warning' | 'blocked';
+    gateImpact: string;
+    reviewDue: string | null;
+    riskOrTrackingId: string | null;
+    published: boolean;
+    productionUse: boolean;
   }>;
 };
 

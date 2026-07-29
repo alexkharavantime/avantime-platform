@@ -85,6 +85,10 @@ environment-specific go-live validation без production data, production secre
       TypeScript, npm/npx и source maps отсутствуют в финальных runtime images.
 - [x] Выполнено контролируемое Alpine/Debian slim сравнение реального OCR
       PDF/PNG/JPEG workload; Alpine сохранён как меньший и менее уязвимый вариант.
+- [x] CI image gate сопоставлен с точными target/classification/CVE/package,
+      risk/tracking ID и expiry; blanket ignores отсутствуют.
+- [x] Добавлены policy regression tests для active/expired acceptance,
+      unknown High/Critical, test-only warning и непринятого production риска.
 - [ ] Развёрнута внешняя managed staging environment.
 - [ ] Подтверждены DNS/TLS и network isolation снаружи.
 - [ ] Подтверждены реальные provider model/dimension checks.
@@ -144,6 +148,13 @@ owner/security evidence отсутствуют.
   Web PostCSS/Sharp покрыты действующим `AR-DEP-2026-002`. Остались 11
   непринятых native OCR matches в production document-worker: GLib 1 critical +
   6 high, SQLite 2 high и TIFF 2 high.
+- Draft PR #11 container supply-chain policy теперь ожидаемо даёт: web — pass
+  только для точного набора под действующим `AR-DEP-2026-002`; OCR integration —
+  обязательный scan и tracked non-production warning под
+  `TR-OCR-TEST-2026-001`; document-worker — blocking failure под непринятым
+  `RISK-OCR-NATIVE-2026-001`. Обе временные записи истекают
+  `2026-08-12T23:59:59Z`; expiry, неизвестный или дополнительный High/Critical
+  автоматически блокирует.
 - Контролируемое сравнение одинакового OCR workload: Alpine — 268,025,436 bytes
   и 11 critical/high; Debian Trixie slim — 388,486,881 bytes и 75
   critical/high. Оба варианта прошли PDF/PNG/JPEG, поэтому Debian отклонён.
@@ -165,6 +176,10 @@ owner/security evidence отсутствуют.
   запрещён, а SQLite/уязвимые GLib APIs не используются приложением, но native
   библиотеки входят в исполняемый Tesseract/Poppler package graph, поэтому риск
   не скрыт и не принят автоматически.
+- OCR integration image классифицирован как `ephemeral_test_only`, не
+  публикуется и не используется в production. Его findings остаются в raw scan,
+  policy report и CI warning; эта классификация не распространяется на
+  document-worker и не является blanket exception.
 - Accepted dependency risks истекают `2026-08-12`.
 
 ## Связанные документы

@@ -361,15 +361,41 @@ test('production images use compiled JavaScript and prohibit runtime TypeScript 
   assert.match(bundler, /sourcesContent: false/);
 });
 
-test('image policy accepts only the existing web advisory record and fails closed on expiry', async () => {
-  const scanner = await readFile(
-    path.join(repositoryRoot, 'apps', 'web', 'scripts', 'staging-image-security.ts'),
-    'utf8',
+test('image scanner delegates exact findings and expiry decisions to the shared policy', async () => {
+  const [scanner, policyText] = await Promise.all([
+    readFile(
+      path.join(repositoryRoot, 'apps', 'web', 'scripts', 'staging-image-security.ts'),
+      'utf8',
+    ),
+    readFile(path.join(repositoryRoot, 'security', 'container-vulnerability-policy.json'), 'utf8'),
+  ]);
+  const policy = JSON.parse(policyText) as {
+    targets: Record<string, { classification: string; findingRecord: string }>;
+    records: Record<
+      string,
+      {
+        expiresAt: string;
+        findings: Array<{ id: string; package: string; severity: string }>;
+      }
+    >;
+  };
+  const acceptance = policy.records['AR-DEP-2026-002'];
+
+  assert.match(scanner, /enforce-container-vulnerability-policy\.mjs/);
+  assert.match(scanner, /--classification=/);
+  assert.equal(policy.targets.web.classification, 'production_runtime');
+  assert.equal(policy.targets.web.findingRecord, 'AR-DEP-2026-002');
+  assert.equal(acceptance.expiresAt, '2026-08-12T23:59:59Z');
+  assert.deepEqual(
+    acceptance.findings.map((finding) => ({
+      id: finding.id,
+      package: finding.package,
+      severity: finding.severity,
+    })),
+    [
+      { id: 'GHSA-6g55-p6wh-862q', package: 'postcss', severity: 'High' },
+      { id: 'GHSA-r28c-9q8g-f849', package: 'postcss', severity: 'High' },
+      { id: 'GHSA-f88m-g3jw-g9cj', package: 'sharp', severity: 'High' },
+    ],
   );
-  for (const advisory of ['GHSA-6g55-p6wh-862q', 'GHSA-r28c-9q8g-f849', 'GHSA-f88m-g3jw-g9cj']) {
-    assert.match(scanner, new RegExp(advisory));
-  }
-  assert.match(scanner, /dependencyAcceptanceExpiresAt = new Date\('2026-08-12T23:59:59Z'\)/);
-  assert.match(scanner, /name === 'web'/);
-  assert.match(scanner, /report\.acceptance !== 'AR-DEP-2026-002'/);
 });
