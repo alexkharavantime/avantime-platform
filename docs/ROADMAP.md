@@ -319,11 +319,13 @@
 
 [TASK-003](./tasks/TASK-003.md) завершила OCR и Document Intelligence. [TASK-004](./tasks/TASK-004.md) завершила следующий документный этап: единый AI Gateway, асинхронные embeddings, PostgreSQL/pgvector, lexical/semantic/hybrid retrieval, server-generated citations и synthetic evaluation. Все компоненты имеют раздельную readiness, а production requirements не ослаблены.
 
-[TASK-005](./tasks/TASK-005.md) выполняет production reliability этап Version
+[TASK-005](./tasks/TASK-005.md) завершила production reliability этап Version
 2.0: Redis queues, worker fencing, distributed limits, durable cost/audit,
 backup/restore rehearsal, observability, page provenance и production deployment
-templates. Переход к managed staging и go-live остаётся заблокирован до полного
-security/dependency gate, назначения owners и environment evidence.
+templates. [TASK-006](./tasks/TASK-006.md) выполняет staging/go-live этап:
+production-like Compose, isolated configuration/secrets, TLS/provider checks,
+SBOM/scanning, smoke/load и evidence workflow. Go-live остаётся `BLOCKED` до
+managed environment evidence и owner approvals.
 
 ### Основная цель
 
@@ -796,4 +798,5 @@ security/dependency gate, назначения owners и environment evidence.
 - [Product Backlog](./PRODUCT_BACKLOG.md)
 - [Project Status](./PROJECT_STATUS.md)
 - [TASK-005](./tasks/TASK-005.md)
+- [TASK-006](./tasks/TASK-006.md)
 - [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md)

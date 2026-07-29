@@ -22,6 +22,10 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+      - run: npm run staging:config-check -- --example
+      - run: npm run staging:compose-check -- --example
+      - run: npm run security:architecture-scan
+      - run: npm run docs:links-check
 
   integration:
     runs-on: ubuntu-latest
@@ -61,8 +65,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --omit=optional --audit-level=critical
+      - run: npm run security:dependency-revalidation
       - run: npm run security:secret-scan -w @avantime/web
       - run: npm run security:migration-scan -w @avantime/web
+      - run: npm run security:architecture-scan -w @avantime/web
       - run: npm run backup:dry-run
         env:
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/avantime_integration
@@ -74,3 +80,92 @@ jobs:
       - run: docker build --target embedding-worker -f docker/production.Dockerfile -t avantime-embedding-worker:ci .
       - run: docker build --target migration -f docker/production.Dockerfile -t avantime-migration:ci .
       - run: docker build --target operations -f docker/production.Dockerfile -t avantime-operations:ci .
+
+  container-supply-chain:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web
+            dockerfile: docker/production.Dockerfile
+            target: web
+            classification: production_runtime
+          - name: document-worker
+            dockerfile: docker/production.Dockerfile
+            target: document-worker
+            classification: production_runtime
+          - name: embedding-worker
+            dockerfile: docker/production.Dockerfile
+            target: embedding-worker
+            classification: production_runtime
+          - name: migration
+            dockerfile: docker/production.Dockerfile
+            target: migration
+            classification: migration_runtime
+          - name: operations
+            dockerfile: docker/production.Dockerfile
+            target: operations
+            classification: operations_runtime
+          - name: ocr-integration
+            dockerfile: docker/ocr-integration.Dockerfile
+            target: ''
+            classification: ephemeral_test_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production target
+        if: matrix.target != ''
+        run: docker build --target "${{ matrix.target }}" -f "${{ matrix.dockerfile }}" -t "avantime-${{ matrix.name }}:ci" .
+      - name: Build OCR integration target
+        if: matrix.target == ''
+        run: docker build -f "${{ matrix.dockerfile }}" -t "avantime-${{ matrix.name }}:ci" .
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: avantime-${{ matrix.name }}:ci
+          format: cyclonedx-json
+          output-file: avantime-${{ matrix.name }}.cdx.json
+          artifact-name: avantime-${{ matrix.name }}.cdx.json
+          upload-artifact-retention: 30
+          upload-release-assets: false
+      - name: Scan high and critical vulnerabilities
+        id: image-scan
+        continue-on-error: true
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: avantime-${{ matrix.name }}:ci
+          fail-build: true
+          severity-cutoff: high
+          output-format: json
+          output-file: avantime-${{ matrix.name }}.grype.json
+          cache-db: true
+      - name: Enforce exact container vulnerability policy
+        id: container-policy
+        if: always()
+        run: |
+          node apps/web/scripts/enforce-container-vulnerability-policy.mjs \
+            --target="${{ matrix.name }}" \
+            --classification="${{ matrix.classification }}" \
+            --report="avantime-${{ matrix.name }}.grype.json" \
+            --policy=security/container-vulnerability-policy.json \
+            --output="avantime-${{ matrix.name }}.policy.json"
+      - name: Record accepted production risk
+        if: always() && steps.container-policy.outputs.decision == 'accepted_active_risk'
+        run: |
+          echo "::warning title=Active production risk acceptance::${{ matrix.name }} passed only under ${{ steps.container-policy.outputs.risk_id }} through ${{ steps.container-policy.outputs.expires_at }}."
+      - name: Record tracked non-production warning
+        if: always() && steps.container-policy.outputs.decision == 'tracked_test_only_findings'
+        run: |
+          echo "::warning title=Tracked ephemeral test-image findings::${{ matrix.name }} is not published or used in production; findings remain tracked under ${{ steps.container-policy.outputs.risk_id }} through ${{ steps.container-policy.outputs.expires_at }}."
+      - name: Retain vulnerability report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: avantime-${{ matrix.name }}-vulnerability-report
+          path: |
+            avantime-${{ matrix.name }}.grype.json
+            avantime-${{ matrix.name }}.policy.json
+          if-no-files-found: error
+          retention-days: 30

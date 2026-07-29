@@ -19,3 +19,9 @@ coverage
 .env.*
 !.env.example
 !.env.integration.example
+!.env.staging.example
+
+# Runtime-injected staging secrets and generated evidence
+.staging-secrets/
+.artifacts/
+.tmp/

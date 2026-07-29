@@ -1843,6 +1843,179 @@ enabled in this task.
 
 ---
 
+## ADR-0025
+
+**Название:** Production-like Docker Compose как основной staging deployment path
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-29
+
+### Контекст
+
+TASK-005 создала пять production container targets и provider-neutral reference
+Compose, но не staging deployment. TASK-006 должна дать один воспроизводимый
+путь с migration, TLS ingress, private data services, workers, monitoring,
+backup, secrets и evidence без выбора cloud provider.
+
+### Варианты
+
+- production-like Docker Compose;
+- Kubernetes manifests;
+- proprietary managed-platform manifest;
+- только ручной deployment runbook.
+
+### Альтернативы, которые были отклонены
+
+| Альтернатива         | Преимущества                  | Недостатки                                    | Причина отказа                                   | Возможность пересмотра                         |
+| -------------------- | ----------------------------- | --------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| Kubernetes сейчас    | Native probes/secrets/scaling | Второй orchestration stack без текущей основы | Не нужен для проверки существующих boundaries    | При выборе Kubernetes как production scheduler |
+| Proprietary manifest | Быстрый путь для одного cloud | Provider lock-in до инфраструктурного решения | Противоречит provider-neutral scope              | После выбора provider                          |
+| Ручной runbook       | Минимальный code scope        | Невоспроизводим, слабые guards/evidence       | Не закрывает staging/go-live automation criteria | Не рекомендуется                               |
+
+### Принятое решение
+
+Использовать `docker-compose.staging.yml` как основной staging path. Он
+переиспользует production images и явно моделирует stateless web,
+document/OCR/embedding workers, отдельную migration job, PostgreSQL/pgvector,
+private S3-compatible storage, Redis, Caddy TLS ingress, OTLP collector,
+Prometheus и encrypted backup job.
+
+Only reverse proxy publishes ports. Environment ID, `staging-*` tenant allowlist,
+production hostname denylist и isolated secrets обязательны. Commands plan-only
+по умолчанию; deploy/migration/backup/restore/provider/alert operations требуют
+раздельных exact confirmations.
+
+### Причины выбора
+
+Это минимальный совместимый шаг от TASK-005 reference architecture к
+environment-specific validation. Контракты процессов, networks, health,
+resources, volumes и secrets остаются переносимыми в Kubernetes/managed
+scheduler.
+
+### Преимущества
+
+- reuse проверенных production targets;
+- локальная и CI validation без cloud lock-in;
+- явные migration ordering, private networks и evidence gates;
+- обратимый переход к managed scheduler.
+
+### Недостатки
+
+- Compose не подтверждает multi-zone orchestration;
+- host firewall/egress и managed PITR остаются внешними gates;
+- local validation не заменяет managed staging evidence.
+
+### Последствия
+
+TASK-006 остаётся `In Progress`, пока external DNS/TLS, providers,
+monitoring/alerts, backup/restore, scanning acceptance и owner approvals не
+подтверждены. Выбор Compose не является выбором production cloud provider.
+
+### Влияние на архитектуру
+
+Границы TASK-005 не меняются. Добавляется staging orchestration/evidence layer,
+но PostgreSQL/pgvector, S3, Redis, AI Gateway и ADMIN-only tenant model остаются
+прежними.
+
+### Связанные документы
+
+- `docs/STAGING_ARCHITECTURE.md`;
+- `docs/STAGING_DEPLOYMENT.md`;
+- `docs/GO_LIVE_EVIDENCE.md`;
+- `docs/tasks/TASK-006.md`.
+
+### Связанные задачи Product Backlog
+
+- INFRA-001;
+- INFRA-002;
+- INFRA-005;
+- SEC-005;
+- SEC-006.
+
+---
+
+## ADR-0026
+
+**Название:** Compiled production entrypoints и Alpine OCR runtime без изменения
+worker topology
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-29
+
+### Контекст
+
+Финальные TASK-006 worker и operations images запускали TypeScript через
+`tsx -> esbuild`. Встроенный в esbuild Go runtime создавал 44 scanner matches в
+каждом affected image, хотя compiler нужен только для сборки. Document worker
+также содержит Tesseract/Poppler native stack с GLib/SQLite/TIFF findings.
+Требовалось убрать build tooling из runtime и проверить, уменьшит ли Debian slim
+остаточный OCR risk, не меняя production queue/worker architecture.
+
+### Варианты
+
+- компилировать production entrypoints в builder и запускать Node;
+- обновить/оставить `tsx` и esbuild в runtime;
+- выделить новый distributed OCR service;
+- использовать Alpine 3.23 или Debian Trixie slim для OCR runtime.
+
+### Альтернативы, которые были отклонены
+
+| Альтернатива          | Преимущества                       | Недостатки                                                            | Причина отказа                                                  |
+| --------------------- | ---------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Runtime `tsx`/esbuild | Минимум packaging changes          | Compiler и embedded Go остаются исполняемыми production dependencies  | Build tooling не требуется после сборки и оставляет 44 findings |
+| Новый OCR service     | Максимальная изоляция native stack | Новый queue contract, deployment unit, fencing/health/operations path | Архитектурное расширение вне container-remediation scope        |
+| Debian Trixie slim    | Альтернативная package ecosystem   | 388,486,881 bytes и 75 critical/high при тех же native libraries      | Хуже Alpine по размеру и scan result при равной функции         |
+
+### Принятое решение
+
+Production worker/operations/health/backup entrypoints компилируются esbuild в
+builder stage в `.mjs` без source maps и sources content. Третьесторонние runtime
+dependencies остаются external и устанавливаются отдельным
+`npm ci --omit=dev --omit=optional`; затем удаляются `tsx`, `esbuild`,
+`@esbuild`, TypeScript и global npm/npx. Финальные команды вызывают Node
+напрямую. Migration вызывает Prisma CLI напрямую через Node.
+
+OCR остаётся внутри существующего document-worker. Native Tesseract/Poppler
+устанавливаются только в document-worker и ephemeral OCR integration image.
+Alpine 3.23 сохраняется: одинаковый PDF/PNG/JPEG test прошёл на Alpine и Debian,
+но Alpine image на 120 MB меньше и имеет 11 вместо 75 critical/high matches.
+
+### Последствия
+
+- все esbuild/embedded-Go runtime findings устранены;
+- web/document/embedding/migration/operations сохраняют прежние process, queue,
+  lease/fencing и readiness contracts;
+- runtime images не содержат TypeScript compiler/build tooling/source maps;
+- GLib/SQLite/TIFF остаются фактическими native dependencies production OCR;
+  они не принимаются этим ADR и продолжают блокировать promotion;
+- отдельный OCR service может быть рассмотрен новой задачей, если Security
+  Owner не примет остаток и fixed packages не появятся.
+
+### Влияние на архитектуру
+
+Production architecture TASK-005 не меняется. Меняется только packaging и
+startup artifact: TypeScript исполняется в local/CI builder, а production
+запускает compiled JavaScript. OCR queue payload, worker ownership, heartbeat,
+lease renewal, fencing, storage и readiness contracts остаются прежними.
+
+### Связанные документы
+
+- `docker/production.Dockerfile`;
+- `docker/ocr-integration.Dockerfile`;
+- `docs/SBOM_AND_IMAGE_SCANNING.md`;
+- `docs/SECURITY_HARDENING.md`;
+- `docs/tasks/TASK-006.md`.
+
+### Связанные задачи Product Backlog
+
+- SEC-005;
+- SEC-006;
+- INFRA-005.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1859,7 +2032,7 @@ enabled in this task.
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0025`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0027`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

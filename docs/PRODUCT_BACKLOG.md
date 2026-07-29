@@ -1069,6 +1069,23 @@ Product Backlog — основной управляемый перечень п�
 - **Критерии готовности:** массовые изменения изолированы от функциональных правок; `npx prettier --check .` проходит; diff проверен на отсутствие семантических изменений; CI включает formatting gate.
 - **Зависимости:** стабилизация текущих feature branches.
 
+### INFRA-005 — Staging deployment и go-live evidence
+
+- **ID:** INFRA-005
+- **Название:** Staging deployment и go-live evidence
+- **Эпик:** EPIC-013 Инфраструктура
+- **Приоритет:** P0
+- **Версия:** Version 2.0
+- **Статус:** In Progress
+- **Описание:** TASK-006 добавляет production-like staging Compose,
+  configuration/secrets/TLS/provider guards, synthetic smoke/load,
+  SBOM/scanning и formal evidence/approval workflow. Managed staging deployment
+  и external approvals остаются blocking.
+- **Критерии готовности:** isolated staging; migrations; TLS; providers;
+  monitoring/alerts; backup/restore; smoke/load; SBOM/scans; immutable evidence;
+  named approvals.
+- **Зависимости:** INFRA-001, INFRA-002, INFRA-003, SEC-005, SEC-006, DOCS-006.
+
 ## EPIC-014 Аналитика
 
 ### ANL-001 — Продуктовая аналитика
@@ -1337,3 +1354,4 @@ Product Backlog — основной управляемый перечень п�
 - [Roadmap](./ROADMAP.md)
 - [Project Status](./PROJECT_STATUS.md)
 - [TASK-005](./tasks/TASK-005.md)
+- [TASK-006](./tasks/TASK-006.md)
