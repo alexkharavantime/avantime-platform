@@ -1,6 +1,7 @@
 import type { EmbeddingProvider, RagAnswerProvider } from './ai-gateway';
 import { createAiGateway, type AiGateway } from './ai-gateway';
 import { InMemoryAiOperationalEventSink, type AiOperationalEventSink } from './ai-observability';
+import type { AiCostController, DistributedAiRateLimiter } from './ai-control';
 import {
   DefaultDocumentEmbeddingWorker,
   type DocumentEmbeddingServices,
@@ -50,6 +51,8 @@ export type RagServiceDependencies = {
   events?: AiOperationalEventSink;
   environment?: Record<string, string | undefined>;
   now?: () => Date;
+  rateLimiter?: DistributedAiRateLimiter;
+  costController?: AiCostController;
 };
 
 export type RagServices = {
@@ -79,6 +82,8 @@ export function createRagServices(
     events,
     environment: dependencies.environment,
     now: dependencies.now,
+    rateLimiter: dependencies.rateLimiter,
+    costController: dependencies.costController,
   });
   const vectors =
     dependencies.vectors ??
@@ -91,7 +96,11 @@ export function createRagServices(
     dependencies.embeddingQueue ??
     (configuration.embeddingQueue.driver === 'postgresql'
       ? new PostgreSQLEmbeddingJobQueue(dependencies.loadDatabase)
-      : new LocalEmbeddingJobQueue(configuration.dataDirectory));
+      : configuration.embeddingQueue.driver === 'local'
+        ? new LocalEmbeddingJobQueue(configuration.dataDirectory)
+        : (() => {
+            throw new Error('A Redis embedding queue adapter is required for this configuration.');
+          })());
   const embedding: DocumentEmbeddingServices = {
     metadata: documents.metadata,
     processing: documents.processing,
@@ -101,6 +110,9 @@ export function createRagServices(
     configuration,
     events,
     now: dependencies.now,
+    workerVersion: dependencies.environment?.WORKER_VERSION ?? process.env.WORKER_VERSION,
+    deploymentGeneration:
+      dependencies.environment?.DEPLOYMENT_GENERATION ?? process.env.DEPLOYMENT_GENERATION,
   };
   const lexical = new DefaultLexicalRetriever(
     documents.metadata,

@@ -319,6 +319,12 @@
 
 [TASK-003](./tasks/TASK-003.md) завершила OCR и Document Intelligence. [TASK-004](./tasks/TASK-004.md) завершила следующий документный этап: единый AI Gateway, асинхронные embeddings, PostgreSQL/pgvector, lexical/semantic/hybrid retrieval, server-generated citations и synthetic evaluation. Все компоненты имеют раздельную readiness, а production requirements не ослаблены.
 
+[TASK-005](./tasks/TASK-005.md) выполняет production reliability этап Version
+2.0: Redis queues, worker fencing, distributed limits, durable cost/audit,
+backup/restore rehearsal, observability, page provenance и production deployment
+templates. Переход к managed staging и go-live остаётся заблокирован до полного
+security/dependency gate, назначения owners и environment evidence.
+
 ### Основная цель
 
 Превратить знания, документы, обучение и AI в управляемую корпоративную систему с измеримым качеством.
@@ -781,3 +787,13 @@
 - новые зависимости и сервисы вводятся только при подтверждённой необходимости;
 - риски и зависимости актуализируются перед началом каждого этапа;
 - результат каждой версии измеряется техническими и бизнес-показателями.
+
+## Связанные документы
+
+- [Vision](./VISION.md)
+- [Master Specification](./MASTER_SPECIFICATION.md)
+- [Architecture 2.0](./ARCHITECTURE_2_0.md)
+- [Product Backlog](./PRODUCT_BACKLOG.md)
+- [Project Status](./PROJECT_STATUS.md)
+- [TASK-005](./tasks/TASK-005.md)
+- [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md)

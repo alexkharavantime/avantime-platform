@@ -108,6 +108,16 @@ test('RAG APIs derive tenant server-side and explicitly reject client companyId'
   }
 });
 
+test('AI usage summary derives tenant server-side and rejects client companyId', async () => {
+  const route = await import('node:fs/promises').then(({ readFile }) =>
+    readFile(path.join(process.cwd(), 'app/api/admin/ai/usage/route.ts'), 'utf8'),
+  );
+  assert.match(route, /authorizeApi\(\['ADMIN'\]\)/);
+  assert.match(route, /getDocumentTenantContext/);
+  assert.match(route, /TENANT_INPUT_REJECTED/);
+  assert.doesNotMatch(route, /searchParams\.get\('companyId'\)/);
+});
+
 test('a client cannot read a request owned by another company', async () => {
   const sameCompany = await getRequest('AV-1042', session({ companyId: 'demo-company' }));
   const otherCompany = await getRequest('AV-1042', session({ companyId: 'other-company' }));

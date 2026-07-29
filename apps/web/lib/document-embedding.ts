@@ -11,6 +11,7 @@ import type {
 } from './document-repositories';
 import type { RagConfiguration } from './rag-configuration';
 import type { VectorRepository } from './vector-repository';
+import { WorkerLeaseHeartbeat } from './worker-lease';
 
 export type EmbeddingWorkerRunResult =
   | { outcome: 'IDLE' }
@@ -49,6 +50,9 @@ export type DocumentEmbeddingServices = {
   configuration: RagConfiguration;
   events?: AiOperationalEventSink;
   now?: () => Date;
+  heartbeatIntervalMs?: number;
+  workerVersion?: string;
+  deploymentGeneration?: string;
 };
 
 export function hashChunkContent(text: string) {
@@ -207,15 +211,24 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
     tenant: DocumentTenantContext,
     workerId: string,
   ): Promise<EmbeddingWorkerRunResult> {
-    const job = await this.services.queue.claim(tenant, workerId, {
-      now: this.now(),
-      leaseDurationMs: this.services.configuration.embeddingQueue.leaseMs,
-    });
+    const job = await this.services.queue.claim(
+      tenant,
+      workerId,
+      this.services.queue.kind === 'local'
+        ? {
+            now: this.now(),
+            leaseDurationMs: this.services.configuration.embeddingQueue.leaseMs,
+          }
+        : {
+            leaseDurationMs: this.services.configuration.embeddingQueue.leaseMs,
+          },
+    );
     if (!job) return { outcome: 'IDLE' };
+    const fencingToken = job.fencingToken ?? Math.max(1, job.attempts);
     const document = await this.services.metadata.findById(tenant, job.documentId);
     if (!document || document.status !== 'COMPLETED') {
       await this.services.vectors.deleteDocument(tenant, job.documentId);
-      await this.services.queue.acknowledge(tenant, job.id, workerId);
+      await this.services.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       return {
         outcome: 'SKIPPED',
         documentId: job.documentId,
@@ -226,10 +239,48 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
       embeddingStatus: 'PROCESSING',
       embeddingAttempts: job.attempts,
       lastEmbeddingErrorCode: null,
+      embeddingWorkerId: workerId,
+      embeddingWorkerVersion: this.services.workerVersion ?? 'development',
+      embeddingDeploymentGeneration: this.services.deploymentGeneration ?? 'local',
+      embeddingFencingToken: fencingToken,
+      embeddingHeartbeatAt: this.now().toISOString(),
+      embeddingLeaseUntil: job.leaseExpiresAt,
     });
+    const leaseDurationMs = this.services.configuration.embeddingQueue.leaseMs;
+    const leaseGuard = { workerId, fencingToken };
+    const heartbeat = new WorkerLeaseHeartbeat(
+      {
+        renew: async () => {
+          const renewed = await this.services.queue.renew?.(
+            tenant,
+            job.id,
+            workerId,
+            fencingToken,
+            leaseDurationMs,
+          );
+          if (!renewed) return;
+          await this.updateFenced(tenant, document.id, job.id, leaseGuard, {
+            embeddingHeartbeatAt: this.now().toISOString(),
+            embeddingLeaseUntil: renewed.leaseExpiresAt,
+          });
+        },
+        assertOwned: () =>
+          this.services.queue.assertLease?.(tenant, job.id, workerId, fencingToken) ??
+          Promise.resolve(),
+      },
+      this.services.heartbeatIntervalMs ?? Math.max(1_000, Math.floor(leaseDurationMs / 3)),
+    );
+    heartbeat.start();
     try {
-      const result = await this.embedDocument(tenant, document.id, job.id);
-      await this.services.metadata.update(tenant, document.id, {
+      const result = await this.embedDocument(
+        tenant,
+        document.id,
+        job.correlationId ?? job.id,
+        fencingToken,
+        heartbeat,
+      );
+      await heartbeat.assertOwned();
+      await this.updateFenced(tenant, document.id, job.id, leaseGuard, {
         embeddingStatus: 'COMPLETED',
         embeddingModel: this.services.configuration.embedding.model,
         embeddingVersion: this.services.configuration.embedding.version,
@@ -238,6 +289,9 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
         embeddedAt: this.now().toISOString(),
         embeddingAttempts: job.attempts,
         lastEmbeddingErrorCode: null,
+        embeddingWorkerId: null,
+        embeddingHeartbeatAt: null,
+        embeddingLeaseUntil: null,
       });
       await this.services.vectors.deleteOtherVersions(
         tenant,
@@ -245,7 +299,8 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
         this.services.configuration.embedding.model,
         this.services.configuration.embedding.version,
       );
-      await this.services.queue.acknowledge(tenant, job.id, workerId);
+      await heartbeat.stop();
+      await this.services.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       this.events.record({
         name: 'embedding_job_completed',
         occurredAt: this.now().toISOString(),
@@ -261,6 +316,7 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
         embeddedChunks: result.embeddedChunks,
       };
     } catch (error) {
+      await heartbeat.stop();
       const normalized = normalizeEmbeddingError(error);
       const retry =
         normalized.transient && job.attempts < this.services.configuration.embedding.maxAttempts;
@@ -270,12 +326,15 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
           this.services.configuration.embedding.maximumRetryMs,
         );
         const availableAt = new Date(this.now().getTime() + delay).toISOString();
-        await this.services.metadata.update(tenant, document.id, {
+        await this.updateFenced(tenant, document.id, job.id, leaseGuard, {
           embeddingStatus: 'QUEUED',
           embeddingAttempts: job.attempts,
           lastEmbeddingErrorCode: normalized.code,
+          embeddingWorkerId: null,
+          embeddingHeartbeatAt: null,
+          embeddingLeaseUntil: null,
         });
-        await this.services.queue.release(tenant, job.id, workerId, availableAt);
+        await this.services.queue.release(tenant, job.id, workerId, availableAt, fencingToken);
         return {
           outcome: 'RETRY_SCHEDULED',
           documentId: document.id,
@@ -285,12 +344,15 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
       }
       const quarantined =
         normalized.transient && job.attempts >= this.services.configuration.embedding.maxAttempts;
-      await this.services.metadata.update(tenant, document.id, {
+      await this.updateFenced(tenant, document.id, job.id, leaseGuard, {
         embeddingStatus: quarantined ? 'QUARANTINED' : 'FAILED',
         embeddingAttempts: job.attempts,
         lastEmbeddingErrorCode: normalized.code,
+        embeddingWorkerId: null,
+        embeddingHeartbeatAt: null,
+        embeddingLeaseUntil: null,
       });
-      await this.services.queue.acknowledge(tenant, job.id, workerId);
+      await this.services.queue.acknowledge(tenant, job.id, workerId, fencingToken);
       this.events.record({
         name: 'embedding_job_failed',
         occurredAt: this.now().toISOString(),
@@ -312,6 +374,8 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
     tenant: DocumentTenantContext,
     documentId: string,
     correlationId: string,
+    fencingToken: number,
+    heartbeat: WorkerLeaseHeartbeat,
   ) {
     const chunks = await this.services.processing.readChunks(tenant, documentId);
     const model = this.services.configuration.embedding.model;
@@ -334,7 +398,9 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
         texts: batch.map((chunk) => chunk.text),
         purpose: 'document',
         correlationId,
+        usageIdempotencyKey: `document-embedding:${correlationId}:${fencingToken}:${Math.floor(index / batchSize)}`,
       });
+      await heartbeat.assertOwned();
       await this.services.vectors.upsert(
         tenant,
         batch.map((chunk, batchIndex) => ({
@@ -343,8 +409,13 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
           chunkIndex: chunk.index,
           contentHash: hashChunkContent(chunk.text),
           contentPreview: compactPreview(chunk.text),
-          pageStart: null,
-          pageEnd: null,
+          pageStart: chunk.pageStart ?? null,
+          pageEnd: chunk.pageEnd ?? null,
+          sourceSegmentIndex: chunk.sourceSegmentIndex ?? null,
+          extractionMethod: chunk.extractionMethod ?? 'UNKNOWN',
+          sourceCoordinates: chunk.sourceCoordinates ?? null,
+          provenanceConfidence: chunk.provenanceConfidence ?? null,
+          provenanceVersion: chunk.provenanceVersion ?? 'page-provenance-v1',
           embeddingModel: model,
           embeddingVersion: version,
           dimensions,
@@ -374,6 +445,26 @@ export class DefaultDocumentEmbeddingWorker implements DocumentEmbeddingWorker {
       embeddedChunks,
       contentHash: hashDocumentChunks(chunks),
     };
+  }
+
+  private async updateFenced(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    jobId: string,
+    leaseGuard: { workerId: string; fencingToken: number },
+    changes: Parameters<DocumentMetadataRepository['update']>[2],
+  ) {
+    await (this.services.queue.assertLease?.(
+      tenant,
+      jobId,
+      leaseGuard.workerId,
+      leaseGuard.fencingToken,
+    ) ?? Promise.resolve());
+    const updated = this.services.metadata.updateEmbeddingFenced
+      ? await this.services.metadata.updateEmbeddingFenced(tenant, documentId, changes, leaseGuard)
+      : await this.services.metadata.update(tenant, documentId, changes);
+    if (!updated) throw new Error('Embedding fencing token is no longer current.');
+    return updated;
   }
 }
 

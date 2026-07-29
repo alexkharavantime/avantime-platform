@@ -6,7 +6,7 @@ export type AiProviderDriver = (typeof AI_PROVIDER_DRIVERS)[number];
 export const VECTOR_DRIVERS = ['memory', 'pgvector'] as const;
 export type VectorDriver = (typeof VECTOR_DRIVERS)[number];
 
-export const EMBEDDING_QUEUE_DRIVERS = ['local', 'postgresql'] as const;
+export const EMBEDDING_QUEUE_DRIVERS = ['local', 'postgresql', 'redis'] as const;
 export type EmbeddingQueueDriver = (typeof EMBEDDING_QUEUE_DRIVERS)[number];
 
 export type RagConfiguration = {
@@ -50,7 +50,10 @@ export type RagConfiguration = {
   limits: {
     queryMaximumCharacters: number;
     rateLimitPerMinute: number;
+    rateLimitPerDay: number;
+    burstLimit: number;
     dailyBudgetEur: number;
+    monthlyBudgetEur: number;
   };
 };
 
@@ -165,7 +168,7 @@ export function loadRagConfiguration(
   const embeddingQueueDriver = parseEnum(
     environment,
     'DOCUMENT_EMBEDDING_QUEUE_DRIVER',
-    production || vectorDriver === 'pgvector' ? 'postgresql' : 'local',
+    production ? 'redis' : vectorDriver === 'pgvector' ? 'postgresql' : 'local',
     EMBEDDING_QUEUE_DRIVERS,
   );
   const requiredForReadiness = parseBoolean(
@@ -185,11 +188,13 @@ export function loadRagConfiguration(
     if (answerDriver === 'fake' || answerDriver === 'disabled') {
       throw new Error('Production RAG answers require a configured provider.');
     }
+    assertProviderConfiguration(environment, embeddingDriver);
+    assertProviderConfiguration(environment, answerDriver);
     if (vectorDriver !== 'pgvector') {
       throw new Error('Production vector storage must use pgvector.');
     }
-    if (embeddingQueueDriver !== 'postgresql') {
-      throw new Error('Production embedding jobs must use PostgreSQL.');
+    if (embeddingQueueDriver !== 'redis') {
+      throw new Error('Production embedding jobs must use the Redis external queue.');
     }
     if (!requiredForReadiness) {
       throw new Error('Production RAG must be required for readiness.');
@@ -197,11 +202,14 @@ export function loadRagConfiguration(
   }
   if (vectorDriver === 'pgvector') requireValue(environment, 'DATABASE_URL');
   if (embeddingQueueDriver === 'postgresql') requireValue(environment, 'DATABASE_URL');
+  if (embeddingQueueDriver === 'redis') requireValue(environment, 'REDIS_URL');
   if (embeddingDriver === 'disabled' && answerDriver !== 'disabled') {
     throw new Error('RAG answers cannot be enabled while document embeddings are disabled.');
   }
-  assertProviderConfiguration(environment, embeddingDriver);
-  assertProviderConfiguration(environment, answerDriver);
+  if (!production) {
+    assertProviderConfiguration(environment, embeddingDriver);
+    assertProviderConfiguration(environment, answerDriver);
+  }
 
   const lexicalWeight = parseUnitInterval(environment, 'HYBRID_LEXICAL_WEIGHT', 0.45);
   const semanticWeight = parseUnitInterval(environment, 'HYBRID_SEMANTIC_WEIGHT', 0.55);
@@ -288,10 +296,17 @@ export function loadRagConfiguration(
     limits: {
       queryMaximumCharacters: parsePositiveInteger(environment, 'RAG_QUERY_MAX_CHARACTERS', 2_000),
       rateLimitPerMinute: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_MINUTE', 30),
+      rateLimitPerDay: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_DAY', 5_000),
+      burstLimit: parsePositiveInteger(environment, 'AI_RATE_LIMIT_BURST', 10),
       dailyBudgetEur: parseNonNegativeNumber(
         environment,
         'AI_DAILY_BUDGET_EUR',
         production ? 25 : 0,
+      ),
+      monthlyBudgetEur: parseNonNegativeNumber(
+        environment,
+        'AI_MONTHLY_BUDGET_EUR',
+        production ? 500 : 0,
       ),
     },
   };

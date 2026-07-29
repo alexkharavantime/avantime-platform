@@ -1050,3 +1050,31 @@ PostgreSQL и объектное хранилище являются самос�
 Не рекомендуется начинать с микросервисной переработки или одновременно создавать все заявленные продукты. На ближайшем этапе максимальную ценность дадут защищённое модульное ядро, единая модель данных, управляемый AI и надёжная работа с документами.
 
 Архитектурные решения следует принимать через короткие документы решений с указанием контекста, альтернатив, рисков, критериев успеха и способа отката. Каждая версия должна завершаться измеримым производственным результатом, а не только добавлением новых функций.
+
+# 12. Production reliability boundary TASK-005
+
+TASK-005 сохраняет модульный монолит, но разделяет runtime processes: stateless
+web, document/OCR workers и embedding workers. PostgreSQL/pgvector остаётся system
+of record, private S3-compatible storage хранит объекты, Redis обеспечивает
+production queues/fencing и distributed AI limits.
+
+Production application configuration запрещает local filesystem/queues, memory
+rate limiter, fake providers, weak/placeholder secrets и non-TLS connections.
+Workers используют server-time leases, heartbeat и fencing; stale writer не может
+выполнить critical completion. AI Gateway резервирует budget в PostgreSQL до
+provider call и append-only фиксирует usage в EUR без content.
+
+Backup/restore, disaster recovery, telemetry/audit, load testing и deployment
+описаны отдельными operational documents. Reference architecture не означает,
+что managed infrastructure, owners или SLO уже подтверждены.
+
+# Связанные документы
+
+- [Production Architecture](./PRODUCTION_ARCHITECTURE.md)
+- [Production Deployment](./PRODUCTION_DEPLOYMENT.md)
+- [Queue Operations](./QUEUE_OPERATIONS.md)
+- [AI Cost Control](./AI_COST_CONTROL.md)
+- [Backup and Restore](./BACKUP_RESTORE.md)
+- [Observability](./OBSERVABILITY.md)
+- [Security Hardening](./SECURITY_HARDENING.md)
+- [TASK-005](./tasks/TASK-005.md)

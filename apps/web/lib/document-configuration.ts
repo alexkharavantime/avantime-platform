@@ -18,6 +18,7 @@ export type DocumentConfiguration = {
   metadataDriver: DocumentMetadataDriver;
   queueDriver: DocumentProcessingQueueDriver;
   queueName?: string;
+  redisUrl?: string;
   dataDirectory: string;
   retryPolicy: DocumentRetryPolicy;
   queueLeaseDurationMs: number;
@@ -203,6 +204,7 @@ export function loadDocumentConfiguration(
     metadataDriver,
     queueDriver,
     queueName,
+    redisUrl: environment.REDIS_URL?.trim() || undefined,
     dataDirectory: path.resolve(
       environment.DOCUMENT_DATA_DIR?.trim() || path.join(process.cwd(), '.data'),
     ),
@@ -268,6 +270,8 @@ export function loadDocumentConfiguration(
 export type DocumentWorkerConfiguration = {
   tenantId: string;
   workerId: string;
+  workerVersion?: string;
+  deploymentGeneration?: string;
 };
 
 export function loadDocumentWorkerConfiguration(
@@ -282,11 +286,17 @@ export function loadDocumentWorkerConfiguration(
     (production
       ? requireEnvironmentValue(environment, 'DOCUMENT_WORKER_ID')
       : `local-worker-${process.pid}`);
+  const workerVersion = environment.WORKER_VERSION?.trim() || 'development';
+  const deploymentGeneration = environment.DEPLOYMENT_GENERATION?.trim() || 'local';
   assertSafeDocumentSegment(tenantId, 'DOCUMENT_WORKER_TENANT_ID');
   assertSafeDocumentSegment(workerId, 'DOCUMENT_WORKER_ID');
+  assertSafeDocumentSegment(workerVersion, 'WORKER_VERSION');
+  assertSafeDocumentSegment(deploymentGeneration, 'DEPLOYMENT_GENERATION');
 
   return {
     tenantId,
     workerId,
+    workerVersion,
+    deploymentGeneration,
   };
 }

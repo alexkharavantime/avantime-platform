@@ -101,8 +101,8 @@ async function rehearseEmptyDatabase(options: {
     const migrations = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
       'SELECT COUNT(*)::bigint AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
     );
-    if (Number(migrations[0]?.count ?? 0) !== 4) {
-      throw new Error('Empty database did not apply exactly four document migrations.');
+    if (Number(migrations[0]?.count ?? 0) !== 5) {
+      throw new Error('Empty database did not apply exactly five document migrations.');
     }
     const vector = await client.$queryRawUnsafe<Array<{ extension: boolean; tableReady: boolean }>>(
       `SELECT

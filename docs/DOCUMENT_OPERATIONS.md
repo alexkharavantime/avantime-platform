@@ -1,6 +1,6 @@
 # Document Operations
 
-Документ описывает безопасный local/integration запуск Document Storage и Document Processing. Это не production deployment guide: конкретные production PostgreSQL/S3 providers, external queue, process manager, backup и observability ещё не выбраны.
+Документ описывает безопасный local/integration запуск Document Storage и Document Processing, а также TASK-005 operational commands. Production topology, deployment, backup/DR и monitoring подробно вынесены в отдельные runbooks.
 
 ## Предварительные условия
 
@@ -19,7 +19,7 @@ cp .env.integration.example .env.integration
 
 ## Integration infrastructure
 
-Запустить изолированные PostgreSQL 16 с `pgvector` и MinIO:
+Запустить изолированные PostgreSQL 16 с `pgvector`, MinIO и Redis:
 
 ```bash
 npm run integration:up
@@ -72,7 +72,7 @@ npm run documents:worker-check
 npm run documents:worker -w @avantime/web
 ```
 
-Worker требует безопасные `DOCUMENT_WORKER_TENANT_ID` и `DOCUMENT_WORKER_ID`. Production configuration запрещает local queue и завершается ошибкой до обработки job, если внешний adapter не внедрён.
+Worker требует безопасные `DOCUMENT_WORKER_TENANT_ID` и `DOCUMENT_WORKER_ID`. Production configuration запрещает local queue и требует Redis-backed external adapter с authenticated TLS endpoint.
 
 Для остановки отправить `SIGINT` (`Ctrl+C`) или `SIGTERM`. Worker:
 
@@ -81,7 +81,7 @@ Worker требует безопасные `DOCUMENT_WORKER_TENANT_ID` и `DOCUM
 - прерывает idle polling без ожидания полного интервала;
 - не пишет содержимое документа или секреты в лог.
 
-При аварийном завершении существующий lease recovery возвращает просроченный job в обработку. Distributed heartbeat и fencing не реализованы и требуют будущего решения вместе с external queue.
+При аварийном завершении lease recovery возвращает просроченный job в обработку с более высоким fencing token. Heartbeat продлевает lease во время OCR/embedding, а critical metadata/completion updates отклоняются после потери lease. Worker version и deployment generation сохраняются для диагностики.
 
 ## Health
 
@@ -165,14 +165,24 @@ S3 object key имеет формат `documents/{companyId}/{kind}/{key}`. Ме
 
 Повторная запись одного ключа использует семантику **last-write-wins**: новый объект заменяет прежний. Callers должны использовать неизменяемые document identifiers и не повторно использовать ключи между версиями.
 
-## Оставшиеся production decisions
+## TASK-005 production operations
 
-- managed PostgreSQL и S3-compatible provider, encryption, versioning и bucket policy;
-- external queue provider и distributed worker supervision;
-- process manager, deployment topology, autoscaling и rollout/rollback;
-- backup/restore и disaster recovery rehearsal;
-- metrics, SLO, dashboards, alerts и централизованные audit logs;
-- distributed heartbeat/fencing для долгих jobs.
+```bash
+npm run production:config-check
+npm run production:readiness
+npm run queue:health-check
+npm run workers:heartbeat-check
+npm run ai:cost-report -- --days=30
+npm run ai:budget-check
+npm run backup:dry-run
+npm run backup:status
+npm run restore:rehearsal:integration
+npm run pgvector:load-test -- --integration --smoke
+```
+
+Concrete managed providers, capacity, owners and SLO evidence remain environment
+decisions. Application contracts, Redis adapter, fencing, backup/restore guards,
+telemetry, ledger and reference deployment are implemented by TASK-005.
 
 Локальный OCR завершённой TASK-003 проверяется отдельными `documents:ocr-check`, `test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; real OCR test не входит в обычные unit или PostgreSQL/MinIO integration tests.
 
@@ -185,3 +195,8 @@ S3 object key имеет формат `documents/{companyId}/{kind}/{key}`. Ме
 - [TASK-002](./tasks/TASK-002.md)
 - [TASK-003](./tasks/TASK-003.md)
 - [TASK-004](./tasks/TASK-004.md)
+- [TASK-005](./tasks/TASK-005.md)
+- [Production Deployment](./PRODUCTION_DEPLOYMENT.md)
+- [Queue Operations](./QUEUE_OPERATIONS.md)
+- [Backup and Restore](./BACKUP_RESTORE.md)
+- [Disaster Recovery](./DISASTER_RECOVERY.md)

@@ -43,6 +43,11 @@ export type CreateDocumentMetadata = Omit<
   | 'nextRetryAt'
   | 'quarantinedAt'
   | 'workerId'
+  | 'workerVersion'
+  | 'deploymentGeneration'
+  | 'processingFencingToken'
+  | 'workerHeartbeatAt'
+  | 'processingLeaseUntil'
   | 'pages'
   | 'textLength'
   | 'chunksCount'
@@ -67,6 +72,12 @@ export type CreateDocumentMetadata = Omit<
   | 'embeddingAttempts'
   | 'lastEmbeddingErrorCode'
   | 'embeddingContentHash'
+  | 'embeddingWorkerId'
+  | 'embeddingWorkerVersion'
+  | 'embeddingDeploymentGeneration'
+  | 'embeddingFencingToken'
+  | 'embeddingHeartbeatAt'
+  | 'embeddingLeaseUntil'
 > &
   Partial<
     Pick<
@@ -79,6 +90,11 @@ export type CreateDocumentMetadata = Omit<
       | 'nextRetryAt'
       | 'quarantinedAt'
       | 'workerId'
+      | 'workerVersion'
+      | 'deploymentGeneration'
+      | 'processingFencingToken'
+      | 'workerHeartbeatAt'
+      | 'processingLeaseUntil'
       | 'pages'
       | 'textLength'
       | 'chunksCount'
@@ -103,6 +119,12 @@ export type CreateDocumentMetadata = Omit<
       | 'embeddingAttempts'
       | 'lastEmbeddingErrorCode'
       | 'embeddingContentHash'
+      | 'embeddingWorkerId'
+      | 'embeddingWorkerVersion'
+      | 'embeddingDeploymentGeneration'
+      | 'embeddingFencingToken'
+      | 'embeddingHeartbeatAt'
+      | 'embeddingLeaseUntil'
     >
   >;
 export type UpdateDocumentMetadata = Partial<
@@ -111,6 +133,11 @@ export type UpdateDocumentMetadata = Partial<
     'id' | 'companyId' | 'uploadedBy' | 'status' | 'createdAt' | 'updatedAt' | 'deletedAt'
   >
 >;
+
+export type DocumentLeaseGuard = {
+  workerId: string;
+  fencingToken: number;
+};
 
 export interface DocumentMetadataRepository {
   list(tenant: DocumentTenantContext): Promise<DocumentMetadata[]>;
@@ -124,12 +151,19 @@ export interface DocumentMetadataRepository {
     documentId: string,
     changes: UpdateDocumentMetadata,
   ): Promise<DocumentMetadata | null>;
+  updateEmbeddingFenced?(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    changes: UpdateDocumentMetadata,
+    leaseGuard: DocumentLeaseGuard,
+  ): Promise<DocumentMetadata | null>;
   transitionStatus(
     tenant: DocumentTenantContext,
     documentId: string,
     expectedStatuses: readonly DocumentProcessingStatus[],
     nextStatus: DocumentProcessingStatus,
     changes?: UpdateDocumentMetadata,
+    leaseGuard?: DocumentLeaseGuard,
   ): Promise<DocumentMetadata | null>;
   delete(tenant: DocumentTenantContext, documentId: string): Promise<DocumentMetadata | null>;
   listDeleted(tenant: DocumentTenantContext): Promise<DocumentMetadata[]>;
@@ -206,6 +240,11 @@ type LegacyDocument = {
   nextRetryAt?: unknown;
   quarantinedAt?: unknown;
   workerId?: unknown;
+  workerVersion?: unknown;
+  deploymentGeneration?: unknown;
+  processingFencingToken?: unknown;
+  workerHeartbeatAt?: unknown;
+  processingLeaseUntil?: unknown;
   detectedDocumentType?: unknown;
   detectedMimeType?: unknown;
   detectionConfidence?: unknown;
@@ -227,6 +266,12 @@ type LegacyDocument = {
   embeddingAttempts?: unknown;
   lastEmbeddingErrorCode?: unknown;
   embeddingContentHash?: unknown;
+  embeddingWorkerId?: unknown;
+  embeddingWorkerVersion?: unknown;
+  embeddingDeploymentGeneration?: unknown;
+  embeddingFencingToken?: unknown;
+  embeddingHeartbeatAt?: unknown;
+  embeddingLeaseUntil?: unknown;
 };
 
 function isMissingFile(error: unknown) {
@@ -295,6 +340,46 @@ function validateDocumentMetadata(document: DocumentMetadata) {
     throw new Error('lastErrorMessage must not exceed 500 characters.');
   }
   if (document.workerId) assertSafeDocumentSegment(document.workerId, 'workerId');
+  if (document.workerVersion) assertSafeDocumentSegment(document.workerVersion, 'workerVersion');
+  if (document.deploymentGeneration) {
+    assertSafeDocumentSegment(document.deploymentGeneration, 'deploymentGeneration');
+  }
+  if (
+    document.processingFencingToken !== undefined &&
+    (!Number.isSafeInteger(document.processingFencingToken) || document.processingFencingToken < 0)
+  ) {
+    throw new Error('processingFencingToken must be a non-negative safe integer.');
+  }
+  if (document.workerHeartbeatAt) {
+    parseDocumentDate(document.workerHeartbeatAt, 'workerHeartbeatAt');
+  }
+  if (document.processingLeaseUntil) {
+    parseDocumentDate(document.processingLeaseUntil, 'processingLeaseUntil');
+  }
+  if (document.embeddingWorkerId) {
+    assertSafeDocumentSegment(document.embeddingWorkerId, 'embeddingWorkerId');
+  }
+  if (document.embeddingWorkerVersion) {
+    assertSafeDocumentSegment(document.embeddingWorkerVersion, 'embeddingWorkerVersion');
+  }
+  if (document.embeddingDeploymentGeneration) {
+    assertSafeDocumentSegment(
+      document.embeddingDeploymentGeneration,
+      'embeddingDeploymentGeneration',
+    );
+  }
+  if (
+    document.embeddingFencingToken !== undefined &&
+    (!Number.isSafeInteger(document.embeddingFencingToken) || document.embeddingFencingToken < 0)
+  ) {
+    throw new Error('embeddingFencingToken must be a non-negative safe integer.');
+  }
+  if (document.embeddingHeartbeatAt) {
+    parseDocumentDate(document.embeddingHeartbeatAt, 'embeddingHeartbeatAt');
+  }
+  if (document.embeddingLeaseUntil) {
+    parseDocumentDate(document.embeddingLeaseUntil, 'embeddingLeaseUntil');
+  }
   if (document.processingStartedAt) {
     parseDocumentDate(document.processingStartedAt, 'processingStartedAt');
   }
@@ -376,6 +461,11 @@ function withProcessingDefaults(
     nextRetryAt: metadata.nextRetryAt ?? null,
     quarantinedAt: metadata.quarantinedAt ?? null,
     workerId: metadata.workerId ?? null,
+    workerVersion: metadata.workerVersion ?? null,
+    deploymentGeneration: metadata.deploymentGeneration ?? null,
+    processingFencingToken: metadata.processingFencingToken ?? 0,
+    workerHeartbeatAt: metadata.workerHeartbeatAt ?? null,
+    processingLeaseUntil: metadata.processingLeaseUntil ?? null,
     pages: metadata.pages ?? null,
     textLength: metadata.textLength ?? null,
     chunksCount: metadata.chunksCount ?? null,
@@ -401,6 +491,12 @@ function withProcessingDefaults(
     embeddingAttempts: metadata.embeddingAttempts ?? 0,
     lastEmbeddingErrorCode: metadata.lastEmbeddingErrorCode ?? null,
     embeddingContentHash: metadata.embeddingContentHash ?? null,
+    embeddingWorkerId: metadata.embeddingWorkerId ?? null,
+    embeddingWorkerVersion: metadata.embeddingWorkerVersion ?? null,
+    embeddingDeploymentGeneration: metadata.embeddingDeploymentGeneration ?? null,
+    embeddingFencingToken: metadata.embeddingFencingToken ?? 0,
+    embeddingHeartbeatAt: metadata.embeddingHeartbeatAt ?? null,
+    embeddingLeaseUntil: metadata.embeddingLeaseUntil ?? null,
   };
 }
 
@@ -456,6 +552,16 @@ function normalizeLegacyDocument(
     nextRetryAt: asNullableString(item.nextRetryAt),
     quarantinedAt: asNullableString(item.quarantinedAt),
     workerId: asNullableString(item.workerId),
+    workerVersion: asNullableString(item.workerVersion),
+    deploymentGeneration: asNullableString(item.deploymentGeneration),
+    processingFencingToken:
+      typeof item.processingFencingToken === 'number' &&
+      Number.isSafeInteger(item.processingFencingToken) &&
+      item.processingFencingToken >= 0
+        ? item.processingFencingToken
+        : 0,
+    workerHeartbeatAt: asNullableString(item.workerHeartbeatAt),
+    processingLeaseUntil: asNullableString(item.processingLeaseUntil),
     pages: typeof item.pages === 'number' ? item.pages : null,
     textLength: typeof item.textLength === 'number' ? item.textLength : null,
     chunksCount: typeof item.chunksCount === 'number' ? item.chunksCount : null,
@@ -518,6 +624,17 @@ function normalizeLegacyDocument(
       /^[a-f0-9]{64}$/.test(item.embeddingContentHash)
         ? item.embeddingContentHash
         : null,
+    embeddingWorkerId: asNullableString(item.embeddingWorkerId),
+    embeddingWorkerVersion: asNullableString(item.embeddingWorkerVersion),
+    embeddingDeploymentGeneration: asNullableString(item.embeddingDeploymentGeneration),
+    embeddingFencingToken:
+      typeof item.embeddingFencingToken === 'number' &&
+      Number.isSafeInteger(item.embeddingFencingToken) &&
+      item.embeddingFencingToken >= 0
+        ? item.embeddingFencingToken
+        : 0,
+    embeddingHeartbeatAt: asNullableString(item.embeddingHeartbeatAt),
+    embeddingLeaseUntil: asNullableString(item.embeddingLeaseUntil),
   };
 }
 
@@ -582,6 +699,7 @@ export class LocalDocumentMetadataRepository implements DocumentMetadataReposito
     expectedStatuses: readonly DocumentProcessingStatus[],
     nextStatus: DocumentProcessingStatus,
     changes: UpdateDocumentMetadata = {},
+    leaseGuard?: DocumentLeaseGuard,
   ) {
     assertDocumentTenantContext(tenant);
     assertSafeDocumentSegment(documentId, 'document id');
@@ -592,7 +710,13 @@ export class LocalDocumentMetadataRepository implements DocumentMetadataReposito
 
     const documents = await this.read(tenant);
     const index = documents.findIndex(
-      (item) => item.id === documentId && !item.deletedAt && expectedStatuses.includes(item.status),
+      (item) =>
+        item.id === documentId &&
+        !item.deletedAt &&
+        expectedStatuses.includes(item.status) &&
+        (!leaseGuard ||
+          (item.workerId === leaseGuard.workerId &&
+            (item.processingFencingToken ?? 0) === leaseGuard.fencingToken)),
     );
     if (index === -1) return null;
 
@@ -612,6 +736,23 @@ export class LocalDocumentMetadataRepository implements DocumentMetadataReposito
     documents[index] = updated;
     await this.write(tenant, documents);
     return updated;
+  }
+
+  async updateEmbeddingFenced(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    changes: UpdateDocumentMetadata,
+    leaseGuard: DocumentLeaseGuard,
+  ) {
+    const current = await this.findById(tenant, documentId);
+    if (
+      !current ||
+      current.embeddingWorkerId !== leaseGuard.workerId ||
+      (current.embeddingFencingToken ?? 0) !== leaseGuard.fencingToken
+    ) {
+      return null;
+    }
+    return this.update(tenant, documentId, changes);
   }
 
   async delete(tenant: DocumentTenantContext, documentId: string) {
@@ -727,6 +868,11 @@ type DatabaseDocumentRecord = {
   nextRetryAt: Date | null;
   quarantinedAt: Date | null;
   workerId: string | null;
+  workerVersion: string | null;
+  deploymentGeneration: string | null;
+  processingFencingToken: number;
+  workerHeartbeatAt: Date | null;
+  processingLeaseUntil: Date | null;
   pages: number | null;
   textLength: number | null;
   chunksCount: number | null;
@@ -751,6 +897,12 @@ type DatabaseDocumentRecord = {
   embeddingAttempts: number;
   lastEmbeddingErrorCode: string | null;
   embeddingContentHash: string | null;
+  embeddingWorkerId: string | null;
+  embeddingWorkerVersion: string | null;
+  embeddingDeploymentGeneration: string | null;
+  embeddingFencingToken: number;
+  embeddingHeartbeatAt: Date | null;
+  embeddingLeaseUntil: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -795,6 +947,11 @@ function mapDatabaseDocument(record: DatabaseDocumentRecord): DocumentMetadata {
     nextRetryAt: record.nextRetryAt?.toISOString() ?? null,
     quarantinedAt: record.quarantinedAt?.toISOString() ?? null,
     workerId: record.workerId,
+    workerVersion: record.workerVersion,
+    deploymentGeneration: record.deploymentGeneration,
+    processingFencingToken: record.processingFencingToken,
+    workerHeartbeatAt: record.workerHeartbeatAt?.toISOString() ?? null,
+    processingLeaseUntil: record.processingLeaseUntil?.toISOString() ?? null,
     pages: record.pages,
     textLength: record.textLength,
     chunksCount: record.chunksCount,
@@ -828,6 +985,12 @@ function mapDatabaseDocument(record: DatabaseDocumentRecord): DocumentMetadata {
         : 0,
     lastEmbeddingErrorCode: record.lastEmbeddingErrorCode ?? null,
     embeddingContentHash: record.embeddingContentHash ?? null,
+    embeddingWorkerId: record.embeddingWorkerId,
+    embeddingWorkerVersion: record.embeddingWorkerVersion,
+    embeddingDeploymentGeneration: record.embeddingDeploymentGeneration,
+    embeddingFencingToken: record.embeddingFencingToken,
+    embeddingHeartbeatAt: record.embeddingHeartbeatAt?.toISOString() ?? null,
+    embeddingLeaseUntil: record.embeddingLeaseUntil?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     deletedAt: record.deletedAt?.toISOString() ?? null,
@@ -901,6 +1064,15 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
           ? parseDocumentDate(document.quarantinedAt, 'quarantinedAt')
           : null,
         workerId: document.workerId,
+        workerVersion: document.workerVersion,
+        deploymentGeneration: document.deploymentGeneration,
+        processingFencingToken: document.processingFencingToken,
+        workerHeartbeatAt: document.workerHeartbeatAt
+          ? parseDocumentDate(document.workerHeartbeatAt, 'workerHeartbeatAt')
+          : null,
+        processingLeaseUntil: document.processingLeaseUntil
+          ? parseDocumentDate(document.processingLeaseUntil, 'processingLeaseUntil')
+          : null,
         pages: document.pages,
         textLength: document.textLength,
         chunksCount: document.chunksCount,
@@ -931,6 +1103,16 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
         embeddingAttempts: document.embeddingAttempts,
         lastEmbeddingErrorCode: document.lastEmbeddingErrorCode,
         embeddingContentHash: document.embeddingContentHash,
+        embeddingWorkerId: document.embeddingWorkerId,
+        embeddingWorkerVersion: document.embeddingWorkerVersion,
+        embeddingDeploymentGeneration: document.embeddingDeploymentGeneration,
+        embeddingFencingToken: document.embeddingFencingToken,
+        embeddingHeartbeatAt: document.embeddingHeartbeatAt
+          ? parseDocumentDate(document.embeddingHeartbeatAt, 'embeddingHeartbeatAt')
+          : null,
+        embeddingLeaseUntil: document.embeddingLeaseUntil
+          ? parseDocumentDate(document.embeddingLeaseUntil, 'embeddingLeaseUntil')
+          : null,
         createdAt: parseDocumentDate(document.createdAt, 'createdAt'),
         updatedAt: parseDocumentDate(document.updatedAt, 'updatedAt'),
         deletedAt: null,
@@ -992,6 +1174,7 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
     expectedStatuses: readonly DocumentProcessingStatus[],
     nextStatus: DocumentProcessingStatus,
     changes: UpdateDocumentMetadata = {},
+    leaseGuard?: DocumentLeaseGuard,
   ) {
     const delegate = await this.delegate(tenant);
     assertSafeDocumentSegment(documentId, 'document id');
@@ -1013,7 +1196,36 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
         status: {
           in: [...expectedStatuses],
         },
+        ...(leaseGuard
+          ? {
+              workerId: leaseGuard.workerId,
+              processingFencingToken: leaseGuard.fencingToken,
+            }
+          : {}),
         deletedAt: null,
+      },
+      data,
+    });
+    if (result.count === 0) return null;
+    return this.findById(tenant, documentId);
+  }
+
+  async updateEmbeddingFenced(
+    tenant: DocumentTenantContext,
+    documentId: string,
+    changes: UpdateDocumentMetadata,
+    leaseGuard: DocumentLeaseGuard,
+  ) {
+    const delegate = await this.delegate(tenant);
+    const data: Record<string, unknown> = { updatedAt: new Date() };
+    this.applyProcessingChanges(data, changes);
+    const result = await delegate.updateMany({
+      where: {
+        companyId: tenant.companyId,
+        id: documentId,
+        deletedAt: null,
+        embeddingWorkerId: leaseGuard.workerId,
+        embeddingFencingToken: leaseGuard.fencingToken,
       },
       data,
     });
@@ -1135,6 +1347,23 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
         : null;
     }
     if (changes.workerId !== undefined) data.workerId = changes.workerId;
+    if (changes.workerVersion !== undefined) data.workerVersion = changes.workerVersion;
+    if (changes.deploymentGeneration !== undefined) {
+      data.deploymentGeneration = changes.deploymentGeneration;
+    }
+    if (changes.processingFencingToken !== undefined) {
+      data.processingFencingToken = changes.processingFencingToken;
+    }
+    if (changes.workerHeartbeatAt !== undefined) {
+      data.workerHeartbeatAt = changes.workerHeartbeatAt
+        ? parseDocumentDate(changes.workerHeartbeatAt, 'workerHeartbeatAt')
+        : null;
+    }
+    if (changes.processingLeaseUntil !== undefined) {
+      data.processingLeaseUntil = changes.processingLeaseUntil
+        ? parseDocumentDate(changes.processingLeaseUntil, 'processingLeaseUntil')
+        : null;
+    }
     if (changes.pages !== undefined) data.pages = changes.pages;
     if (changes.textLength !== undefined) data.textLength = changes.textLength;
     if (changes.chunksCount !== undefined) data.chunksCount = changes.chunksCount;
@@ -1190,6 +1419,28 @@ export class PostgreSQLDocumentMetadataRepository implements DocumentMetadataRep
     }
     if (changes.embeddingContentHash !== undefined) {
       data.embeddingContentHash = changes.embeddingContentHash;
+    }
+    if (changes.embeddingWorkerId !== undefined) {
+      data.embeddingWorkerId = changes.embeddingWorkerId;
+    }
+    if (changes.embeddingWorkerVersion !== undefined) {
+      data.embeddingWorkerVersion = changes.embeddingWorkerVersion;
+    }
+    if (changes.embeddingDeploymentGeneration !== undefined) {
+      data.embeddingDeploymentGeneration = changes.embeddingDeploymentGeneration;
+    }
+    if (changes.embeddingFencingToken !== undefined) {
+      data.embeddingFencingToken = changes.embeddingFencingToken;
+    }
+    if (changes.embeddingHeartbeatAt !== undefined) {
+      data.embeddingHeartbeatAt = changes.embeddingHeartbeatAt
+        ? parseDocumentDate(changes.embeddingHeartbeatAt, 'embeddingHeartbeatAt')
+        : null;
+    }
+    if (changes.embeddingLeaseUntil !== undefined) {
+      data.embeddingLeaseUntil = changes.embeddingLeaseUntil
+        ? parseDocumentDate(changes.embeddingLeaseUntil, 'embeddingLeaseUntil')
+        : null;
     }
   }
 }

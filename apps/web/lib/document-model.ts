@@ -25,6 +25,13 @@ export type TextChunk = {
   text: string;
   start: number;
   end: number;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  sourceSegmentIndex?: number | null;
+  extractionMethod?: 'PDF_TEXT' | 'OCR' | 'UNKNOWN';
+  sourceCoordinates?: { x: number; y: number; width: number; height: number } | null;
+  provenanceConfidence?: number | null;
+  provenanceVersion?: 'page-provenance-v1';
 };
 
 export type DocumentMetadata = DocumentIntelligenceMetadata & {
@@ -48,6 +55,11 @@ export type DocumentMetadata = DocumentIntelligenceMetadata & {
   nextRetryAt: string | null;
   quarantinedAt: string | null;
   workerId: string | null;
+  workerVersion?: string | null;
+  deploymentGeneration?: string | null;
+  processingFencingToken?: number;
+  workerHeartbeatAt?: string | null;
+  processingLeaseUntil?: string | null;
   pages: number | null;
   textLength: number | null;
   chunksCount: number | null;
@@ -59,6 +71,12 @@ export type DocumentMetadata = DocumentIntelligenceMetadata & {
   embeddingAttempts: number;
   lastEmbeddingErrorCode: string | null;
   embeddingContentHash: string | null;
+  embeddingWorkerId?: string | null;
+  embeddingWorkerVersion?: string | null;
+  embeddingDeploymentGeneration?: string | null;
+  embeddingFencingToken?: number;
+  embeddingHeartbeatAt?: string | null;
+  embeddingLeaseUntil?: string | null;
 };
 
 export type DocumentApiItem = {

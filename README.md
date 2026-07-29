@@ -63,8 +63,9 @@ npm run documents:retry -w @avantime/web -- --document-id=<document-id> --dry-ru
 ```
 
 Set `DOCUMENT_WORKER_TENANT_ID` to the server-controlled tenant processed by the
-worker. Production requires an external `DocumentProcessingQueue` adapter; no
-provider is selected or connected in the current iteration.
+worker. TASK-005 adds Redis-backed production document and embedding queue
+adapters with heartbeat, lease fencing and crash recovery. Local queues remain
+development/test-only.
 
 Lifecycle, retry, quarantine and configuration details are documented in
 [Document Processing](./docs/DOCUMENT_PROCESSING.md).
@@ -106,6 +107,30 @@ See [AI Gateway](./docs/AI_GATEWAY.md), [Hybrid RAG](./docs/HYBRID_RAG.md) and
 [Document Operations](./docs/DOCUMENT_OPERATIONS.md) for configuration, lifecycle,
 security, evaluation and integration commands.
 
+## Production readiness operations
+
+TASK-005 adds production configuration validation, Redis coordination,
+distributed AI limits, a persistent EUR usage/budget ledger, audit/telemetry,
+backup/restore rehearsal, pgvector load testing and hardened container/reference
+deployment manifests.
+
+```bash
+npm run production:config-check
+npm run queue:health-check
+npm run workers:heartbeat-check
+npm run ai:cost-report -- --days=30
+npm run backup:dry-run
+npm run restore:rehearsal:integration
+npm run pgvector:load-test -- --integration --smoke
+npm run production:readiness
+```
+
+Start with [Production Architecture](./docs/PRODUCTION_ARCHITECTURE.md),
+[Production Deployment](./docs/PRODUCTION_DEPLOYMENT.md) and the
+[Production Readiness Checklist](./docs/PRODUCTION_READINESS_CHECKLIST.md).
+Reference manifests contain no real credentials and are not evidence that a
+managed production environment is ready.
+
 ## Document integration validation
 
 PostgreSQL/MinIO integration infrastructure is isolated from the normal development
@@ -121,7 +146,8 @@ npm run integration:clean
 npm run integration:down
 ```
 
-The normal `npm test` command does not require Docker. The integration commands
+The normal `npm test` command does not require Docker. The integration environment
+includes PostgreSQL/pgvector, MinIO and Redis. The integration commands
 reject production mode, remote endpoints and database/bucket names without an
 `integration` marker. See [Document Operations](./docs/DOCUMENT_OPERATIONS.md)
 for migration rehearsal, health, worker shutdown and cleanup details.

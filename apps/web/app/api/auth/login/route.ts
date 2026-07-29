@@ -12,9 +12,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Укажите email и пароль.' }, { status: 400 });
   }
 
-  let identity:
-    | { userId: string; name: string; company: string; companyId?: string; email: string; role: 'CLIENT' | 'ADMIN' }
-    | null = null;
+  let identity: {
+    userId: string;
+    name: string;
+    company: string;
+    companyId?: string;
+    email: string;
+    role: 'CLIENT' | 'ADMIN';
+  } | null = null;
 
   if (process.env.DATABASE_URL) {
     try {
@@ -30,8 +35,8 @@ export async function POST(request: Request) {
           role: user.role,
         };
       }
-    } catch (error) {
-      console.warn('Database authentication unavailable; using demo credentials.', error);
+    } catch {
+      console.warn('Database authentication unavailable; using demo credentials.');
     }
   }
 

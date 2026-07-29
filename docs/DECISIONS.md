@@ -1515,25 +1515,351 @@ Citation IDs создаёт сервер после повторной пров�
 
 ---
 
+## ADR-0021
+
+**Название:** Redis как production coordination и queue adapter
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+TASK-002–TASK-004 оставляли document queue local, embedding queue в PostgreSQL и
+не имели общего distributed lease/fencing boundary. Production требует
+горизонтальных workers, crash recovery, delayed retry и атомарный fencing без
+document content в payload.
+
+### Варианты
+
+- оставить local/PostgreSQL adapters;
+- BullMQ поверх Redis;
+- собственный ограниченный Redis adapter поверх зрелого Redis server;
+- managed message broker Kafka/RabbitMQ/SQS.
+
+### Альтернативы, которые были отклонены
+
+| Альтернатива                  | Преимущества              | Недостатки                                                         | Причина отказа                                  | Возможность пересмотра                       |
+| ----------------------------- | ------------------------- | ------------------------------------------------------------------ | ----------------------------------------------- | -------------------------------------------- |
+| Local queue                   | Простота                  | Нет distributed safety                                             | Production fail-fast уже запрещает              | Никогда для production                       |
+| PostgreSQL для обеих очередей | Один datastore            | Polling/contention с system of record                              | Coordination load изолируется в Redis           | При малой нагрузке и отдельном benchmark     |
+| BullMQ                        | Зрелый feature set        | Дополнительная abstraction/dependency и собственная модель payload | Текущему контракту нужен ограниченный lease API | При появлении workflow/graph jobs            |
+| Kafka/RabbitMQ/SQS            | Масштаб/managed semantics | Новый provider-specific operational boundary                       | Избыточно для текущего worker contract          | При подтверждённой нагрузке или cloud policy |
+
+### Принятое решение
+
+Использовать официальный Redis client и атомарные Lua operations для двух
+tenant-aware queue adapters. Redis хранит только job metadata, ready/leased
+indexes, server-time lease и возрастающий fencing token. PostgreSQL остаётся
+источником lifecycle, Redis — восстанавливаемым coordination layer.
+
+Production требует authenticated `rediss`, private network и explicit Redis queue
+driver. Development/tests могут использовать local adapters.
+
+### Причины выбора
+
+Redis одновременно покрывает очередь, server time и distributed rate limit,
+сохраняя небольшой provider-neutral application contract.
+
+### Преимущества
+
+- горизонтальное масштабирование и crash recovery;
+- atomic idempotency/claim/renew/ack/release;
+- общий fencing механизм для двух workers;
+- отсутствие content в queue.
+
+### Недостатки
+
+- Redis становится критическим coordination dependency;
+- reconciliation после полной потери Redis требуется отдельно;
+- custom Lua scripts требуют contract/integration tests.
+
+### Последствия
+
+Workers обязаны проверять fence при critical updates. Потеря Redis блокирует новые
+AI/queue operations; lifecycle восстанавливается из PostgreSQL.
+
+### Влияние на архитектуру
+
+Document/embedding workers становятся отдельными scalable processes. Public API,
+tenant/RBAC и document storage contracts не меняются.
+
+### Связанные документы
+
+- `docs/QUEUE_OPERATIONS.md`;
+- `docs/PRODUCTION_ARCHITECTURE.md`;
+- `docs/tasks/TASK-005.md`.
+
+### Связанные задачи Product Backlog
+
+- DOC-002;
+- INFRA-003;
+- INFRA-001.
+
+---
+
+## ADR-0022
+
+**Название:** Redis distributed sliding-window rate limits с production fail-closed
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+Process-local AI limits TASK-004 расходятся между web/worker replicas и допускают
+обход лимита. Нужны tenant/user/provider-aware burst, minute/day limits и ясная
+failure policy.
+
+### Варианты
+
+- process-local memory;
+- Redis atomic sliding windows;
+- API gateway/provider-native limits;
+- PostgreSQL counters.
+
+### Альтернативы, которые были отклонены
+
+| Альтернатива        | Преимущества       | Недостатки                                     | Причина отказа                       | Возможность пересмотра                    |
+| ------------------- | ------------------ | ---------------------------------------------- | ------------------------------------ | ----------------------------------------- |
+| Memory              | Быстро и просто    | Обход между replicas                           | Неприемлемо в production             | Только development                        |
+| Provider-native     | Нет своего state   | Не покрывает tenant/user и несколько providers | Недостаточная policy boundary        | Как дополнительный upstream limit         |
+| PostgreSQL counters | Один durable store | Hot rows и AI latency coupling                 | Coordination лучше изолировать       | При отказе от Redis                       |
+| Fail-open Redis     | Выше availability  | Неконтролируемая стоимость/abuse               | Финансовая и security граница важнее | Только явно для некритичного internal use |
+
+### Принятое решение
+
+Использовать Redis atomic script для hashed internal keys и burst/minute/day
+windows. Production fails closed при недоступном Redis; development использует
+memory adapter. Public errors не содержат internal limit keys.
+
+### Причины выбора
+
+Атомарный общий state предотвращает replica bypass и не нагружает PostgreSQL
+частыми счётчиками.
+
+### Преимущества
+
+- tenant/user/provider fairness;
+- configurable overrides;
+- deterministic burst protection;
+- общий adapter для web и workers.
+
+### Недостатки
+
+- Redis outage блокирует AI;
+- sliding windows используют память и требуют retention cleanup;
+- thresholds требуют production measurements.
+
+### Последствия
+
+Rate authorization выполняется до budget reservation/provider call. Alerts
+различают limit rejection и Redis failure.
+
+### Влияние на архитектуру
+
+AI Gateway получает обязательный production coordination adapter, не меняя
+provider-specific contracts.
+
+### Связанные документы
+
+- `docs/AI_COST_CONTROL.md`;
+- `docs/OBSERVABILITY.md`;
+- `docs/tasks/TASK-005.md`.
+
+### Связанные задачи Product Backlog
+
+- SEC-004;
+- AI-001;
+- INFRA-003.
+
+---
+
+## ADR-0023
+
+**Название:** PostgreSQL append-only AI usage ledger и locked budget reservations
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+In-memory operational events TASK-004 не позволяют агрегировать затраты,
+идемпотентно сверять usage или предотвращать concurrent overspend.
+
+### Варианты
+
+- оставить in-memory events;
+- хранить ledger/budgets в Redis;
+- PostgreSQL append-only ledger и reservations;
+- внешний billing SaaS как source of truth.
+
+### Альтернативы, которые были отклонены
+
+| Альтернатива | Преимущества     | Недостатки                     | Причина отказа             | Возможность пересмотра |
+| ------------ | ---------------- | ------------------------------ | -------------------------- | ---------------------- |
+| Memory       | Нет migration    | Теряется, нет race safety      | Не production-ready        | Только tests           |
+| Redis ledger | Быстрые counters | Не durable billing record      | Redis не system of record  | Для derived cache      |
+| Billing SaaS | Готовые отчёты   | Vendor/data boundary и latency | Нет утверждённого provider | Как downstream export  |
+
+### Принятое решение
+
+Хранить tenant-scoped `AiUsageLedger`, `AiBudgetPolicy` и
+`AiBudgetReservation` в PostgreSQL. Reservation под advisory lock учитывает
+daily/monthly/provider limits до provider call. Reconciliation append-only и
+идемпотентна; основная валюта — EUR. Content, prompts, answers и vectors запрещены.
+
+### Причины выбора
+
+PostgreSQL уже является tenant-aware system of record и предоставляет
+transaction/locking primitives для race-safe hard stop.
+
+### Преимущества
+
+- durable daily/monthly aggregation;
+- concurrent overspend protection;
+- idempotent usage;
+- одна backup/audit boundary.
+
+### Недостатки
+
+- provider cost сначала оценочный;
+- advisory locking добавляет database contention;
+- lifecycle reservations требует cleanup/monitoring.
+
+### Последствия
+
+Production provider call без reservation запрещён. Failure освобождает reservation;
+provider invoice reconciliation остаётся будущим operational workflow.
+
+### Влияние на архитектуру
+
+AI Gateway зависит от cost controller; добавлены ADMIN-only summary API и CLI,
+без расширения RBAC.
+
+### Связанные документы
+
+- `docs/AI_COST_CONTROL.md`;
+- `docs/AI_GATEWAY.md`;
+- `docs/BACKUP_RESTORE.md`;
+- `docs/tasks/TASK-005.md`.
+
+### Связанные задачи Product Backlog
+
+- AI-001;
+- SEC-003;
+- SEC-004.
+
+---
+
+## ADR-0024
+
+**Название:** Exact pgvector search по умолчанию; ANN только после threshold gate
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-28
+
+### Контекст
+
+TASK-004 использует exact cosine search с tenant/lifecycle filters. TASK-005
+сравнила exact, IVFFlat и HNSW на controlled synthetic dataset. ANN нельзя
+включать без измеримого latency/recall выигрыша и понятной rebuild strategy.
+
+### Варианты
+
+- оставить exact search;
+- включить IVFFlat;
+- включить HNSW;
+- выделить отдельную vector database.
+
+### Альтернативы, которые были отклонены
+
+| Альтернатива       | Преимущества         | Недостатки                                       | Причина отказа               | Возможность пересмотра                           |
+| ------------------ | -------------------- | ------------------------------------------------ | ---------------------------- | ------------------------------------------------ |
+| IVFFlat сейчас     | Небольшая p50 выгода | Recall@K 0.2667 на проверке                      | Не прошёл recall threshold   | При tuning/larger representative dataset         |
+| HNSW сейчас        | Recall 1.0           | Медленнее exact и индекс больше на малом dataset | Нет измеримого выигрыша      | При p95 exact выше SLO на production-like volume |
+| Separate vector DB | Независимое scaling  | Новый tenant/backup/operations boundary          | Нет доказанной необходимости | При исчерпании PostgreSQL strategy               |
+
+### Принятое решение
+
+Сохранить exact search default. Controlled dataset: 3 tenants, 10 documents на
+tenant, 20 chunks на document, 32 dimensions, 60 queries, concurrency 6.
+
+Результаты:
+
+| Strategy | p50 / p95 / p99 ms    |     QPS | Recall@K | Index bytes |
+| -------- | --------------------- | ------: | -------: | ----------: |
+| Exact    | 2.620 / 5.185 / 5.935 | 1679.28 |   1.0000 |       81920 |
+| IVFFlat  | 2.427 / 3.765 / 4.089 | 1800.56 |   0.2667 |      507904 |
+| HNSW     | 2.691 / 4.538 / 5.124 | 1526.54 |   1.0000 |      368640 |
+
+ANN gate: representative dataset, tenant-filtered recall at least 0.95, p95
+latency improvement at least 30%, no leakage/timeouts and acceptable index/build
+cost. Index is added by a separate additive migration, built/rebuilt with
+documented concurrency and can be dropped without changing stored vectors.
+
+### Причины выбора
+
+Exact is fastest/smallest enough for measured volume and preserves full recall.
+Synthetic measurements do not justify operational complexity.
+
+### Преимущества
+
+- no recall degradation;
+- simple migration/backup/rebuild;
+- tenant filters remain exact and inspectable.
+
+### Недостатки
+
+- exact search may not scale to production volume;
+- test does not measure production CPU/memory or real embedding distribution;
+- future ANN migration remains required when thresholds are crossed.
+
+### Последствия
+
+CI runs only a bounded smoke test. Larger controlled runs are operational,
+isolated and clean up their temporary table/index. Sequential scans and timeouts
+remain recorded metrics.
+
+### Влияние на архитектуру
+
+PostgreSQL/pgvector remains the vector boundary; no new service or schema index is
+enabled in this task.
+
+### Связанные документы
+
+- `docs/HYBRID_RAG.md`;
+- `docs/OBSERVABILITY.md`;
+- `docs/tasks/TASK-005.md`.
+
+### Связанные задачи Product Backlog
+
+- AI-009;
+- INFRA-001;
+- INFRA-002.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
 
-| Предлагаемая тема                                            | Ожидаемая версия         | Причина                                                                                                 |
-| ------------------------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Выбор конкретного external queue provider                    | Version 2.0              | Queue/worker contract принят в ADR-0017; требуется distributed adapter, deployment и operational policy |
-| Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0              | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup           |
-| Модель сессий, MFA и корпоративного входа                    | Version 2.0–3.0          | Требуется определить жизненный цикл identity                                                            |
-| Выбор системы кэша и rate limit                              | Version 2.0              | Требуется распределённая координация                                                                    |
-| Выбор платформы мониторинга и трассировки                    | Version 2.0              | Нужна единая наблюдаемость                                                                              |
-| Формат очередей и событий Integration Hub                    | Version 2.1              | Требуются стабильные интеграционные контракты                                                           |
-| Модель мультитенантности                                     | Version 3.0              | Необходимо обеспечить строгую изоляцию организаций                                                      |
-| Плагинная архитектура и песочница                            | Version 3.0              | Требуется безопасное расширение платформы                                                               |
-| Использование MCP для AI Tools                               | Version 3.0              | Необходимо определить доверенные серверы, права и аудит                                                 |
-| Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                                       |
-| Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                           |
+| Предлагаемая тема                                            | Ожидаемая версия         | Причина                                                                                       |
+| ------------------------------------------------------------ | ------------------------ | --------------------------------------------------------------------------------------------- |
+| Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0              | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup |
+| Модель сессий, MFA и корпоративного входа                    | Version 2.0–3.0          | Требуется определить жизненный цикл identity                                                  |
+| Выбор платформы мониторинга и трассировки                    | Version 2.0              | Нужна единая наблюдаемость                                                                    |
+| Формат очередей и событий Integration Hub                    | Version 2.1              | Требуются стабильные интеграционные контракты                                                 |
+| Модель мультитенантности                                     | Version 3.0              | Необходимо обеспечить строгую изоляцию организаций                                            |
+| Плагинная архитектура и песочница                            | Version 3.0              | Требуется безопасное расширение платформы                                                     |
+| Использование MCP для AI Tools                               | Version 3.0              | Необходимо определить доверенные серверы, права и аудит                                       |
+| Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
+| Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0021`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0025`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

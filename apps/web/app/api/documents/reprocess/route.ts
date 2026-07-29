@@ -4,6 +4,7 @@ import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import { reprocessDocument } from '../../../../lib/document-services';
 import { assertSafeDocumentSegment } from '../../../../lib/document-storage';
+import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
 
 export const runtime = 'nodejs';
 
@@ -28,6 +29,13 @@ export async function POST(request: Request) {
     if (result.outcome === 'NOT_FOUND') {
       return NextResponse.json({ error: 'Документ не найден.' }, { status: 404 });
     }
+    await appendCriticalDocumentAudit(tenant, {
+      action: 'document.reprocess',
+      targetType: 'document',
+      targetId: documentId,
+      result: 'SUCCEEDED',
+      safeMetadata: { dryRun, outcome: result.outcome },
+    });
     return NextResponse.json({ result });
   } catch {
     return NextResponse.json(

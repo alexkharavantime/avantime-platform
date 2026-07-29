@@ -4,6 +4,7 @@ import { planDocumentReindex } from '../../../../lib/document-embedding';
 import { authorizeDocumentApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
+import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
 
 export const runtime = 'nodejs';
 
@@ -77,6 +78,15 @@ export async function POST(request: Request) {
       dryRun,
       services.rag.embedding,
     );
+    if (result.outcome !== 'NOT_FOUND') {
+      await appendCriticalDocumentAudit(tenant, {
+        action: 'document.reindex',
+        targetType: 'document',
+        targetId: body.documentId,
+        result: 'SUCCEEDED',
+        safeMetadata: { dryRun, outcome: result.outcome },
+      });
+    }
     return NextResponse.json(result, {
       status: result.outcome === 'NOT_FOUND' ? 404 : 200,
     });

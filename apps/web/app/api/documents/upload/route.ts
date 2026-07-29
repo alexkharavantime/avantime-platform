@@ -9,6 +9,7 @@ import {
 } from '../../../../lib/document-services';
 import { detectDocumentFile } from '../../../../lib/document-file-detection';
 import { loadDocumentConfiguration } from '../../../../lib/document-configuration';
+import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
 
 export const runtime = 'nodejs';
 
@@ -23,8 +24,8 @@ export async function GET() {
     return NextResponse.json({
       documents: documents.map(toDocumentApiItem),
     });
-  } catch (error) {
-    console.error('Document list error:', error);
+  } catch {
+    console.error('Document list failed.');
 
     return NextResponse.json({ error: 'Не удалось получить список документов.' }, { status: 500 });
   }
@@ -117,6 +118,17 @@ export async function POST(request: Request) {
         },
       );
     }
+    await appendCriticalDocumentAudit(tenant, {
+      action: 'document.upload',
+      targetType: 'document',
+      targetId: id,
+      result: 'SUCCEEDED',
+      safeMetadata: {
+        mimeType: detection.detectedMimeType,
+        size: file.size,
+        queued: true,
+      },
+    });
 
     return NextResponse.json(
       {
@@ -149,10 +161,17 @@ export async function DELETE(request: Request) {
     if (!document) {
       return NextResponse.json({ error: 'Документ не найден.' }, { status: 404 });
     }
+    await appendCriticalDocumentAudit(tenant, {
+      action: 'document.delete',
+      targetType: 'document',
+      targetId: id,
+      result: 'SUCCEEDED',
+      safeMetadata: { softDelete: true },
+    });
 
     return NextResponse.json({ success: true, id });
-  } catch (error) {
-    console.error('Document delete error:', error);
+  } catch {
+    console.error('Document delete failed.');
 
     return NextResponse.json({ error: 'Не удалось удалить документ.' }, { status: 500 });
   }

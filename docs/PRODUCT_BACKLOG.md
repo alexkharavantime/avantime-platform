@@ -481,7 +481,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** ADR-0020 и TASK-004 выбрали и integration-проверили tenant-aware PostgreSQL/pgvector. Production backup/load test и ANN index strategy остаются.
+- **Описание:** ADR-0020 и TASK-004 выбрали tenant-aware PostgreSQL/pgvector. TASK-005 добавила backup/restore, controlled exact/IVFFlat/HNSW load test и ADR-0024: exact остаётся default до прохождения ANN thresholds. Реальная production capacity остаётся environment gate.
 - **Критерии готовности:** миграция; индексы; фильтрация по организации; резервное копирование; нагрузочный тест.
 - **Зависимости:** INFRA-001, SEC-006.
 
@@ -677,7 +677,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Асинхронно проверять, извлекать текст, разбивать и индексировать документы. TASK-002 добавила processing queue/retries/quarantine, TASK-003 — OCR/type detection, TASK-004 — отдельную embedding queue, pgvector и reindex. Production external document queue, distributed observability и deployment остаются.
+- **Описание:** TASK-002–TASK-004 реализовали processing/OCR/embedding/RAG lifecycle. TASK-005 добавляет Redis production queues, heartbeat/fencing, page provenance, operational telemetry и reference deployment. Managed production rollout остаётся environment gate.
 - **Критерии готовности:** production external queue; типобезопасные статусы; PDF; ограничения; exclusive claim; quarantine; повторная обработка; ошибки не теряются; monitoring.
 - **Зависимости:** DOC-001, INFRA-003.
 
@@ -693,7 +693,7 @@ Product Backlog — основной управляемый перечень п�
 - **Критерии готовности:** безопасный parser; таблицы и листы; лимиты; тестовые документы; поиск и preview.
 - **Зависимости:** DOC-002, KB-007.
 
-Завершённые [TASK-003](./tasks/TASK-003.md) и [TASK-004](./tasks/TASK-004.md) последовательно реализуют OCR/Document Intelligence, AI Gateway, document embeddings, pgvector, semantic/hybrid retrieval, citations и evaluation. Production providers, external processing queue и единая knowledge permission model остаются отдельными backlog boundaries.
+Завершённые [TASK-003](./tasks/TASK-003.md) и [TASK-004](./tasks/TASK-004.md) последовательно реализуют OCR/Document Intelligence, AI Gateway, document embeddings, pgvector, semantic/hybrid retrieval, citations и evaluation. [TASK-005](./tasks/TASK-005.md) реализует production reliability/operations contracts; единая knowledge permission model и реальный managed rollout остаются отдельными backlog boundaries.
 
 ## EPIC-007 Интеграция Jira
 
@@ -916,8 +916,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-011 Безопасность
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Ограничить вход, восстановление пароля, AI, API и загрузку файлов.
+- **Статус:** In Progress
+- **Описание:** TASK-005 добавляет distributed tenant/user/provider AI limits. Лимиты входа, восстановления пароля и загрузки файлов остаются.
 - **Критерии готовности:** лимиты по IP, пользователю и организации; корректный ответ; метрики; административные исключения.
 - **Зависимости:** INFRA-001.
 
@@ -940,8 +940,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-011 Безопасность
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Резервировать PostgreSQL, объекты и критические конфигурации.
+- **Статус:** In Progress
+- **Описание:** TASK-005 добавляет guarded PostgreSQL/object backup, isolated restore rehearsal и DR runbook. Production schedule, PITR и provider retention требуют environment evidence.
 - **Критерии готовности:** расписание; шифрование; retention; RPO/RTO; успешный тест восстановления; оповещения.
 - **Зависимости:** INFRA-001, DOC-001.
 
@@ -1028,8 +1028,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-013 Инфраструктура
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Развернуть управляемые приложение, PostgreSQL, объектное хранилище, кэш и secrets.
+- **Статус:** In Progress
+- **Описание:** TASK-005 добавляет production images, reference Compose, fail-fast validation и deployment runbook. Managed infrastructure ещё не развёрнута.
 - **Критерии готовности:** среды разделены; инфраструктура воспроизводима; TLS; backup; масштабирование; документация.
 - **Зависимости:** DOCS-006, SEC-005.
 
@@ -1040,8 +1040,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-013 Инфраструктура
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** Planned
-- **Описание:** Внедрить структурированные логи, метрики, traces, health checks и алерты.
+- **Статус:** In Progress
+- **Описание:** TASK-005 добавляет safe telemetry contracts/adapters, metrics/SLO catalog и runbooks. Collector, dashboards и alert delivery требуют environment rollout.
 - **Критерии готовности:** correlation ID; панели; оповещения; маскирование данных; runbooks.
 - **Зависимости:** INFRA-001, SEC-003.
 
@@ -1053,7 +1053,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Обрабатывать документы, Email, embeddings и интеграции вне пользовательских запросов. Для PDF реализованы queue/worker contract, local development adapter, retries, quarantine и graceful shutdown; external provider, distributed adapter и общая observability остаются.
+- **Описание:** Redis adapters, document/embedding heartbeat, lease fencing, crash recovery и integration tests добавлены в TASK-005. Email/integration queues и managed Redis rollout остаются.
 - **Критерии готовности:** retries; dead-letter queue; идемпотентность; мониторинг; graceful shutdown; тесты.
 - **Зависимости:** INFRA-001, INFRA-002.
 
@@ -1328,3 +1328,12 @@ Product Backlog — основной управляемый перечень п�
 - Version 4.0 — только после доказанной востребованности и устойчивости Version 3.0.
 
 Главная рекомендация — не максимизировать количество одновременно начатых задач. Безопасное ядро, единые данные, управляемый AI и надёжная эксплуатация должны быть завершены раньше расширения продуктового портфеля.
+
+## Связанные документы
+
+- [Vision](./VISION.md)
+- [Master Specification](./MASTER_SPECIFICATION.md)
+- [Architecture 2.0](./ARCHITECTURE_2_0.md)
+- [Roadmap](./ROADMAP.md)
+- [Project Status](./PROJECT_STATUS.md)
+- [TASK-005](./tasks/TASK-005.md)
