@@ -1,11 +1,15 @@
 import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { PlatformSidebar } from '../../components/platform-sidebar';
-import { PlatformTopbar } from '../../components/platform-topbar';
-import { getSession } from '../../lib/session';
+import { getValidatedPortalSession } from '../../lib/portal-session';
+import { safeReturnTo } from '../../lib/safe-return-to';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const session = await getSession();
-  if (!session) redirect('/portal/login?returnTo=/dashboard');
-  return <div className="min-h-screen bg-slate-50 lg:flex"><div className="hidden lg:block"><PlatformSidebar /></div><div className="min-w-0 flex-1"><PlatformTopbar name={session.name} />{children}</div></div>;
+  const session = await getValidatedPortalSession();
+  if (!session) {
+    const requestPath =
+      safeReturnTo((await headers()).get('x-avantime-request-path') ?? undefined) ?? '/dashboard';
+    redirect(`/portal/login?returnTo=${encodeURIComponent(requestPath)}`);
+  }
+  return children;
 }

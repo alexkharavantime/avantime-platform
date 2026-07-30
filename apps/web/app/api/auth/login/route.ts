@@ -20,12 +20,14 @@ export async function POST(request: Request) {
     email: string;
     role: 'CLIENT' | 'ADMIN';
   } | null = null;
+  let databaseIdentityRejected = false;
 
   if (process.env.DATABASE_URL) {
     try {
       const prisma = await getPrisma();
       const user = await prisma?.user.findUnique({ where: { email }, include: { company: true } });
-      if (user?.passwordHash && verifyPassword(password, user.passwordHash)) {
+      databaseIdentityRejected = Boolean(user);
+      if (user?.active && user.passwordHash && verifyPassword(password, user.passwordHash)) {
         identity = {
           userId: user.id,
           name: user.name,
@@ -40,7 +42,9 @@ export async function POST(request: Request) {
     }
   }
 
-  identity ??= getDemoIdentity(email, password);
+  if (!databaseIdentityRejected) {
+    identity ??= getDemoIdentity(email, password);
+  }
 
   if (!identity) {
     return NextResponse.json({ error: 'Неверный email или пароль.' }, { status: 401 });

@@ -5,6 +5,10 @@
 **/.turbo
 .data
 **/.data
+.artifacts
+**/.artifacts
+.tmp
+**/.tmp
 node_modules
 **/node_modules
 .env

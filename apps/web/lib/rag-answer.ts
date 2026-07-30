@@ -76,7 +76,7 @@ export class DefaultCitationBuilder implements CitationBuilder {
         pageEnd: result.pageEnd,
         excerpt,
         retrievalScore: result.score,
-        link: `/dashboard/knowledge/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(chunk.id)}`,
+        link: `/portal/documents/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(chunk.id)}`,
       });
     }
     return citations;

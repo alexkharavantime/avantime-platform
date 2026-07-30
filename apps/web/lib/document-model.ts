@@ -128,6 +128,29 @@ export type DocumentApiItem = {
   lastEmbeddingErrorCode?: string;
 };
 
+export type ClientDocumentApiItem = Pick<
+  DocumentApiItem,
+  | 'id'
+  | 'name'
+  | 'type'
+  | 'mimeType'
+  | 'size'
+  | 'status'
+  | 'processingStatus'
+  | 'uploadedAt'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'pages'
+  | 'processedAt'
+  | 'chunksCount'
+  | 'detectedDocumentType'
+  | 'textExtractionMethod'
+  | 'ocrStatus'
+  | 'pageCount'
+  | 'requiresManualReview'
+  | 'embeddingStatus'
+>;
+
 const API_STATUS_LABELS: Record<DocumentProcessingStatus, DocumentApiStatus> = {
   UPLOADED: 'Загружен',
   QUEUED: 'В очереди',
@@ -197,5 +220,30 @@ export function toDocumentApiItem(document: DocumentMetadata): DocumentApiItem {
     embeddedAt: document.embeddedAt ?? undefined,
     embeddingAttempts: document.embeddingAttempts,
     lastEmbeddingErrorCode: document.lastEmbeddingErrorCode ?? undefined,
+  };
+}
+
+export function toClientDocumentApiItem(document: DocumentMetadata): ClientDocumentApiItem {
+  const item = toDocumentApiItem(document);
+  return {
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    mimeType: item.mimeType,
+    size: item.size,
+    status: item.status,
+    processingStatus: item.processingStatus,
+    uploadedAt: item.uploadedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    pages: item.pages,
+    processedAt: item.processedAt,
+    chunksCount: item.chunksCount,
+    detectedDocumentType: item.detectedDocumentType,
+    textExtractionMethod: item.textExtractionMethod,
+    ocrStatus: item.ocrStatus,
+    pageCount: item.pageCount,
+    requiresManualReview: item.requiresManualReview,
+    embeddingStatus: item.embeddingStatus,
   };
 }

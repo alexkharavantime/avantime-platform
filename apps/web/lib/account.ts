@@ -26,10 +26,15 @@ export async function getAccountProfile(session: AppSession): Promise<AccountPro
     try {
       const prisma = await getPrisma();
       const user = await prisma?.user.findUnique({
-        where: { email: session.email },
+        where: { id: session.userId },
         include: { company: true },
       });
-      if (user) {
+      if (
+        user &&
+        user.active &&
+        user.email.toLowerCase() === session.email.toLowerCase() &&
+        (user.companyId ?? undefined) === session.companyId
+      ) {
         return {
           name: user.name,
           email: user.email,
@@ -40,12 +45,26 @@ export async function getAccountProfile(session: AppSession): Promise<AccountPro
           address: user.company?.address ?? '',
         };
       }
-    } catch (error) {
-      console.warn('Cannot load account profile from database.', error);
+    } catch {
+      console.warn('Cannot load account profile from database.');
+      return {
+        name: session.name,
+        email: session.email,
+        phone: '',
+        jobTitle: '',
+        companyName: session.company,
+        registrationNumber: '',
+        address: '',
+      };
     }
   }
   return session.role === 'ADMIN'
-    ? { ...demoProfile, name: 'Администратор Avantime', email: session.email, companyName: 'Avantime' }
+    ? {
+        ...demoProfile,
+        name: 'Администратор Avantime',
+        email: session.email,
+        companyName: 'Avantime',
+      }
     : demoProfile;
 }
 
@@ -53,12 +72,20 @@ export async function updateAccountProfile(session: AppSession, input: AccountPr
   if (process.env.DATABASE_URL) {
     const prisma = await getPrisma();
     if (prisma) {
-      const user = await prisma.user.findUnique({ where: { email: session.email } });
-      if (user) {
+      const user = await prisma.user.findUnique({ where: { id: session.userId } });
+      if (
+        user?.active &&
+        user.email.toLowerCase() === session.email.toLowerCase() &&
+        (user.companyId ?? undefined) === session.companyId
+      ) {
         await prisma.$transaction([
           prisma.user.update({
             where: { id: user.id },
-            data: { name: input.name, phone: input.phone || null, jobTitle: input.jobTitle || null },
+            data: {
+              name: input.name,
+              phone: input.phone || null,
+              jobTitle: input.jobTitle || null,
+            },
           }),
           ...(user.companyId
             ? [
@@ -73,8 +100,13 @@ export async function updateAccountProfile(session: AppSession, input: AccountPr
               ]
             : []),
         ]);
+      } else {
+        throw new Error('Account membership is no longer valid.');
       }
     }
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Account storage is unavailable.');
   }
   Object.assign(demoProfile, input);
   return input;

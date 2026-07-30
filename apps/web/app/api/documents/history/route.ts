@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReadApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import type { DocumentHistoryItem } from '../../../../lib/document-repositories';
 import { getDocumentServices } from '../../../../lib/document-services';
@@ -19,7 +19,7 @@ type CreateHistoryRequest = {
 
 export async function GET() {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
@@ -29,16 +29,13 @@ export async function GET() {
   } catch (error) {
     console.error('Knowledge history read error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось получить историю вопросов.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось получить историю вопросов.' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
@@ -80,16 +77,13 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Knowledge history save error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось сохранить вопрос.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось сохранить вопрос.' }, { status: 500 });
   }
 }
 
 export async function DELETE(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
@@ -104,10 +98,7 @@ export async function DELETE(request: Request) {
 
     const updatedHistory = history.filter((item) => item.id !== id);
     if (updatedHistory.length === history.length) {
-      return NextResponse.json(
-        { error: 'Запись истории не найдена.' },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'Запись истории не найдена.' }, { status: 404 });
     }
 
     await services.history.save(tenant, updatedHistory);
@@ -115,9 +106,6 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error('Knowledge history delete error:', error);
 
-    return NextResponse.json(
-      { error: 'Не удалось удалить запись истории.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Не удалось удалить запись истории.' }, { status: 500 });
   }
 }

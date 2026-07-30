@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { AiGatewayError } from '../../../../lib/ai-gateway';
 import { assertApiRateLimit, ApiRateLimitError } from '../../../../lib/api-rate-limit';
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReadApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
 
@@ -15,7 +15,7 @@ type AskRequest = {
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
     const tenant = getDocumentTenantContext(authorization.session);
     const services = getDocumentServices();
@@ -43,10 +43,11 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    const correlationId = crypto.randomUUID();
     const result = await services.rag.answers.answer({
       tenant,
       question,
-      correlationId: crypto.randomUUID(),
+      correlationId,
     });
     return NextResponse.json(result);
   } catch (error) {

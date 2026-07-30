@@ -18,7 +18,8 @@ async function main() {
     .toString('utf8')
     .split('\0')
     .filter(Boolean)
-    .filter((file) => !file.endsWith('package-lock.json'));
+    .filter((file) => !file.endsWith('package-lock.json'))
+    .filter((file) => !file.startsWith('.tmp/tsx/'));
   const findings: string[] = [];
 
   for (const file of files) {

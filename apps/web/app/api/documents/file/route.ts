@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReadApi } from '../../../../lib/document-authorization';
 import {
   getDocumentTenantContext,
   UNVERIFIED_DOCUMENT_CHECKSUM,
 } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
+import { appendPortalAudit } from '../../../../lib/portal-audit';
 
 export async function GET(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
@@ -37,6 +38,17 @@ export async function GET(request: Request) {
     if (!file) {
       return NextResponse.json({ error: 'Файл не найден.' }, { status: 404 });
     }
+    await appendPortalAudit(
+      authorization.session,
+      {
+        action: 'portal.document.download',
+        targetType: 'document',
+        targetId: document.id,
+        result: 'SUCCEEDED',
+        metadata: { sizeBytes: document.size },
+      },
+      request.headers.get('x-avantime-correlation-id') ?? crypto.randomUUID(),
+    );
 
     return new NextResponse(new Uint8Array(file), {
       status: 200,

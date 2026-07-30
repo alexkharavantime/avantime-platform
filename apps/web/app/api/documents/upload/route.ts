@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
-import { getDocumentTenantContext, toDocumentApiItem } from '../../../../lib/document-model';
+import {
+  authorizeDocumentApi,
+  authorizeDocumentReadApi,
+} from '../../../../lib/document-authorization';
+import {
+  getDocumentTenantContext,
+  toClientDocumentApiItem,
+  toDocumentApiItem,
+} from '../../../../lib/document-model';
 import {
   deleteDocument,
   enqueueUploadedDocument,
@@ -15,14 +22,18 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
     const documents = await getDocumentServices().metadata.list(tenant);
 
     return NextResponse.json({
-      documents: documents.map(toDocumentApiItem),
+      documents: documents.map((document) =>
+        authorization.session.role === 'ADMIN'
+          ? toDocumentApiItem(document)
+          : toClientDocumentApiItem(document),
+      ),
     });
   } catch {
     console.error('Document list failed.');

@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getAccountProfile, updateAccountProfile } from '../../../lib/account';
-import { getSession } from '../../../lib/session';
+import { authorizePortalApi } from '../../../lib/portal-session';
+import { appendPortalAudit } from '../../../lib/portal-audit';
 
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Требуется вход.' }, { status: 401 });
-  return NextResponse.json(await getAccountProfile(session));
+  const authorization = await authorizePortalApi();
+  if (authorization.response) return authorization.response;
+  try {
+    return NextResponse.json(await getAccountProfile(authorization.session));
+  } catch {
+    return NextResponse.json({ error: 'Профиль временно недоступен.' }, { status: 503 });
+  }
 }
 
 export async function PUT(request: Request) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Требуется вход.' }, { status: 401 });
+  const authorization = await authorizePortalApi();
+  if (authorization.response) return authorization.response;
+  const session = authorization.session;
   const body = (await request.json()) as Record<string, unknown>;
   const profile = {
     name: String(body.name ?? '').trim(),
@@ -24,5 +30,20 @@ export async function PUT(request: Request) {
   if (!profile.name || !profile.companyName) {
     return NextResponse.json({ error: 'Укажите имя и название компании.' }, { status: 400 });
   }
-  return NextResponse.json(await updateAccountProfile(session, profile));
+  try {
+    const updated = await updateAccountProfile(session, profile);
+    await appendPortalAudit(
+      session,
+      {
+        action: 'portal.company.update',
+        targetType: 'company',
+        targetId: session.companyId ?? null,
+        result: 'SUCCEEDED',
+      },
+      request.headers.get('x-avantime-correlation-id') ?? crypto.randomUUID(),
+    );
+    return NextResponse.json(updated);
+  } catch {
+    return NextResponse.json({ error: 'Не удалось сохранить профиль.' }, { status: 503 });
+  }
 }

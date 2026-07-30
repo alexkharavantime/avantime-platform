@@ -2,28 +2,28 @@ import Link from 'next/link';
 
 const actions = [
   {
-    href: '/dashboard/knowledge',
+    href: '/portal/knowledge',
     title: 'Knowledge Center',
-    text: 'Административная загрузка, поиск и работа с документами.',
+    text: 'Поиск по материалам и документам вашей компании.',
     icon: '▤',
     available: true,
   },
   {
-    href: '/dashboard/ai',
-    title: 'AI Chat',
-    text: 'Интерактивный AI-консультант готовится к следующему этапу.',
+    href: '/portal/knowledge',
+    title: 'AI-консультант',
+    text: 'Ответы по разрешённым документам со ссылками на источники.',
     icon: '✦',
-    available: false,
+    available: true,
   },
   {
-    href: '/dashboard/documents',
+    href: '/portal/documents',
     title: 'Документы',
-    text: 'Клиентское хранилище документов пока не подключено.',
+    text: 'Статусы обработки, безопасный просмотр и скачивание.',
     icon: '▣',
-    available: false,
+    available: true,
   },
   {
-    href: '/dashboard/support',
+    href: '/portal/requests',
     title: 'Поддержка',
     text: 'Перейти к обращениям в действующем клиентском портале.',
     icon: '◎',
@@ -37,34 +37,32 @@ export function QuickActions() {
       {actions.map((action) => {
         const content = (
           <>
-          <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-xl text-blue-700">
-            {action.icon}
-          </span>
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-xl text-blue-700">
+              {action.icon}
+            </span>
 
-          <h3 className="mt-4 font-black text-slate-950">
-            {action.title}
-          </h3>
+            <h3 className="mt-4 font-black text-slate-950">{action.title}</h3>
 
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            {action.text}
-          </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{action.text}</p>
 
-          <span className={`mt-4 inline-block text-sm font-bold ${action.available ? 'text-blue-700' : 'text-slate-500'}`}>
-            {action.available ? 'Открыть →' : 'В разработке'}
-          </span>
+            <span
+              className={`mt-4 inline-block text-sm font-bold ${action.available ? 'text-blue-700' : 'text-slate-500'}`}
+            >
+              {action.available ? 'Открыть →' : 'В разработке'}
+            </span>
           </>
         );
 
         return action.available ? (
           <Link
-            key={action.href}
+            key={action.title}
             href={action.href}
             className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg"
           >
             {content}
           </Link>
         ) : (
-          <div key={action.href} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <div key={action.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             {content}
           </div>
         );

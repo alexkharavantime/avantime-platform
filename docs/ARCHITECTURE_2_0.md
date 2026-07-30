@@ -250,7 +250,10 @@ flowchart TB
 
 Канонические метаданные содержат `companyId`, `uploadedBy`, `status`, `originalName`, `storedName`, `mimeType`, `size`, `createdAt` и `updatedAt`. Для прежних development-данных допускается однократная совместимая нормализация в системный tenant `avantime`; это не является production-миграцией.
 
-Document API по-прежнему доступен только роли `ADMIN`. Текущий системный администратор без собственного `companyId` работает в tenant `avantime`; выбор tenant и клиентский доступ требуют отдельного решения RBAC следующей итерации.
+TASK-007 разделяет document permissions по операции. Tenant-scoped list/item/file/text/search/RAG
+доступны активному участнику компании и возвращают client-safe projection. Upload, delete,
+reprocess, reindex, quarantine и operational details остаются `ADMIN`-only. API не принимает
+`companyId` из client input; tenant выводится из повторно проверенной server session.
 
 ### Вторая итерация production persistence
 
@@ -513,6 +516,11 @@ MCP используется как стандарт подключения вн
 ## Dashboard
 
 Показывает состояние обращений, проектов, документов, уведомлений и интеграций, а также персональные рекомендации AI. Данные агрегируются сервером с учётом организации и роли.
+
+Канонические маршруты находятся под `/portal`. Исторический `/dashboard/**` является только
+compatibility layer и перенаправляет query/deep links в `/portal` либо, для административного
+document tooling, в `/admin/documents`. Полная карта переноса находится в
+`docs/PORTAL_ARCHITECTURE.md`.
 
 ## Обращения
 
@@ -827,9 +835,9 @@ Production-файлы хранятся в приватном S3-совмести
 
 ### Что необходимо сделать
 
-- устранить параллельные и незащищённые реализации dashboard и AI;
+- завершить deprecation lifecycle compatibility routes `/dashboard/**` после usage review;
 - объединить доступ к моделям через AI Gateway;
-- расширить tenant-aware доступ к документам за пределы временного `ADMIN`-режима;
+- расширить организационную RBAC-модель без ослабления tenant-aware document access;
 - отказаться от runtime-данных в репозитории;
 - согласовать публичную и документную базы знаний;
 - стабилизировать аутентификацию, роли и границы организаций;
