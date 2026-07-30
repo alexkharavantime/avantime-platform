@@ -1,1 +1,16 @@
-import { redirect } from 'next/navigation';import { PageShell } from '../../../components/page-shell';import { NotificationSettingsForm } from '../../../components/portal/notification-settings-form';import { getNotificationPreferences } from '../../../lib/notification-preferences';import { getSession } from '../../../lib/session';export default async function Page(){const s=await getSession();if(!s)redirect('/portal/login');const prefs=await getNotificationPreferences(s.userId);return <PageShell><section className="bg-slate-50 py-16"><div className="mx-auto max-w-4xl px-6"><p className="eyebrow">Клиентский кабинет</p><h1 className="mt-4 text-5xl font-black">Уведомления</h1><p className="mt-4 text-lg text-slate-600">Выберите письма, которые хотите получать.</p><NotificationSettingsForm initial={prefs}/></div></section></PageShell>}
+import { PortalNotificationCenter } from '../../../components/portal/notification-center';
+
+export default function PortalNotificationsPage() {
+  return (
+    <div className="mx-auto max-w-5xl px-5 py-10 sm:px-6">
+      <p className="eyebrow">События кабинета</p>
+      <h1 className="mt-3 text-4xl font-black tracking-tight">Уведомления</h1>
+      <p className="mt-3 text-slate-600">
+        Обращения, сообщения и документы вашей компании. Настройки email находятся в настройках.
+      </p>
+      <div className="mt-8">
+        <PortalNotificationCenter />
+      </div>
+    </div>
+  );
+}

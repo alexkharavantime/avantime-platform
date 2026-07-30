@@ -52,6 +52,17 @@ npm run build
 
 Production startup requires `SESSION_SECRET`; configure PostgreSQL before deployment.
 
+## Unified client portal
+
+`/portal` is the canonical authenticated client cabinet for requests, documents,
+knowledge/RAG, company data, team, notifications and settings. Historical
+`/dashboard/**` links remain compatible redirects and preserve query strings and
+document deep links. Administrative document upload, deletion and reprocessing
+remain separate at `/admin/documents`.
+
+See [Portal Architecture](./docs/PORTAL_ARCHITECTURE.md) and
+[TASK-007](./docs/tasks/TASK-007.md).
+
 ## Document processing worker
 
 Development uses a persistent local queue and does not start a worker automatically.

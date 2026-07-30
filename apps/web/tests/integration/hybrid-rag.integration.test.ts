@@ -138,7 +138,7 @@ test('pgvector embedding worker, hybrid retrieval, citations and reindex work en
     assert.equal(answer.status, 'answered');
     assert.ok(answer.citations.length > 0);
     assert.ok(answer.citations.every((citation) => citation.documentId === documentA));
-    assert.match(answer.citations[0].link, /^\/dashboard\/knowledge\//);
+    assert.match(answer.citations[0].link, /^\/portal\/documents\//);
 
     const currentPlan = await planDocumentReindex(tenantA, documentA, true, services.rag.embedding);
     assert.equal(currentPlan.outcome, 'UP_TO_DATE');

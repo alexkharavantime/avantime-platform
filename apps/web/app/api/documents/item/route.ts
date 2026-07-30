@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReadApi } from '../../../../lib/document-authorization';
 import {
   getDocumentTenantContext,
+  toClientDocumentApiItem,
   toDocumentApiItem,
 } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
 
 export async function GET(request: Request) {
-  const authorization = await authorizeDocumentApi();
+  const authorization = await authorizeDocumentReadApi();
   if (authorization.response) return authorization.response;
 
   const tenant = getDocumentTenantContext(authorization.session);
@@ -22,5 +23,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Документ не найден.' }, { status: 404 });
   }
 
-  return NextResponse.json({ document: toDocumentApiItem(document) });
+  return NextResponse.json({
+    document:
+      authorization.session.role === 'ADMIN'
+        ? toDocumentApiItem(document)
+        : toClientDocumentApiItem(document),
+  });
 }

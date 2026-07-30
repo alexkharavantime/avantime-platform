@@ -260,9 +260,9 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-002 Личный кабинет клиента
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** In Progress
-- **Описание:** Объединить `/portal` и экспериментальный `/dashboard` в одно защищённое рабочее пространство.
-- **Критерии готовности:** единая навигация; серверная авторизация; данные организации; нет параллельных страниц с одинаковой ответственностью.
+- **Статус:** Review
+- **Описание:** TASK-007 объединила клиентские сценарии под каноническим `/portal`; `/dashboard/**` оставлен только как deprecated compatibility layer.
+- **Критерии готовности:** единая навигация; повторная server-side проверка active membership; данные организации; role-aware redirects с query/deep-link compatibility; нет параллельных страниц с одинаковой ответственностью.
 - **Зависимости:** SEC-001, SEC-002, UX-001.
 
 ### PORTAL-002 — Обращения
@@ -1224,7 +1224,7 @@ Product Backlog — основной управляемый перечень п�
 ## Текущие известные проблемы
 
 - `/dashboard` и внутренние document/AI API защищены, но полная матрица ролей ещё отсутствует;
-- существуют параллельные `/portal` и `/dashboard`;
+- `/dashboard/**` остаётся deprecated compatibility layer; его удаление требует usage evidence и отдельного sunset-решения;
 - публичная и документная базы знаний остаются раздельными реализациями;
 - production adapters PostgreSQL/S3 и document worker contracts реализованы; local PostgreSQL/MinIO и OCR Docker gates выполнены, но обязательный CI gate, production infrastructure, external queue и backup ещё не завершены;
 - document/RAG/OpenAI/Gemini calls объединены AI Gateway; streaming, fallback policy и production provider validation ещё не завершены;

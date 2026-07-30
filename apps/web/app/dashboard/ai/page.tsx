@@ -1,3 +1,13 @@
-export default function AIPage() {
-  return <main className="p-6 lg:p-8"><p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">AI Chat · В разработке</p><h2 className="mt-2 text-3xl font-black text-slate-950">Avantime Assistant</h2><div className="mt-8 rounded-3xl border border-amber-200 bg-amber-50 p-6"><h3 className="font-black text-amber-950">Интерактивный чат пока недоступен</h3><p className="mt-2 max-w-2xl leading-7 text-amber-900">Экран демонстрирует запланированный раздел. Подключение production AI Gateway, разграничение доступа и журналирование вынесены в TASK-002.</p></div></main>;
+import { redirect } from 'next/navigation';
+import {
+  appendCompatibilitySearchParams,
+  type CompatibilitySearchParams,
+} from '../../../lib/compatibility-redirect';
+
+export default async function DashboardAiCompatibility({
+  searchParams,
+}: {
+  searchParams: Promise<CompatibilitySearchParams>;
+}) {
+  redirect(appendCompatibilitySearchParams('/portal/knowledge', await searchParams));
 }

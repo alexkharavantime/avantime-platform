@@ -1,1 +1,13 @@
-export default function DocumentsPage(){return <main className="p-8"><p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">В разработке</p><h2 className="mt-2 text-3xl font-black">Документы</h2><p className="mt-3 text-slate-500">Отдельный клиентский раздел документов пока не реализован. В PR #1 доступен административный Knowledge Center.</p></main>}
+import { redirect } from 'next/navigation';
+import {
+  appendCompatibilitySearchParams,
+  type CompatibilitySearchParams,
+} from '../../../lib/compatibility-redirect';
+
+export default async function DashboardDocumentsCompatibility({
+  searchParams,
+}: {
+  searchParams: Promise<CompatibilitySearchParams>;
+}) {
+  redirect(appendCompatibilitySearchParams('/portal/documents', await searchParams));
+}

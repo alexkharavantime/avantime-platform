@@ -469,7 +469,7 @@ test('citations are rebuilt from tenant-authorized chunks and forged markers are
     const citations = await builder.build(tenantA, [retrieval]);
     assert.equal(citations.length, 1);
     assert.equal(citations[0].sourceId, 'S1');
-    assert.match(citations[0].link, /^\/dashboard\/knowledge\//);
+    assert.match(citations[0].link, /^\/portal\/documents\//);
     assert.deepEqual(await builder.build(tenantB, [retrieval]), []);
     assert.equal(
       sanitizeAnswerCitations('Valid [S1], forged [S999] and [ADMIN].', new Set(['S1'])),

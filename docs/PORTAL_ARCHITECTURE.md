@@ -1,0 +1,58 @@
+# Unified Client Portal Architecture
+
+## Decision
+
+`/portal` is the canonical namespace for the authenticated client cabinet. Public authentication
+pages remain under `/portal/login`, `/portal/forgot-password`, and `/portal/reset-password`.
+Administrative workflows remain under `/admin`.
+
+Legacy `/dashboard` URLs are compatibility entry points. They must preserve query strings and deep
+links while redirecting to an equivalent `/portal` or `/admin` destination. They must not introduce
+redirect loops or a second navigation model.
+
+## Function and route mapping
+
+| Function                 | Current route                              | Portal implementation | Dashboard implementation               | Chosen route             | Transfer                                      | Compatibility                              | Must not be deleted                      |
+| ------------------------ | ------------------------------------------ | --------------------- | -------------------------------------- | ------------------------ | --------------------------------------------- | ------------------------------------------ | ---------------------------------------- |
+| Client overview          | `/portal`, `/dashboard`                    | Request overview      | Experimental overview                  | `/portal`                | Consolidate metrics and quick actions         | `/dashboard` redirects with query          | Request summary                          |
+| Request list             | Portal home                                | Embedded list         | `/dashboard/support` link              | `/portal/requests`       | Extract complete list                         | Dashboard support redirects                | Tenant filtering                         |
+| Request details          | `/portal/requests/[id]`                    | Complete              | None                                   | `/portal/requests/[id]`  | Keep                                          | Preserve deep link                         | Messages, attachments, audit             |
+| Create request           | `/portal/requests/new`                     | Complete              | None                                   | `/portal/requests/new`   | Keep                                          | N/A                                        | Jira boundary and server tenant          |
+| Client documents         | None                                       | None                  | Placeholder                            | `/portal/documents`      | Add tenant read view                          | `/dashboard/documents` redirects           | Status, OCR/review/index state           |
+| Document details         | None                                       | None                  | `/dashboard/knowledge/[id]` ADMIN-only | `/portal/documents/[id]` | Add safe client view                          | Knowledge deep link redirects              | Preview, citation, download              |
+| Knowledge search         | Public `/knowledge`                        | None                  | `/dashboard/knowledge` ADMIN-only      | `/portal/knowledge`      | Add tenant search/RAG UI                      | `/dashboard/knowledge` role-aware redirect | Citations and no-answer behavior         |
+| Document administration  | Dashboard Knowledge Center                 | None                  | Upload/delete/reprocess                | `/admin/documents`       | Move unchanged admin tools                    | ADMIN dashboard link redirects             | Upload/delete/reprocess/reindex          |
+| Company profile          | `/portal/profile`                          | User and company form | None                                   | `/portal/company`        | Split canonical company page                  | `/portal/profile` redirects                | Existing profile data                    |
+| Team                     | `/portal/team`                             | List and invite       | None                                   | `/portal/team`           | Keep and secure invite                        | N/A                                        | Existing CLIENT/ADMIN roles              |
+| Notification center      | None                                       | Preferences only      | None                                   | `/portal/notifications`  | Add center and retain preferences in settings | N/A                                        | Email preferences                        |
+| Settings                 | `/portal/profile`, `/portal/notifications` | Distributed           | Dashboard placeholder                  | `/portal/settings`       | Consolidate personal preferences              | `/dashboard/settings` redirects            | Profile and notification settings        |
+| AI assistant             | Public `/assistant`, dashboard placeholder | None                  | Placeholder                            | `/portal/knowledge`      | Tenant RAG only; no new public chat           | `/dashboard/ai` redirects                  | Rate, budget, citations, prompt controls |
+| Projects                 | Dashboard placeholder                      | None                  | Placeholder                            | `/portal/requests`       | No new domain is invented                     | `/dashboard/projects` redirects            | Placeholder is documented only           |
+| Admin requests           | `/admin/requests`                          | N/A                   | N/A                                    | `/admin/requests`        | Keep separate                                 | None                                       | Admin status and export                  |
+| Admin knowledge articles | `/admin/knowledge`                         | N/A                   | N/A                                    | `/admin/knowledge`       | Keep separate                                 | None                                       | Publishing workflow                      |
+
+## Security boundary
+
+- Every protected portal render validates the signed session and, when PostgreSQL is configured,
+  confirms that the user is active and still belongs to the company encoded in the session.
+- Tenant identifiers are derived from the validated server session. Client requests containing
+  `companyId` are rejected.
+- Client document reads are scoped by the compound `(companyId, id)` identity. Mutating document
+  operations remain `ADMIN`-only.
+- Cross-tenant resources use the same not-found response as missing resources.
+- Safe redirects accept application-local paths only and preserve query strings.
+- Portal audit accepts only fixed action/target pairs for portal access, document download,
+  company update, team invite, and notification read. Tenant and actor are derived only from the
+  validated server session. Events contain action, target type, safe target ID, outcome,
+  correlation ID, and, for downloads only, byte size.
+- Portal audit never stores URLs, query parameters, user-derived pathnames, emails, names,
+  invitations, filenames, document/request/message/search content, prompts, answers, excerpts,
+  provider/model details, credentials, or raw errors. A temporary audit sink failure is fail-open
+  and exposes no sink detail to the client.
+- Existing request/document mutation audit and RAG telemetry remain their authoritative event
+  sources and are not duplicated by the portal helper.
+
+## Compatibility lifecycle
+
+Dashboard compatibility routes are deprecated in TASK-007 but remain supported. Removal requires a
+separate decision, usage evidence, a communicated sunset date, and dedicated migration work.

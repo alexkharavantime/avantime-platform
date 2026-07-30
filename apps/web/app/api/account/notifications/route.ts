@@ -1,1 +1,36 @@
-import { NextResponse } from 'next/server';import { getSession } from '../../../../lib/session';import { getNotificationPreferences,updateNotificationPreferences } from '../../../../lib/notification-preferences';export async function GET(){const s=await getSession();if(!s)return NextResponse.json({error:'Unauthorized'},{status:401});return NextResponse.json(await getNotificationPreferences(s.userId));}export async function PUT(r:Request){const s=await getSession();if(!s)return NextResponse.json({error:'Unauthorized'},{status:401});const b=await r.json();return NextResponse.json(await updateNotificationPreferences(s.userId,{requestCreated:Boolean(b.requestCreated),requestUpdated:Boolean(b.requestUpdated),newMessage:Boolean(b.newMessage),slaAlerts:Boolean(b.slaAlerts),weeklySummary:Boolean(b.weeklySummary)}));}
+import { NextResponse } from 'next/server';
+
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from '../../../../lib/notification-preferences';
+import { authorizePortalApi } from '../../../../lib/portal-session';
+
+export async function GET() {
+  const authorization = await authorizePortalApi();
+  if (authorization.response) return authorization.response;
+  try {
+    return NextResponse.json(await getNotificationPreferences(authorization.session.userId));
+  } catch {
+    return NextResponse.json({ error: 'Настройки временно недоступны.' }, { status: 503 });
+  }
+}
+
+export async function PUT(request: Request) {
+  const authorization = await authorizePortalApi();
+  if (authorization.response) return authorization.response;
+  const body = await request.json();
+  try {
+    return NextResponse.json(
+      await updateNotificationPreferences(authorization.session.userId, {
+        requestCreated: Boolean(body.requestCreated),
+        requestUpdated: Boolean(body.requestUpdated),
+        newMessage: Boolean(body.newMessage),
+        slaAlerts: Boolean(body.slaAlerts),
+        weeklySummary: Boolean(body.weeklySummary),
+      }),
+    );
+  } catch {
+    return NextResponse.json({ error: 'Не удалось сохранить настройки.' }, { status: 503 });
+  }
+}

@@ -333,7 +333,9 @@ export function KnowledgeAsk() {
                   {sources.map((source) => (
                     <Link
                       key={`${source.documentId}-${source.chunkId}`}
-                      href={`/dashboard/knowledge/${source.documentId}`}
+                      href={
+                        source.link ?? `/portal/documents/${encodeURIComponent(source.documentId)}`
+                      }
                       className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm transition hover:border-blue-300"
                     >
                       <span className="font-bold text-blue-700">

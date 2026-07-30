@@ -16,9 +16,7 @@ export type AppSession = {
   expiresAt: number;
 };
 
-export function getSessionSecret(
-  environment: Record<string, string | undefined> = process.env,
-) {
+export function getSessionSecret(environment: Record<string, string | undefined> = process.env) {
   const value = environment.SESSION_SECRET?.trim();
 
   if (!value) {
@@ -60,7 +58,16 @@ export function decodeSession(raw: string): AppSession | null {
   if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
   try {
     const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as AppSession;
-    if (!session.email || !session.name || !session.role || session.expiresAt <= Date.now()) return null;
+    if (
+      !session.userId ||
+      !session.email ||
+      !session.name ||
+      (session.role !== 'CLIENT' && session.role !== 'ADMIN') ||
+      !Number.isFinite(session.expiresAt) ||
+      session.expiresAt <= Date.now()
+    ) {
+      return null;
+    }
     return session;
   } catch {
     return null;

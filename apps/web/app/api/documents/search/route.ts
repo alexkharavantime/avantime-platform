@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { assertApiRateLimit, ApiRateLimitError } from '../../../../lib/api-rate-limit';
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReadApi } from '../../../../lib/document-authorization';
 import { isDocumentType } from '../../../../lib/document-intelligence-model';
 import type { DocumentType } from '../../../../lib/document-intelligence-model';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
@@ -18,7 +18,7 @@ function parseMode(value: string | null): RetrievalMode | null {
 
 export async function GET(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
     const tenant = getDocumentTenantContext(authorization.session);
     const services = getDocumentServices();
