@@ -40,7 +40,10 @@ export function ProfileForm({ initialProfile }: { initialProfile: AccountProfile
   );
 
   return (
-    <form onSubmit={submit} className="mt-8 grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
+    <form
+      onSubmit={submit}
+      className="mt-8 grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8"
+    >
       <div className="grid gap-5 md:grid-cols-2">
         {field('name', 'Имя и фамилия')}
         {field('email', 'Email', true)}
@@ -56,10 +59,20 @@ export function ProfileForm({ initialProfile }: { initialProfile: AccountProfile
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <button disabled={state === 'saving'} className="rounded-full bg-blue-600 px-6 py-3 font-black text-white disabled:opacity-60">
+        <button
+          disabled={state === 'saving'}
+          className="rounded-full bg-blue-600 px-6 py-3 font-black text-white disabled:opacity-60"
+        >
           {state === 'saving' ? 'Сохраняем…' : 'Сохранить изменения'}
         </button>
-        {message && <p className={`font-bold ${state === 'error' ? 'text-red-600' : 'text-emerald-600'}`}>{message}</p>}
+        {message && (
+          <p
+            role={state === 'error' ? 'alert' : 'status'}
+            className={`font-bold ${state === 'error' ? 'text-red-600' : 'text-emerald-600'}`}
+          >
+            {message}
+          </p>
+        )}
       </div>
     </form>
   );

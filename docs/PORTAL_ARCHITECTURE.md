@@ -56,3 +56,19 @@ redirect loops or a second navigation model.
 
 Dashboard compatibility routes are deprecated in TASK-007 but remain supported. Removal requires a
 separate decision, usage evidence, a communicated sunset date, and dedicated migration work.
+
+## Browser verification boundary
+
+TASK-008 проверяет portal architecture отдельным Playwright/Chromium gate. Test topology:
+
+- guarded loopback PostgreSQL database `avantime_browser_integration`;
+- deterministic fixtures двух companies, двух `CLIENT` и отдельного `ADMIN`;
+- обычная `/portal/login` DB authentication и повторная portal membership validation;
+- desktop portal smoke, `/dashboard/**` redirects и direct cross-tenant URLs;
+- tablet/mobile overflow и accessible navigation dialog;
+- axe WCAG A/AA blocking для `critical` и `serious`.
+
+Fixtures не вводят роль `USER`: в текущей принятой модели user fixture использует роль `CLIENT`.
+Browser preparation не меняет production tenant model, не принимает client `companyId` и не
+вызывает AI/email/Jira/storage providers. Полный operational contract и artifact policy описаны в
+[Browser Testing](./BROWSER_TESTING.md).
