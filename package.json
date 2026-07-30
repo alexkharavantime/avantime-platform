@@ -51,7 +51,12 @@
     "restore:rehearsal:integration": "npm run restore:rehearsal:integration -w @avantime/web",
     "pgvector:load-test": "npm run pgvector:load-test -w @avantime/web --",
     "production:readiness": "npm run production:readiness -w @avantime/web",
-    "security:dependency-review": "npm audit --omit=optional"
+    "security:dependency-review": "npm audit --omit=optional",
+    "browser:prepare": "npm run browser:prepare -w @avantime/web",
+    "test:browser": "npm run test:browser -w @avantime/web",
+    "test:browser:headed": "npm run test:browser:headed -w @avantime/web",
+    "test:accessibility": "npm run test:accessibility -w @avantime/web",
+    "test:browser:report": "npm run test:browser:report -w @avantime/web"
   },
   "devDependencies": {
     "prettier": "^3.5.3",

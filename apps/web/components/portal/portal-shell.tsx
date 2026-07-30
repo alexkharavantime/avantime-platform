@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import type { AppSession } from '../../lib/session';
 
@@ -81,6 +81,49 @@ export function PortalShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileDialogRef = useRef<HTMLElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const closeButton = mobileDialogRef.current?.querySelector<HTMLButtonElement>(
+      '[data-mobile-menu-close]',
+    );
+    closeButton?.focus();
+
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setMobileOpen(false);
+      mobileTriggerRef.current?.focus();
+    }
+
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [mobileOpen]);
+
+  function keepFocusInMobileMenu(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function closeMobileMenu() {
+    setMobileOpen(false);
+    mobileTriggerRef.current?.focus();
+  }
 
   if (publicPaths.has(pathname)) return children;
 
@@ -112,7 +155,7 @@ export function PortalShell({
           </span>
         </Link>
         <PortalNavigation pathname={pathname} role={session?.role ?? 'CLIENT'} />
-        <p className="mt-auto px-3 text-xs leading-5 text-slate-500">
+        <p className="mt-auto px-3 text-xs leading-5 text-slate-400">
           Данные доступны только участникам вашей компании.
         </p>
       </aside>
@@ -126,15 +169,20 @@ export function PortalShell({
             onClick={() => setMobileOpen(false)}
           />
           <aside
+            ref={mobileDialogRef}
             id="portal-mobile-navigation"
+            role="dialog"
+            aria-modal="true"
             aria-label="Мобильная навигация"
+            onKeyDown={keepFocusInMobileMenu}
             className="relative flex min-h-full w-[min(20rem,88vw)] flex-col bg-slate-950 px-5 py-6 text-white shadow-2xl"
           >
             <div className="mb-7 flex items-center justify-between">
               <strong>Avantime</strong>
               <button
                 type="button"
-                onClick={() => setMobileOpen(false)}
+                data-mobile-menu-close
+                onClick={closeMobileMenu}
                 className="rounded-lg border border-white/20 px-3 py-2 text-sm font-bold"
               >
                 Закрыть
@@ -154,6 +202,7 @@ export function PortalShell({
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               <button
+                ref={mobileTriggerRef}
                 type="button"
                 aria-expanded={mobileOpen}
                 aria-controls="portal-mobile-navigation"

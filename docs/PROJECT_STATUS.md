@@ -11,7 +11,7 @@
 ### 🎯 Текущая цель проекта
 
 Подготовить следующий этап организационной RBAC и единой knowledge permission model после
-завершения TASK-007, не смешивая административные и клиентские boundaries.
+завершения TASK-007/008, не смешивая административные и клиентские boundaries.
 
 ### 📈 Общий процент готовности
 
@@ -19,9 +19,9 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-007 завершена: `/portal` стал каноническим namespace, а dashboard shell заменён compatibility redirects;
-2. добавлены active membership validation, client-safe tenant document/RAG views и отдельная admin document boundary;
-3. unified layout и notification center дополнены tenant-aware portal audit с жёстким allowlist данных.
+1. TASK-008 завершена: 43 Playwright/Chromium browser tests подтверждают portal, compatibility, tenant и responsive scenarios;
+2. axe WCAG A/AA blocking проверяет восемь основных portal pages без blanket exclusions;
+3. TASK-007 portal boundaries дополнены изолированной browser database, безопасными artifacts и blocking CI job.
 
 ### 🚧 Три главных риска
 
@@ -33,7 +33,7 @@
 
 1. Продолжить production identity/RBAC и единую knowledge persistence/permission model.
 2. Развернуть reference topology в managed staging и подтвердить backup/PITR/alerts.
-3. Добавить поддерживаемый browser smoke/accessibility stack для portal routes.
+3. Провести ручной screen-reader/assistive-technology review и расширять browser coverage вместе с критическими сценариями.
 
 ---
 
@@ -42,10 +42,10 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.16                                                                                      |
+| Версия документа                 | 1.17                                                                                      |
 | Дата последнего обновления       | 2026-07-30                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-007-unified-client-portal`                                                  |
+| Текущая ветка Git                | `feature/task-008-browser-accessibility`                                                  |
 | Последний commit                 | `61cde23 feat(ops): add TASK-005 production readiness foundations (#10)`                  |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
@@ -179,24 +179,24 @@ production build на 59 entries и все пять production Docker targets.
 - `npm run test` — успешно, 8 из 8 security-тестов;
 - `npm run build` — успешно при явно переданном одноразовом `SESSION_SECRET`; запуск без секрета ожидаемо остановился с понятной ошибкой. Next.js сгенерировал 53 статические записи; остаются предупреждения о дополнительном lockfile вне репозитория и пустых build outputs TypeScript-only пакетов.
 
-| Направление             | Статус      | Готовность | Комментарий                                                                                                                                        |
-| ----------------------- | ----------- | ---------: | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Документация            | Review      |        80% | Созданы и добавлены в Git Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и ADR; формальное утверждение ещё не завершено  |
-| Публичный сайт          | In Progress |        65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности                                      |
-| Личный кабинет          | Review      |        85% | TASK-007 завершена: единый `/portal`, compatibility redirects, client documents/RAG, notifications и безопасный portal audit прошли gates          |
-| Административная панель | In Progress |        55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI                                         |
-| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются         |
-| База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                            |
-| Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                        |
-| Jira                    | In Progress |        35% | Реализовано создание issue; двусторонняя синхронизация отсутствует                                                                                 |
-| 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                              |
-| Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                               |
-| API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует               |
-| Безопасность            | In Progress |        72% | Active membership и cross-tenant boundaries усилены; полная организационная RBAC и production identity остаются                                    |
-| UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                         |
-| Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены    |
-| Тестирование            | In Progress |        64% | Проходят 116 unit/security, 18 full integration, отдельные RAG/Redis/OCR, migration/restore и static security gates; browser suite ещё отсутствует |
-| Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                    |
+| Направление             | Статус      | Готовность | Комментарий                                                                                                                                          |
+| ----------------------- | ----------- | ---------: | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Документация            | Review      |        80% | Созданы и добавлены в Git Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и ADR; формальное утверждение ещё не завершено    |
+| Публичный сайт          | In Progress |        65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности                                        |
+| Личный кабинет          | Review      |        85% | TASK-007 завершена: единый `/portal`, compatibility redirects, client documents/RAG, notifications и безопасный portal audit прошли gates            |
+| Административная панель | In Progress |        55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI                                           |
+| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются           |
+| База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                              |
+| Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                          |
+| Jira                    | In Progress |        35% | Реализовано создание issue; двусторонняя синхронизация отсутствует                                                                                   |
+| 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                                |
+| Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                                 |
+| API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует                 |
+| Безопасность            | In Progress |        72% | Active membership и cross-tenant boundaries усилены; полная организационная RBAC и production identity остаются                                      |
+| UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                           |
+| Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены      |
+| Тестирование            | In Progress |        72% | Проходят 117 unit/security и 43 Playwright/Chromium tests; existing integration/RAG/Redis/OCR/migration gates сохранены; ручной a11y review остаётся |
+| Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                      |
 
 ---
 
@@ -467,16 +467,16 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 # Рекомендуемые следующие действия
 
-| Порядок | Действие                                                           | Приоритет | Ожидаемый эффект                                    | Ориентировочная сложность |
-| ------: | ------------------------------------------------------------------ | --------- | --------------------------------------------------- | ------------------------- |
-|       1 | Завершить review и сохранить стратегические документы отдельным PR | P0        | Единый утверждённый источник требований             | Низкая                    |
-|       2 | Утвердить RBAC и правила выбора tenant системным администратором   | P0        | Основа безопасного клиентского доступа к документам | Высокая                   |
-|       3 | Развернуть private S3 bucket и PostgreSQL migration environment    | P0        | Проверяемое production-хранение                     | Высокая                   |
-|       4 | Провести staging provider validation и backup/restore test         | P0        | Безопасный переход без потери tenant-принадлежности | Средняя                   |
-|       5 | Проверить production AI providers и distributed limits             | P0        | Эксплуатационная готовность AI Gateway              | Высокая                   |
-|       6 | Добавить browser smoke и accessibility automation для `/portal`    | P0        | Проверяемый responsive и доступный клиентский UX    | Средняя                   |
-|       7 | Развернуть Redis queues и telemetry adapters в managed staging     | P0        | Проверяемая production-обработка и диагностика      | Высокая                   |
-|       8 | Расширить security и integration tests критических сценариев       | P0        | Проверяемая готовность Version 2.0                  | Высокая                   |
+| Порядок | Действие                                                           | Приоритет | Ожидаемый эффект                                     | Ориентировочная сложность |
+| ------: | ------------------------------------------------------------------ | --------- | ---------------------------------------------------- | ------------------------- |
+|       1 | Завершить review и сохранить стратегические документы отдельным PR | P0        | Единый утверждённый источник требований              | Низкая                    |
+|       2 | Утвердить RBAC и правила выбора tenant системным администратором   | P0        | Основа безопасного клиентского доступа к документам  | Высокая                   |
+|       3 | Развернуть private S3 bucket и PostgreSQL migration environment    | P0        | Проверяемое production-хранение                      | Высокая                   |
+|       4 | Провести staging provider validation и backup/restore test         | P0        | Безопасный переход без потери tenant-принадлежности  | Средняя                   |
+|       5 | Проверить production AI providers и distributed limits             | P0        | Эксплуатационная готовность AI Gateway               | Высокая                   |
+|       6 | Провести ручной screen-reader и zoom/reflow review `/portal`       | P0        | Дополнить axe и keyboard automation ручной проверкой | Средняя                   |
+|       7 | Развернуть Redis queues и telemetry adapters в managed staging     | P0        | Проверяемая production-обработка и диагностика       | Высокая                   |
+|       8 | Расширить security и integration tests критических сценариев       | P0        | Проверяемая готовность Version 2.0                   | Высокая                   |
 
 ---
 
@@ -484,6 +484,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                    |
 | ---------- | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-30 | 1.17   | Codex, по поручению владельца проекта | TASK-008 завершена: 43 Playwright/Chromium tests, axe WCAG A/AA, isolated DB fixtures, trace redaction и blocking browser CI job; ручной assistive-technology review не выполнялся           |
 | 2026-07-30 | 1.16   | Codex, по поручению владельца проекта | TASK-007 завершена: 116 unit/security tests и финальные gates пройдены; добавлен tenant-aware portal audit без sensitive content; browser review не запускался                               |
 | 2026-07-29 | 1.15   | Codex, по поручению владельца проекта | TASK-007 консолидирует клиентские routes под `/portal`, добавляет membership validation, client-safe documents/RAG, notifications и compatibility `/dashboard/**`; gates выполняются         |
 | 2026-07-29 | 1.14   | Codex, по поручению владельца проекта | TASK-005 завершена: authoritative npm audit классифицирован, compatible transitive patch применён, AR-DEP-2026-001/002 приняты до 2026-08-12, full gate suite повторно пройден               |

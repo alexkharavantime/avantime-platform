@@ -63,6 +63,25 @@ remain separate at `/admin/documents`.
 See [Portal Architecture](./docs/PORTAL_ARCHITECTURE.md) and
 [TASK-007](./docs/tasks/TASK-007.md).
 
+## Browser and accessibility validation
+
+TASK-008 adds an isolated Playwright/Chromium gate for portal smoke, legacy
+`/dashboard/**` compatibility, tenant isolation, responsive navigation and automated WCAG A/AA
+checks.
+
+```bash
+npm run integration:up
+npm run db:generate
+npx playwright install chromium
+npm run test:browser
+npm run test:accessibility
+```
+
+The runner recreates only the guarded loopback database
+`avantime_browser_integration`, uses deterministic test-only identities and authenticates through
+the normal login page. See [Browser Testing](./docs/BROWSER_TESTING.md) and
+[TASK-008](./docs/tasks/TASK-008.md).
+
 ## Document processing worker
 
 Development uses a persistent local queue and does not start a worker automatically.

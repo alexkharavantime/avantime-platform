@@ -46,7 +46,13 @@
     "pgvector:load-test": "tsx scripts/run-pgvector-load-test.ts",
     "production:readiness": "tsx scripts/check-production-readiness.ts",
     "security:secret-scan": "tsx scripts/security-static-scan.ts secrets",
-    "security:migration-scan": "tsx scripts/security-static-scan.ts migrations"
+    "security:migration-scan": "tsx scripts/security-static-scan.ts migrations",
+    "browser:prepare": "tsx scripts/prepare-browser-tests.ts",
+    "browser:server": "next dev --hostname 127.0.0.1 --port 3410",
+    "test:browser": "tsx scripts/run-browser-tests.ts",
+    "test:browser:headed": "tsx scripts/run-browser-tests.ts --headed",
+    "test:accessibility": "tsx scripts/run-browser-tests.ts --grep @accessibility",
+    "test:browser:report": "playwright show-report ../../.artifacts/playwright-report"
   },
   "dependencies": {
     "@avantime/database": "*",
@@ -62,12 +68,15 @@
     "tsx": "4.19.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.0.0",
+    "fflate": "^0.8.3",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.8.0"

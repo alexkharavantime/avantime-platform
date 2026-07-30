@@ -52,14 +52,15 @@
 
 ## Реестр
 
-| Задание                 | Название                                                 | Статус      |
-| ----------------------- | -------------------------------------------------------- | ----------- |
-| [TASK-001](TASK-001.md) | Первая реализация Avantime Platform v2 и страницы Agent+ | Done        |
-| [TASK-002](TASK-002.md) | Tenant-aware хранение и обработка документов             | Done        |
-| [TASK-003](TASK-003.md) | Document Intelligence и OCR                              | Done        |
-| [TASK-004](TASK-004.md) | AI Gateway, Embeddings и Hybrid RAG                      | Done        |
-| [TASK-005](TASK-005.md) | Production Readiness, Reliability and Operations         | Done        |
-| [TASK-007](TASK-007.md) | Unified Client Portal                                    | In Progress |
+| Задание                 | Название                                                 | Статус |
+| ----------------------- | -------------------------------------------------------- | ------ |
+| [TASK-001](TASK-001.md) | Первая реализация Avantime Platform v2 и страницы Agent+ | Done   |
+| [TASK-002](TASK-002.md) | Tenant-aware хранение и обработка документов             | Done   |
+| [TASK-003](TASK-003.md) | Document Intelligence и OCR                              | Done   |
+| [TASK-004](TASK-004.md) | AI Gateway, Embeddings и Hybrid RAG                      | Done   |
+| [TASK-005](TASK-005.md) | Production Readiness, Reliability and Operations         | Done   |
+| [TASK-007](TASK-007.md) | Unified Client Portal                                    | Done   |
+| [TASK-008](TASK-008.md) | Browser smoke и accessibility automation                 | Done   |
 
 ## Связанные документы
 

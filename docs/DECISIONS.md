@@ -1849,6 +1849,58 @@ enabled in this task.
 
 ---
 
+## ADR-0025
+
+**Название:** Изолированный Chromium browser gate для client portal
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-30
+
+### Контекст
+
+TASK-007 завершила portal consolidation, но unit/integration tests не подтверждали реальное
+выполнение client JavaScript, responsive navigation, keyboard behavior и browser accessibility.
+Browser tests нельзя запускать против development или shared integration database.
+
+### Варианты
+
+- оставить только DOM/unit checks;
+- использовать Playwright с shared development state;
+- использовать Playwright/Chromium с отдельной database и deterministic seed;
+- применять внешний hosted browser service.
+
+### Принятое решение
+
+Использовать Playwright и Chromium с отдельной `avantime_browser_integration` database,
+последовательными workers и обычной DB authentication. Desktop smoke дополняется tablet/mobile
+projects и axe WCAG A/AA. Browser job изолирован от document/OCR integration и блокирует CI.
+
+Fixtures не расширяют RBAC: тестовый user имеет фактическую роль `CLIENT`. Подготовка отклоняет
+remote host, другое database name и production mode. Внешние providers не вызываются.
+
+### Последствия
+
+- browser state воспроизводим и не загрязняет development/integration данные;
+- CI получает отдельный сигнал о client UX, compatibility и tenant regressions;
+- failure artifacts требуют redaction и ограниченного retention;
+- axe не заменяет ручной assistive-technology review;
+- Chromium installation увеличивает время CI.
+
+### Связанные документы
+
+- `docs/BROWSER_TESTING.md`;
+- `docs/PORTAL_ARCHITECTURE.md`;
+- `docs/tasks/TASK-008.md`.
+
+### Связанные задачи Product Backlog
+
+- PORTAL-001;
+- UX-001;
+- INFRA-002.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1865,7 +1917,7 @@ enabled in this task.
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0025`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0026`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

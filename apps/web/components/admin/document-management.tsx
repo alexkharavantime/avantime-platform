@@ -216,7 +216,7 @@ export function AdminDocumentManagement() {
             Knowledge Center
           </p>
 
-          <h2 className="mt-2 text-3xl font-black text-slate-950">База знаний Avantime</h2>
+          <h1 className="mt-2 text-3xl font-black text-slate-950">База знаний Avantime</h1>
 
           <p className="mt-2 max-w-2xl text-slate-500">
             Загружайте документы, извлекайте текст и выполняйте поиск по базе знаний.
@@ -259,6 +259,7 @@ export function AdminDocumentManagement() {
 
         <form onSubmit={handleSearch} className="mt-5 flex flex-col gap-3 sm:flex-row">
           <input
+            aria-label="Поиск по документам"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Введите слово или фразу"
