@@ -25,6 +25,13 @@ function productionEnvironment() {
   return {
     NODE_ENV: 'production',
     SESSION_SECRET: 'session-secret-with-more-than-32-characters',
+    MFA_ENCRYPTION_KEY: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY',
+    MFA_ENCRYPTION_KEY_VERSION: 'test-v1',
+    AUTH_ADMIN_MFA_REQUIRED: 'true',
+    AUTH_PUBLIC_ORIGIN: 'https://portal.example.com',
+    IDENTITY_EMAIL_DRIVER: 'resend',
+    MAIL_FROM: 'security@portal.example.com',
+    RESEND_API_KEY: 'resend-key-with-more-than-20-characters',
     DATABASE_URL: 'postgresql://user:password@database.example.com/avantime?sslmode=verify-full',
     DOCUMENT_STORAGE_DRIVER: 's3',
     DOCUMENT_METADATA_DRIVER: 'postgresql',

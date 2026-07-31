@@ -7,6 +7,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
+const EXPECTED_MIGRATION_COUNT = 8;
 
 type RehearsalPrismaClient = {
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
@@ -77,12 +78,115 @@ async function deployMigrations(
   });
 }
 
+async function createLegacyAccountBaseline(targetDatabaseUrl: string, withIdentityFixture = false) {
+  const client = await createPrismaClient(targetDatabaseUrl);
+  try {
+    for (const statement of [
+      `CREATE TYPE "UserRole" AS ENUM ('CLIENT', 'ADMIN')`,
+      `CREATE TABLE "Company" (
+        "id" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "registrationNumber" TEXT,
+        "address" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "Company_pkey" PRIMARY KEY ("id")
+      )`,
+      `CREATE TABLE "User" (
+        "id" TEXT NOT NULL,
+        "email" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "role" "UserRole" NOT NULL DEFAULT 'CLIENT',
+        "active" BOOLEAN NOT NULL DEFAULT true,
+        "passwordHash" TEXT,
+        "phone" TEXT,
+        "jobTitle" TEXT,
+        "companyId" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "User_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "User_companyId_fkey"
+          FOREIGN KEY ("companyId") REFERENCES "Company"("id")
+          ON DELETE SET NULL ON UPDATE CASCADE
+      )`,
+      `CREATE UNIQUE INDEX "User_email_key" ON "User"("email")`,
+      `CREATE TABLE "PasswordResetToken" (
+        "id" TEXT NOT NULL,
+        "tokenHash" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "usedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "PasswordResetToken_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "PasswordResetToken_userId_fkey"
+          FOREIGN KEY ("userId") REFERENCES "User"("id")
+          ON DELETE CASCADE ON UPDATE CASCADE
+      )`,
+      `CREATE UNIQUE INDEX "PasswordResetToken_tokenHash_key"
+        ON "PasswordResetToken"("tokenHash")`,
+    ]) {
+      await client.$executeRawUnsafe(statement);
+    }
+    if (withIdentityFixture) {
+      await client.$executeRawUnsafe(
+        `INSERT INTO "Company" ("id", "name")
+         VALUES ('integration-identity-company', 'Integration Identity Company')`,
+      );
+      await client.$executeRawUnsafe(
+        `INSERT INTO "User" (
+          "id", "email", "name", "role", "active", "passwordHash", "companyId"
+        ) VALUES (
+          'integration-identity-user',
+          'LEGACY.USER@EXAMPLE.TEST',
+          'Legacy Identity User',
+          'CLIENT',
+          true,
+          'pbkdf2$210000$legacy-salt$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'integration-identity-company'
+        )`,
+      );
+    }
+  } finally {
+    await client.$disconnect();
+  }
+}
+
 async function rehearseEmptyDatabase(options: {
   repositoryRoot: string;
   schema: string;
+  migrationsDirectory: string;
   environment: NodeJS.ProcessEnv;
   targetDatabaseUrl: string;
 }) {
+  await createLegacyAccountBaseline(options.targetDatabaseUrl);
+  const commandEnvironment = {
+    ...options.environment,
+    DATABASE_URL: options.targetDatabaseUrl,
+  };
+  await runIntegrationCommand(
+    'npx',
+    [
+      'prisma',
+      'db',
+      'execute',
+      '--file',
+      path.join(options.migrationsDirectory, FIRST_MIGRATION, 'migration.sql'),
+      '--schema',
+      options.schema,
+    ],
+    {
+      cwd: options.repositoryRoot,
+      environment: commandEnvironment,
+    },
+  );
+  await runIntegrationCommand(
+    'npx',
+    ['prisma', 'migrate', 'resolve', '--applied', FIRST_MIGRATION, '--schema', options.schema],
+    {
+      cwd: options.repositoryRoot,
+      environment: commandEnvironment,
+    },
+  );
   await deployMigrations(
     options.repositoryRoot,
     options.schema,
@@ -101,8 +205,10 @@ async function rehearseEmptyDatabase(options: {
     const migrations = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
       'SELECT COUNT(*)::bigint AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
     );
-    if (Number(migrations[0]?.count ?? 0) !== 6) {
-      throw new Error('Empty database did not apply exactly six platform migrations.');
+    if (Number(migrations[0]?.count ?? 0) !== EXPECTED_MIGRATION_COUNT) {
+      throw new Error(
+        `Empty database did not apply exactly ${EXPECTED_MIGRATION_COUNT} platform migrations.`,
+      );
     }
     const vector = await client.$queryRawUnsafe<Array<{ extension: boolean; tableReady: boolean }>>(
       `SELECT
@@ -124,6 +230,7 @@ async function rehearseLegacyDatabase(options: {
   environment: NodeJS.ProcessEnv;
   targetDatabaseUrl: string;
 }) {
+  await createLegacyAccountBaseline(options.targetDatabaseUrl, true);
   const commandEnvironment = {
     ...options.environment,
     DATABASE_URL: options.targetDatabaseUrl,
@@ -203,6 +310,64 @@ async function rehearseLegacyDatabase(options: {
 
   const verified = await createPrismaClient(options.targetDatabaseUrl);
   try {
+    const identity = await verified.$queryRawUnsafe<
+      Array<{
+        emailNormalized: string;
+        passwordHash: string | null;
+        credentialIdentifier: string;
+        credentialHash: string;
+        membershipCompanyId: string;
+        emailVerifiedAt: Date | null;
+      }>
+    >(
+      `SELECT
+         user_record."emailNormalized",
+         user_record."passwordHash",
+         credential."identifierNormalized" AS "credentialIdentifier",
+         credential."passwordHash" AS "credentialHash",
+         membership."companyId" AS "membershipCompanyId",
+         user_record."emailVerifiedAt"
+       FROM "User" user_record
+       JOIN "UserCredential" credential ON credential."userId" = user_record."id"
+       JOIN "OrganizationMembership" membership ON membership."userId" = user_record."id"
+       WHERE user_record."id" = 'integration-identity-user'`,
+    );
+    if (
+      identity[0]?.emailNormalized !== 'legacy.user@example.test' ||
+      identity[0]?.passwordHash !== null ||
+      identity[0]?.credentialIdentifier !== 'legacy.user@example.test' ||
+      !identity[0]?.credentialHash.startsWith('pbkdf2$210000$') ||
+      identity[0]?.membershipCompanyId !== 'integration-identity-company' ||
+      !identity[0]?.emailVerifiedAt
+    ) {
+      throw new Error('Legacy identity was not normalized safely.');
+    }
+    const identityTables = await verified.$queryRawUnsafe<
+      Array<{
+        sessions: boolean;
+        mfa: boolean;
+        externalIdentities: boolean;
+        oidcRequests: boolean;
+        invitations: boolean;
+      }>
+    >(
+      `SELECT
+         to_regclass('"UserSession"') IS NOT NULL AS "sessions",
+         to_regclass('"MfaMethod"') IS NOT NULL AS "mfa",
+         to_regclass('"ExternalIdentity"') IS NOT NULL AS "externalIdentities",
+         to_regclass('"OidcAuthorizationRequest"') IS NOT NULL AS "oidcRequests",
+         to_regclass('"IdentityInvitation"') IS NOT NULL AS "invitations"`,
+    );
+    if (
+      !identityTables[0]?.sessions ||
+      !identityTables[0]?.mfa ||
+      !identityTables[0]?.externalIdentities ||
+      !identityTables[0]?.oidcRequests ||
+      !identityTables[0]?.invitations
+    ) {
+      throw new Error('Identity foundation tables are missing after migration.');
+    }
+
     const records = await verified.$queryRawUnsafe<
       Array<{
         id: string;
@@ -391,6 +556,7 @@ async function main() {
     await rehearseEmptyDatabase({
       repositoryRoot,
       schema,
+      migrationsDirectory,
       environment,
       targetDatabaseUrl: databaseUrl(safety.databaseUrl, emptyDatabase),
     });

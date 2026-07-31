@@ -11,6 +11,7 @@ const clientRoutes = [
   ['/portal/team', /Команда компании/],
   ['/portal/notifications', /Уведомления/],
   ['/portal/settings', /Настройки кабинета/],
+  ['/portal/settings/security', /Безопасность/],
 ] as const;
 
 test.describe('portal browser smoke', () => {

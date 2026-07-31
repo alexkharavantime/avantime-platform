@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Подготовить следующий этап организационной RBAC и единой knowledge permission model после
-завершения TASK-007/008, не смешивая административные и клиентские boundaries.
+Завершить production-like staging ceremony для TASK-009 и подготовить следующий этап
+организационной RBAC и единой knowledge permission model, не смешивая identity и membership.
 
 ### 📈 Общий процент готовности
 
@@ -19,19 +19,23 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-008 завершена: 43 Playwright/Chromium browser tests подтверждают portal, compatibility, tenant и responsive scenarios;
-2. axe WCAG A/AA blocking проверяет восемь основных portal pages без blanket exclusions;
-3. TASK-007 portal boundaries дополнены изолированной browser database, безопасными artifacts и blocking CI job.
+1. TASK-009 добавляет source-scoped credentials, отдельный organization membership и
+   disabled-by-default enterprise IdP foundation;
+2. локальная аутентификация усилена versioned scrypt rehash, TOTP/recovery codes, tenant-aware MFA
+   policy и opaque PostgreSQL sessions;
+3. 133 unit/security, 19 integration, 6 identity Chromium и 11 accessibility tests подтверждают
+   основной identity/migration/browser boundary; финальный targeted tenant rerun остаётся pending.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
-2. Published articles и tenant documents пока остаются разными persistence-моделями, хотя объединены в portal UX;
+2. Production identity staging ceremony для MFA encryption key, первого ADMIN enrollment и
+   emergency revoke ещё не выполнена;
 3. accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12, а initial SLO не подтверждены production-like измерениями.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Продолжить production identity/RBAC и единую knowledge persistence/permission model.
+1. Подтвердить TASK-009 в production-like staging и продолжить организационную RBAC.
 2. Развернуть reference topology в managed staging и подтвердить backup/PITR/alerts.
 3. Провести ручной screen-reader/assistive-technology review и расширять browser coverage вместе с критическими сценариями.
 
@@ -42,10 +46,10 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.17                                                                                      |
+| Версия документа                 | 1.19                                                                                      |
 | Дата последнего обновления       | 2026-07-30                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-008-browser-accessibility`                                                  |
+| Текущая ветка Git                | `feature/task-009-production-identity`                                                    |
 | Последний commit                 | `61cde23 feat(ops): add TASK-005 production readiness foundations (#10)`                  |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
@@ -59,9 +63,10 @@
 
 Avantime находится на переходе от демонстрационной платформы Version 1.5 к безопасному модульному ядру Version 2.0. Уже существуют публичный сайт, клиентский портал, административные сценарии, обращения, вложения, управляемые статьи, Jira и Email, а также экспериментальные функции AI и обработки PDF.
 
-Главный текущий результат — клиентские сценарии консолидированы под `/portal`, а `/dashboard/**`
-оставлен только как совместимый redirect layer. Следующий архитектурный вызов — завершить
-организационную RBAC и объединить persistence/permission model статей и tenant-документов.
+Главный текущий результат — production identity boundary отделяет credentials и external identity
+от organization membership, а локальный login использует MFA и server-side session lifecycle.
+Следующий архитектурный вызов — подтвердить staging ceremony, завершить организационную RBAC и
+объединить persistence/permission model статей и tenant-документов.
 
 ## Граница PR #1 и TASK-002
 
@@ -141,6 +146,16 @@ containers/manifests, CI gates и runbooks. Authoritative npm audit
 restore rehearsals, health/operations, typecheck, lint, static security gates,
 production build на 59 entries и все пять production Docker targets.
 
+[TASK-009](./tasks/TASK-009.md) реализована в repository/application boundary: source-scoped
+local/external identity отделена от organization membership; reset/verification/invitation
+lifecycle использует hashed one-time codes; TOTP/recovery, opaque PostgreSQL sessions,
+provider-neutral OIDC validator/mock, audit/notifications и `/portal/settings/security` работают
+через server-side context. Подтверждены 133 unit, 19 integration, migration, build, 6 identity
+Chromium и 11 accessibility tests. После появления new-session notifications исправлено одно
+устаревшее pagination expectation tenant browser test; его финальный rerun и последние `tsx` scans
+не выполнены из-за локального approval/credits limit. Статус остаётся `In Progress`, также до
+production ceremony, real IdP validation и manual assistive review.
+
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
@@ -179,24 +194,24 @@ production build на 59 entries и все пять production Docker targets.
 - `npm run test` — успешно, 8 из 8 security-тестов;
 - `npm run build` — успешно при явно переданном одноразовом `SESSION_SECRET`; запуск без секрета ожидаемо остановился с понятной ошибкой. Next.js сгенерировал 53 статические записи; остаются предупреждения о дополнительном lockfile вне репозитория и пустых build outputs TypeScript-only пакетов.
 
-| Направление             | Статус      | Готовность | Комментарий                                                                                                                                          |
-| ----------------------- | ----------- | ---------: | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Документация            | Review      |        80% | Созданы и добавлены в Git Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и ADR; формальное утверждение ещё не завершено    |
-| Публичный сайт          | In Progress |        65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности                                        |
-| Личный кабинет          | Review      |        85% | TASK-007 завершена: единый `/portal`, compatibility redirects, client documents/RAG, notifications и безопасный portal audit прошли gates            |
-| Административная панель | In Progress |        55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI                                           |
-| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются           |
-| База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                              |
-| Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                          |
-| Jira                    | In Progress |        35% | Реализовано создание issue; двусторонняя синхронизация отсутствует                                                                                   |
-| 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                                |
-| Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                                 |
-| API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует                 |
-| Безопасность            | In Progress |        72% | Active membership и cross-tenant boundaries усилены; полная организационная RBAC и production identity остаются                                      |
-| UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                           |
-| Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены      |
-| Тестирование            | In Progress |        72% | Проходят 117 unit/security и 43 Playwright/Chromium tests; existing integration/RAG/Redis/OCR/migration gates сохранены; ручной a11y review остаётся |
-| Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                      |
+| Направление             | Статус      | Готовность | Комментарий                                                                                                                                       |
+| ----------------------- | ----------- | ---------: | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Документация            | Review      |        80% | Созданы и добавлены в Git Vision, Master Specification, Architecture 2.0, Roadmap, Product Backlog и ADR; формальное утверждение ещё не завершено |
+| Публичный сайт          | In Progress |        65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности                                     |
+| Личный кабинет          | Review      |        85% | TASK-007 завершена: единый `/portal`, compatibility redirects, client documents/RAG, notifications и безопасный portal audit прошли gates         |
+| Административная панель | In Progress |        55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI                                        |
+| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются        |
+| База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                           |
+| Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                       |
+| Jira                    | In Progress |        35% | Реализовано создание issue; двусторонняя синхронизация отсутствует                                                                                |
+| 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                             |
+| Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                              |
+| API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует              |
+| Безопасность            | In Progress |        78% | Production identity/MFA/session boundary реализован и локально проверен; staging ceremony и полная организационная RBAC остаются                  |
+| UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                        |
+| Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены   |
+| Тестирование            | In Progress |        76% | Проходят 126 unit/security, 19 integration и 45 Playwright/Chrome tests; ручной assistive-technology review остаётся                              |
+| Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                   |
 
 ---
 
@@ -482,25 +497,27 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 # История обновлений
 
-| Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                    |
-| ---------- | ------ | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-07-30 | 1.17   | Codex, по поручению владельца проекта | TASK-008 завершена: 43 Playwright/Chromium tests, axe WCAG A/AA, isolated DB fixtures, trace redaction и blocking browser CI job; ручной assistive-technology review не выполнялся           |
-| 2026-07-30 | 1.16   | Codex, по поручению владельца проекта | TASK-007 завершена: 116 unit/security tests и финальные gates пройдены; добавлен tenant-aware portal audit без sensitive content; browser review не запускался                               |
-| 2026-07-29 | 1.15   | Codex, по поручению владельца проекта | TASK-007 консолидирует клиентские routes под `/portal`, добавляет membership validation, client-safe documents/RAG, notifications и compatibility `/dashboard/**`; gates выполняются         |
-| 2026-07-29 | 1.14   | Codex, по поручению владельца проекта | TASK-005 завершена: authoritative npm audit классифицирован, compatible transitive patch применён, AR-DEP-2026-001/002 приняты до 2026-08-12, full gate suite повторно пройден               |
-| 2026-07-29 | 1.13   | Codex, по поручению владельца проекта | После восстановления повторно подтверждены 103 unit/security, integration, OCR, migration/restore, pgvector, build и пять Docker targets; dependency review остаётся blocker                 |
-| 2026-07-28 | 1.12   | Codex, по поручению владельца проекта | Зафиксированы TASK-005 production reliability contracts и фактические unit/integration/OCR/migration/restore/security gates; dependency review и повторный final build остаются blockers     |
-| 2026-07-28 | 1.10   | Codex, по поручению владельца проекта | TASK-004 завершена: AI Gateway, embeddings, pgvector, hybrid RAG, citations, evaluation и раздельная readiness прошли unit/integration/migration/build gates                                 |
-| 2026-07-28 | 1.9    | Codex, по поручению владельца проекта | TASK-003 переведена в Done после успешных core/OCR readiness, PostgreSQL/MinIO и real Tesseract/Poppler gates; AI Gateway, embeddings и hybrid RAG перенесены в TASK-004                     |
-| 2026-07-28 | 1.8    | Codex, по поручению владельца проекта | Исправлена нормализация legacy processingAttempts; успешно выполнены migration rehearsal и 16 PostgreSQL/MinIO/E2E tests; TASK-002 переведена в Done                                         |
-| 2026-07-28 | 1.7    | Codex, по поручению владельца проекта | Добавлены PostgreSQL/MinIO integration boundary, migration rehearsal, Document health, graceful worker shutdown, operational guide и draft TASK-003; Docker execution gate остаётся открытым |
-| 2026-07-27 | 1.6    | Codex, по поручению владельца проекта | Зафиксирована третья итерация TASK-002: queue/worker contracts, async PDF, retries, quarantine, status model и lifecycle tests                                                               |
-| 2026-07-27 | 1.5    | Codex, по поручению владельца проекта | Зафиксирована вторая итерация TASK-002: PostgreSQL/S3 persistence, checksum, soft delete, migration/cleanup и контрактные тесты                                                              |
-| 2026-07-27 | 1.4    | Codex, по поручению владельца проекта | Зафиксирована первая итерация TASK-002: tenant-aware metadata, локальный Storage Adapter, репозитории Document/RAG и пять новых security-тестов                                              |
-| 2026-07-27 | 1.3    | Codex, по поручению владельца проекта | Актуализированы 32 страницы и 25 API-маршрутов; отделён scope PR #1 от TASK-002; зафиксированы ограничения Document/RAG и AI; удалена устаревшая рекомендация о маршруте статьи              |
-| 2026-07-27 | 1.2    | Codex, по поручению владельца проекта | Зафиксирован базовый этап защиты Dashboard и внутренних API, организационная изоляция обращений и вложений, результаты lint/typecheck/build и оставшийся риск tenant-модели документов       |
-| 2026-07-27 | 1.1    | Codex, по поручению владельца проекта | Добавлен Executive Summary; выполнена полная сверка со стратегией, Roadmap, Product Backlog и ADR; добавлены рекомендации по улучшению                                                       |
-| 2026-07-27 | 1.0    | Codex, по поручению владельца проекта | Создан первоначальный официальный снимок состояния проекта                                                                                                                                   |
+| Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
+| ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-07-30 | 1.19   | Codex, по поручению владельца проекта | Полная TASK-009 gap analysis: verification/invitation/OIDC/key rotation/ceremony/CI/browser coverage; 133 unit, 19 integration, 6 identity и 11 accessibility tests passed; final tenant rerun pending |
+| 2026-07-30 | 1.18   | Codex, по поручению владельца проекта | TASK-009 application boundary: source-scoped identity/membership, scrypt migration, MFA/recovery, opaque sessions, security settings; local unit/integration/browser/security gates passed             |
+| 2026-07-30 | 1.17   | Codex, по поручению владельца проекта | TASK-008 завершена: 43 Playwright/Chromium tests, axe WCAG A/AA, isolated DB fixtures, trace redaction и blocking browser CI job; ручной assistive-technology review не выполнялся                     |
+| 2026-07-30 | 1.16   | Codex, по поручению владельца проекта | TASK-007 завершена: 116 unit/security tests и финальные gates пройдены; добавлен tenant-aware portal audit без sensitive content; browser review не запускался                                         |
+| 2026-07-29 | 1.15   | Codex, по поручению владельца проекта | TASK-007 консолидирует клиентские routes под `/portal`, добавляет membership validation, client-safe documents/RAG, notifications и compatibility `/dashboard/**`; gates выполняются                   |
+| 2026-07-29 | 1.14   | Codex, по поручению владельца проекта | TASK-005 завершена: authoritative npm audit классифицирован, compatible transitive patch применён, AR-DEP-2026-001/002 приняты до 2026-08-12, full gate suite повторно пройден                         |
+| 2026-07-29 | 1.13   | Codex, по поручению владельца проекта | После восстановления повторно подтверждены 103 unit/security, integration, OCR, migration/restore, pgvector, build и пять Docker targets; dependency review остаётся blocker                           |
+| 2026-07-28 | 1.12   | Codex, по поручению владельца проекта | Зафиксированы TASK-005 production reliability contracts и фактические unit/integration/OCR/migration/restore/security gates; dependency review и повторный final build остаются blockers               |
+| 2026-07-28 | 1.10   | Codex, по поручению владельца проекта | TASK-004 завершена: AI Gateway, embeddings, pgvector, hybrid RAG, citations, evaluation и раздельная readiness прошли unit/integration/migration/build gates                                           |
+| 2026-07-28 | 1.9    | Codex, по поручению владельца проекта | TASK-003 переведена в Done после успешных core/OCR readiness, PostgreSQL/MinIO и real Tesseract/Poppler gates; AI Gateway, embeddings и hybrid RAG перенесены в TASK-004                               |
+| 2026-07-28 | 1.8    | Codex, по поручению владельца проекта | Исправлена нормализация legacy processingAttempts; успешно выполнены migration rehearsal и 16 PostgreSQL/MinIO/E2E tests; TASK-002 переведена в Done                                                   |
+| 2026-07-28 | 1.7    | Codex, по поручению владельца проекта | Добавлены PostgreSQL/MinIO integration boundary, migration rehearsal, Document health, graceful worker shutdown, operational guide и draft TASK-003; Docker execution gate остаётся открытым           |
+| 2026-07-27 | 1.6    | Codex, по поручению владельца проекта | Зафиксирована третья итерация TASK-002: queue/worker contracts, async PDF, retries, quarantine, status model и lifecycle tests                                                                         |
+| 2026-07-27 | 1.5    | Codex, по поручению владельца проекта | Зафиксирована вторая итерация TASK-002: PostgreSQL/S3 persistence, checksum, soft delete, migration/cleanup и контрактные тесты                                                                        |
+| 2026-07-27 | 1.4    | Codex, по поручению владельца проекта | Зафиксирована первая итерация TASK-002: tenant-aware metadata, локальный Storage Adapter, репозитории Document/RAG и пять новых security-тестов                                                        |
+| 2026-07-27 | 1.3    | Codex, по поручению владельца проекта | Актуализированы 32 страницы и 25 API-маршрутов; отделён scope PR #1 от TASK-002; зафиксированы ограничения Document/RAG и AI; удалена устаревшая рекомендация о маршруте статьи                        |
+| 2026-07-27 | 1.2    | Codex, по поручению владельца проекта | Зафиксирован базовый этап защиты Dashboard и внутренних API, организационная изоляция обращений и вложений, результаты lint/typecheck/build и оставшийся риск tenant-модели документов                 |
+| 2026-07-27 | 1.1    | Codex, по поручению владельца проекта | Добавлен Executive Summary; выполнена полная сверка со стратегией, Roadmap, Product Backlog и ADR; добавлены рекомендации по улучшению                                                                 |
+| 2026-07-27 | 1.0    | Codex, по поручению владельца проекта | Создан первоначальный официальный снимок состояния проекта                                                                                                                                             |
 
 ---
 

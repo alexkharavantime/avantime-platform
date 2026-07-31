@@ -11,7 +11,7 @@ const PORTAL_AUDIT_TARGETS = {
   'portal.access': 'portal',
   'portal.document.download': 'document',
   'portal.company.update': 'company',
-  'portal.team.invite': 'user',
+  'portal.team.invite': 'invitation',
   'portal.notification.read': 'notification',
 } as const;
 

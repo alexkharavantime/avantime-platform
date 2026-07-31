@@ -8,37 +8,341 @@ datasource db {
 }
 
 model User {
-  id                     String                  @id @default(cuid())
-  email                  String                  @unique
-  name                   String
-  role                   UserRole                @default(CLIENT)
-  active                 Boolean                 @default(true)
-  passwordHash           String?
-  phone                  String?
-  jobTitle               String?
-  company                Company?                @relation(fields: [companyId], references: [id])
-  companyId              String?
-  requests               SupportRequest[]
-  messages               RequestMessage[]
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
-  passwordResetTokens    PasswordResetToken[]
-  notificationPreference NotificationPreference?
-  emailMessages          EmailMessage[]
-  knowledgeArticles      KnowledgeArticle[]
-  portalNotifications    PortalNotification[]
+  id                        String                     @id @default(cuid())
+  email                     String
+  emailNormalized           String
+  emailVerifiedAt           DateTime?
+  name                      String
+  role                      UserRole                   @default(CLIENT)
+  active                    Boolean                    @default(true)
+  disabledAt                DateTime?
+  // Compatibility-only field. New local passwords are stored in UserCredential.
+  passwordHash              String?
+  phone                     String?
+  jobTitle                  String?
+  company                   Company?                   @relation(fields: [companyId], references: [id])
+  companyId                 String?
+  memberships               OrganizationMembership[]
+  credentials               UserCredential[]
+  externalIdentities        ExternalIdentity[]
+  oidcAuthorizationRequests OidcAuthorizationRequest[]
+  invitationsSent           IdentityInvitation[]       @relation("IdentityInvitationInviter")
+  invitationsAccepted       IdentityInvitation[]       @relation("IdentityInvitationAccepter")
+  sessions                  UserSession[]
+  loginChallenges           LoginChallenge[]
+  mfaMethods                MfaMethod[]
+  recoveryCodes             RecoveryCode[]
+  emailVerificationTokens   EmailVerificationToken[]
+  securityEvents            SecurityEvent[]
+  mfaExemptions             OrganizationMfaExemption[]
+  requests                  SupportRequest[]
+  messages                  RequestMessage[]
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  passwordResetTokens       PasswordResetToken[]
+  notificationPreference    NotificationPreference?
+  emailMessages             EmailMessage[]
+  knowledgeArticles         KnowledgeArticle[]
+  portalNotifications       PortalNotification[]
+
+  @@index([emailNormalized])
 }
 
 model Company {
-  id                  String               @id @default(cuid())
+  id                  String                      @id @default(cuid())
   name                String
   registrationNumber  String?
   address             String?
   users               User[]
+  memberships         OrganizationMembership[]
+  identityPolicy      OrganizationIdentityPolicy?
+  identityProviders   IdentityProvider[]
+  identityInvitations IdentityInvitation[]
   requests            SupportRequest[]
   portalNotifications PortalNotification[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+}
+
+model OrganizationMembership {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String
+  role      UserRole @default(CLIENT)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, companyId])
+  @@index([companyId, active])
+  @@index([userId, active])
+}
+
+enum IdentityProviderKind {
+  LOCAL
+  OIDC
+  SAML
+}
+
+enum OidcProviderProfile {
+  MICROSOFT_ENTRA_ID
+  GOOGLE_WORKSPACE
+  GENERIC_OIDC
+}
+
+model IdentityProvider {
+  id                    String                     @id @default(cuid())
+  key                   String                     @unique
+  kind                  IdentityProviderKind
+  oidcProfile           OidcProviderProfile?
+  displayName           String
+  company               Company?                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId             String?
+  issuer                String?
+  clientId              String?
+  clientSecretRef       String?
+  discoveryUrl          String?
+  authorizationEndpoint String?
+  tokenEndpoint         String?
+  jwksUri               String?
+  redirectUri           String?
+  allowedDomains        Json?
+  tenantMappingPolicy   Json?
+  claimMapping          Json?
+  groupRoleMapping      Json?
+  metadataRefreshedAt   DateTime?
+  metadataExpiresAt     DateTime?
+  enabled               Boolean                    @default(false)
+  externalIdentities    ExternalIdentity[]
+  authorizationRequests OidcAuthorizationRequest[]
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+
+  @@index([companyId, enabled])
+  @@index([kind, enabled])
+}
+
+model ExternalIdentity {
+  id                  String           @id @default(cuid())
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  provider            IdentityProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  providerId          String
+  subject             String
+  emailNormalized     String?
+  emailVerified       Boolean          @default(false)
+  lastAuthenticatedAt DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([providerId, subject])
+  @@index([userId])
+  @@index([providerId, emailNormalized])
+}
+
+model OidcAuthorizationRequest {
+  id                    String           @id @default(cuid())
+  provider              IdentityProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  providerId            String
+  user                  User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String?
+  stateHash             String           @unique @db.VarChar(64)
+  nonceHash             String           @db.VarChar(64)
+  pkceVerifierEncrypted String
+  redirectUri           String
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  createdAt             DateTime         @default(now())
+
+  @@index([providerId, expiresAt])
+  @@index([userId, expiresAt])
+}
+
+enum CredentialKind {
+  PASSWORD
+}
+
+model UserCredential {
+  id                   String         @id @default(cuid())
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               String
+  kind                 CredentialKind @default(PASSWORD)
+  identifierNormalized String         @unique
+  passwordHash         String
+  passwordChangedAt    DateTime       @default(now())
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@unique([userId, kind])
+  @@index([updatedAt])
+}
+
+model UserSession {
+  id               String    @id @default(cuid())
+  tokenHash        String    @unique @db.VarChar(64)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  companyId        String?
+  createdAt        DateTime  @default(now())
+  lastActivityAt   DateTime  @default(now())
+  expiresAt        DateTime
+  idleExpiresAt    DateTime
+  revokedAt        DateTime?
+  rotatedFromId    String?
+  deviceLabel      String?   @db.VarChar(120)
+  authenticationAt DateTime  @default(now())
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+}
+
+model LoginChallenge {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique @db.VarChar(64)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  companyId  String?
+  redirectTo String?
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+enum MfaMethodKind {
+  TOTP
+  WEBAUTHN
+  IDP_CLAIM
+}
+
+enum MfaMethodStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+model MfaMethod {
+  id              String          @id @default(cuid())
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  kind            MfaMethodKind
+  status          MfaMethodStatus @default(PENDING)
+  label           String?         @db.VarChar(120)
+  secretEncrypted String?
+  lastUsedCounter Int?
+  confirmedAt     DateTime?
+  disabledAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([userId, status])
+}
+
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  batchId   String    @db.VarChar(100)
+  codeHash  String    @unique @db.VarChar(64)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, batchId, usedAt])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique @db.VarChar(64)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  redirectTo String?
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model IdentityInvitation {
+  id              String    @id @default(cuid())
+  tokenHash       String    @unique @db.VarChar(64)
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId       String
+  emailNormalized String
+  role            UserRole  @default(CLIENT)
+  inviter         User      @relation("IdentityInvitationInviter", fields: [invitedBy], references: [id], onDelete: Restrict)
+  invitedBy       String
+  accepter        User?     @relation("IdentityInvitationAccepter", fields: [acceptedBy], references: [id], onDelete: SetNull)
+  acceptedBy      String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([companyId, emailNormalized, revokedAt, acceptedAt])
+  @@index([invitedBy, createdAt])
+  @@index([expiresAt])
+}
+
+enum SecurityEventResult {
+  SUCCEEDED
+  FAILED
+  DENIED
+}
+
+model SecurityEvent {
+  id            String              @id @default(cuid())
+  user          User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
+  companyId     String?
+  action        String              @db.VarChar(100)
+  result        SecurityEventResult
+  correlationId String              @db.VarChar(200)
+  safeMetadata  Json?
+  createdAt     DateTime            @default(now())
+
+  @@index([userId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([action, createdAt])
+}
+
+enum OrganizationMfaRequirement {
+  OPTIONAL
+  ADMINS
+  ALL_MEMBERS
+}
+
+model OrganizationIdentityPolicy {
+  company         Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId       String                     @id
+  mfaRequirement  OrganizationMfaRequirement @default(OPTIONAL)
+  gracePeriodDays Int                        @default(0)
+  enforcementAt   DateTime?
+  updatedBy       String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  exemptions      OrganizationMfaExemption[]
+}
+
+model OrganizationMfaExemption {
+  id         String                     @id @default(cuid())
+  policy     OrganizationIdentityPolicy @relation(fields: [companyId], references: [companyId], onDelete: Cascade)
+  companyId  String
+  user       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  reasonCode String                     @db.VarChar(100)
+  expiresAt  DateTime
+  approvedBy String                     @db.VarChar(200)
+  createdAt  DateTime                   @default(now())
+
+  @@unique([companyId, userId])
+  @@index([expiresAt])
 }
 
 model SupportRequest {

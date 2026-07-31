@@ -23,7 +23,7 @@ export function TeamInviteForm() {
     const data = (await response.json()) as { error?: string };
     setBusy(false);
     if (!response.ok) return setMessage(data.error ?? 'Не удалось добавить пользователя.');
-    setMessage('Пользователь добавлен. Обновите страницу, чтобы увидеть его в списке.');
+    setMessage('Приглашение создано. Доступ появится только после подтверждения.');
     event.currentTarget.reset();
   }
 

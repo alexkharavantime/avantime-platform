@@ -18,6 +18,8 @@ import {
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const databaseDirectory = path.resolve(scriptDirectory, '../../../packages/database');
+const repositoryRoot = path.resolve(scriptDirectory, '../../..');
+const firstMigration = '20260727150000_document_metadata_persistence';
 const FIXED_DATE = new Date('2026-01-15T10:00:00.000Z');
 const DOCUMENT_BYTES = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
@@ -80,6 +82,7 @@ async function seedDatabase() {
       data: [
         { id: browserIdentities.tenantA.companyId, name: 'Browser Tenant Alpha' },
         { id: browserIdentities.tenantB.companyId, name: 'Browser Tenant Beta' },
+        { id: browserIdentities.identityClient.companyId, name: 'Browser Identity Tenant' },
       ],
     });
     await prisma.user.createMany({
@@ -87,43 +90,140 @@ async function seedDatabase() {
         {
           id: 'browser-user-a',
           email: browserIdentities.tenantA.email,
+          emailNormalized: browserIdentities.tenantA.email,
           name: 'Browser User Alpha',
           role: 'CLIENT',
           companyId: browserIdentities.tenantA.companyId,
           active: true,
-          passwordHash: deterministicPasswordHash(
-            browserIdentities.tenantA.password,
-            browserIdentities.tenantA.email,
-          ),
           createdAt: FIXED_DATE,
           updatedAt: FIXED_DATE,
         },
         {
           id: 'browser-user-b',
           email: browserIdentities.tenantB.email,
+          emailNormalized: browserIdentities.tenantB.email,
           name: 'Browser User Beta',
           role: 'CLIENT',
           companyId: browserIdentities.tenantB.companyId,
           active: true,
-          passwordHash: deterministicPasswordHash(
-            browserIdentities.tenantB.password,
-            browserIdentities.tenantB.email,
-          ),
           createdAt: FIXED_DATE,
           updatedAt: FIXED_DATE,
         },
         {
           id: 'browser-admin',
           email: browserIdentities.admin.email,
+          emailNormalized: browserIdentities.admin.email,
           name: 'Browser Administrator',
           role: 'ADMIN',
           active: true,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-identity-client',
+          email: browserIdentities.identityClient.email,
+          emailNormalized: browserIdentities.identityClient.email,
+          emailVerifiedAt: FIXED_DATE,
+          name: 'Browser Identity Client',
+          role: 'CLIENT',
+          companyId: browserIdentities.identityClient.companyId,
+          active: true,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-identity-admin',
+          email: browserIdentities.identityAdmin.email,
+          emailNormalized: browserIdentities.identityAdmin.email,
+          emailVerifiedAt: FIXED_DATE,
+          name: 'Browser Identity Administrator',
+          role: 'ADMIN',
+          companyId: browserIdentities.identityAdmin.companyId,
+          active: true,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+      ],
+    });
+    await prisma.organizationMembership.createMany({
+      data: [
+        {
+          id: 'browser-membership-a',
+          userId: 'browser-user-a',
+          companyId: browserIdentities.tenantA.companyId,
+          role: 'CLIENT',
+        },
+        {
+          id: 'browser-membership-b',
+          userId: 'browser-user-b',
+          companyId: browserIdentities.tenantB.companyId,
+          role: 'CLIENT',
+        },
+        {
+          id: 'browser-membership-identity-client',
+          userId: 'browser-identity-client',
+          companyId: browserIdentities.identityClient.companyId,
+          role: 'CLIENT',
+        },
+        {
+          id: 'browser-membership-identity-admin',
+          userId: 'browser-identity-admin',
+          companyId: browserIdentities.identityAdmin.companyId,
+          role: 'ADMIN',
+        },
+      ],
+    });
+    await prisma.userCredential.createMany({
+      data: [
+        {
+          id: 'browser-credential-a',
+          userId: 'browser-user-a',
+          kind: 'PASSWORD',
+          identifierNormalized: browserIdentities.tenantA.email,
+          passwordHash: deterministicPasswordHash(
+            browserIdentities.tenantA.password,
+            browserIdentities.tenantA.email,
+          ),
+        },
+        {
+          id: 'browser-credential-b',
+          userId: 'browser-user-b',
+          kind: 'PASSWORD',
+          identifierNormalized: browserIdentities.tenantB.email,
+          passwordHash: deterministicPasswordHash(
+            browserIdentities.tenantB.password,
+            browserIdentities.tenantB.email,
+          ),
+        },
+        {
+          id: 'browser-credential-admin',
+          userId: 'browser-admin',
+          kind: 'PASSWORD',
+          identifierNormalized: browserIdentities.admin.email,
           passwordHash: deterministicPasswordHash(
             browserIdentities.admin.password,
             browserIdentities.admin.email,
           ),
-          createdAt: FIXED_DATE,
-          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-credential-identity-client',
+          userId: 'browser-identity-client',
+          kind: 'PASSWORD',
+          identifierNormalized: browserIdentities.identityClient.email,
+          passwordHash: deterministicPasswordHash(
+            browserIdentities.identityClient.password,
+            browserIdentities.identityClient.email,
+          ),
+        },
+        {
+          id: 'browser-credential-identity-admin',
+          userId: 'browser-identity-admin',
+          kind: 'PASSWORD',
+          identifierNormalized: browserIdentities.identityAdmin.email,
+          passwordHash: deterministicPasswordHash(
+            browserIdentities.identityAdmin.password,
+            browserIdentities.identityAdmin.email,
+          ),
         },
       ],
     });
@@ -275,6 +375,28 @@ async function main() {
   const databaseUrl = validateDatabaseUrl();
   await rm(BROWSER_DATA_DIRECTORY, { recursive: true, force: true });
   await resetDatabase(databaseUrl);
+  runPrisma([
+    'db',
+    'execute',
+    '--file',
+    path.join(repositoryRoot, 'apps/web/tests/fixtures/legacy-account-baseline.sql'),
+    '--schema',
+    'prisma/schema.prisma',
+  ]);
+  runPrisma([
+    'db',
+    'execute',
+    '--file',
+    path.join(
+      repositoryRoot,
+      'packages/database/prisma/migrations',
+      firstMigration,
+      'migration.sql',
+    ),
+    '--schema',
+    'prisma/schema.prisma',
+  ]);
+  runPrisma(['migrate', 'resolve', '--applied', firstMigration]);
   runPrisma(['migrate', 'deploy']);
   runPrisma(['db', 'push', '--skip-generate']);
   await seedDatabase();

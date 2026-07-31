@@ -24,10 +24,7 @@ type BrowserFixtures = {
 function safeMessage(value: string) {
   return value
     .replace(/https?:\/\/[^/\s]+([^?\s]*)\?[^\s]*/g, '$1?[REDACTED]')
-    .replace(
-      /(browser-user-a-password|browser-user-b-password|browser-admin-password)/g,
-      '[REDACTED]',
-    )
+    .replace(/browser-[a-z0-9-]+-password/giu, '[REDACTED]')
     .slice(0, 2_000);
 }
 
@@ -112,7 +109,8 @@ export const test = base.extend<BrowserFixtures>({
   loginAs: async ({ page }, provide) => {
     await provide(async (identity) => {
       const credentials = browserIdentities[identity];
-      const target = identity === 'admin' ? /\/admin$/ : /\/portal$/;
+      const target =
+        identity === 'admin' || identity === 'identityAdmin' ? /\/admin$/ : /\/portal$/;
       await page.goto('/portal/login');
       for (let attempt = 0; attempt < 3; attempt += 1) {
         await page.getByLabel('Email').fill(credentials.email);

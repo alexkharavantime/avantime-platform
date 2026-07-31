@@ -1,62 +1,140 @@
-import { getPrisma } from '@avantime/database';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { getDemoIdentity } from '../../../../lib/demo-auth';
-import { verifyPassword } from '../../../../lib/password';
-import { encodeSession, SESSION_COOKIE } from '../../../../lib/session';
+
+import {
+  authenticatePrimaryCredential,
+  findIdentitySecurityContextByIdentifier,
+  isSameOriginMutation,
+  normalizeIdentityEmail,
+} from '../../../../lib/identity-auth';
+import { getIdentityRateLimiter } from '../../../../lib/identity-rate-limit';
+import { requestRateLimitSubject } from '../../../../lib/identity-route';
+import { recordIdentitySecurityEvent } from '../../../../lib/identity-security-events';
+import { safeReturnTo } from '../../../../lib/safe-return-to';
+import { createUserSession, SESSION_COOKIE, sessionCookieOptions } from '../../../../lib/session';
+
+const INVALID_CREDENTIALS = 'Неверный email или пароль.';
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as { email?: string; password?: string };
-  const email = body.email?.trim().toLowerCase();
-  const password = body.password ?? '';
+  const correlationId = request.headers.get('x-avantime-correlation-id') ?? crypto.randomUUID();
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: 'Запрос входа отклонён.' }, { status: 403 });
+  }
+
+  let body: {
+    email?: unknown;
+    password?: unknown;
+    returnTo?: unknown;
+  };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
+  }
+  const email = typeof body.email === 'string' ? normalizeIdentityEmail(body.email) : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const returnTo = typeof body.returnTo === 'string' ? safeReturnTo(body.returnTo) : undefined;
   if (!email || !password) {
-    return NextResponse.json({ error: 'Укажите email и пароль.' }, { status: 400 });
+    return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
-  let identity: {
-    userId: string;
-    name: string;
-    company: string;
-    companyId?: string;
-    email: string;
-    role: 'CLIENT' | 'ADMIN';
-  } | null = null;
-  let databaseIdentityRejected = false;
-
-  if (process.env.DATABASE_URL) {
-    try {
-      const prisma = await getPrisma();
-      const user = await prisma?.user.findUnique({ where: { email }, include: { company: true } });
-      databaseIdentityRejected = Boolean(user);
-      if (user?.active && user.passwordHash && verifyPassword(password, user.passwordHash)) {
-        identity = {
-          userId: user.id,
-          name: user.name,
-          company: user.company?.name ?? 'Avantime',
-          companyId: user.companyId ?? undefined,
-          email: user.email,
-          role: user.role,
-        };
-      }
-    } catch {
-      console.warn('Database authentication unavailable; using demo credentials.');
+  try {
+    const limiter = getIdentityRateLimiter();
+    const [identifierAllowed, ipAllowed] = await Promise.all([
+      limiter.consume({
+        scope: 'login-identifier',
+        subject: email,
+        limit: 10,
+        windowSeconds: 15 * 60,
+      }),
+      limiter.consume({
+        scope: 'login-ip',
+        subject: requestRateLimitSubject(request),
+        limit: 50,
+        windowSeconds: 15 * 60,
+      }),
+    ]);
+    if (!identifierAllowed || !ipAllowed) {
+      const securityContext = await findIdentitySecurityContextByIdentifier(email);
+      await recordIdentitySecurityEvent({
+        context: { ...securityContext, correlationId },
+        action: 'identity.login.suspicious_threshold',
+        result: 'DENIED',
+        metadata: { reasonCode: 'BOUNDED_RATE_LIMIT' },
+        notify: Boolean(securityContext.userId && securityContext.companyId),
+      });
+      return NextResponse.json(
+        { error: 'Слишком много попыток. Повторите позже.' },
+        { status: 429 },
+      );
     }
+  } catch {
+    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
   }
 
-  if (!databaseIdentityRejected) {
-    identity ??= getDemoIdentity(email, password);
-  }
-
-  if (!identity) {
-    return NextResponse.json({ error: 'Неверный email или пароль.' }, { status: 401 });
-  }
-
-  const response = NextResponse.json({ ok: true, role: identity.role });
-  response.cookies.set(SESSION_COOKIE, encodeSession(identity), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60 * 8,
+  const result = await authenticatePrimaryCredential({
+    email,
+    password,
+    redirectTo: returnTo,
   });
-  return response;
+  if (result.status === 'INVALID') {
+    await recordIdentitySecurityEvent({
+      context: { userId: null, companyId: null, correlationId },
+      action: 'identity.login.failure',
+      result: 'FAILED',
+      metadata: { reasonCode: 'INVALID_LOGIN' },
+    });
+    return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
+  }
+  if (result.status === 'UNAVAILABLE') {
+    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+  }
+  if (result.status === 'MFA_REQUIRED') {
+    await recordIdentitySecurityEvent({
+      context: {
+        userId: result.userId,
+        companyId: result.companyId,
+        correlationId,
+      },
+      action: 'identity.login.mfa_required',
+      result: 'SUCCEEDED',
+      metadata: {
+        method: 'TOTP',
+        reasonCode: result.enrollmentRequired ? 'ENROLLMENT_REQUIRED' : 'CHALLENGE_REQUIRED',
+      },
+    });
+    return NextResponse.json({
+      mfaRequired: true,
+      enrollmentRequired: result.enrollmentRequired,
+      challengeToken: result.challengeToken,
+    });
+  }
+
+  try {
+    const cookieStore = await cookies();
+    const created = await createUserSession(result.identity, {
+      userAgent: request.headers.get('user-agent'),
+      previousToken: cookieStore.get(SESSION_COOKIE)?.value,
+    });
+    const response = NextResponse.json({
+      ok: true,
+      role: result.identity.role,
+      returnTo,
+    });
+    response.cookies.set(SESSION_COOKIE, created.token, sessionCookieOptions());
+    await recordIdentitySecurityEvent({
+      context: {
+        userId: result.identity.userId,
+        companyId: result.identity.companyId ?? null,
+        correlationId,
+      },
+      action: 'identity.login.success',
+      result: 'SUCCEEDED',
+      metadata: { sessionId: created.sessionId },
+      notify: true,
+    });
+    return response;
+  } catch {
+    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+  }
 }

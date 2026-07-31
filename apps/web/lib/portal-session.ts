@@ -9,7 +9,8 @@ type PortalIdentity = {
   email: string;
   role: 'CLIENT' | 'ADMIN';
   active: boolean;
-  companyId: string | null;
+  disabledAt?: Date | null;
+  memberships: Array<{ companyId: string; active: boolean }>;
 };
 
 type PortalIdentityLoader = (userId: string) => Promise<PortalIdentity | null>;
@@ -30,7 +31,17 @@ async function loadPortalIdentity(userId: string): Promise<PortalIdentity | null
   if (!prisma) return null;
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, role: true, active: true, companyId: true },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      active: true,
+      disabledAt: true,
+      memberships: {
+        where: { active: true },
+        select: { companyId: true, active: true },
+      },
+    },
   });
 }
 
@@ -56,9 +67,15 @@ export async function validatePortalSession(
     if (
       !identity ||
       !identity.active ||
+      identity.disabledAt ||
       identity.email.toLowerCase() !== authorization.session.email.toLowerCase() ||
       identity.role !== authorization.session.role ||
-      (identity.companyId ?? undefined) !== authorization.session.companyId
+      (authorization.session.companyId
+        ? !identity.memberships.some(
+            (membership) =>
+              membership.active && membership.companyId === authorization.session.companyId,
+          )
+        : authorization.session.role === 'CLIENT')
     ) {
       return null;
     }

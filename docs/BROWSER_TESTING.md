@@ -18,7 +18,8 @@ Browser suite не использует development `.env.local`, demo auth ил
 
 Термин `USER` в browser-сценариях соответствует существующей роли `CLIENT`. TASK-008 не меняет
 RBAC. Авторизация выполняется через обычную `/portal/login`; cookies или storage state напрямую
-не внедряются.
+не внедряются. TASK-009 хранит fixture password в `UserCredential`; первый login проверяет
+совместимый PBKDF2 rehash и создаёт opaque PostgreSQL session.
 
 Значение по умолчанию:
 
@@ -60,10 +61,17 @@ Desktop smoke проверяет:
 
 - client и admin login через production-like DB auth;
 - основные `/portal` страницы, документы и обращения;
+- `/portal/settings/security` и минимизированный список server-side sessions;
 - запрет client-доступа к `/admin`;
 - compatibility redirects, query parameters, deep links и безопасный 404;
 - прямые cross-tenant request/document URLs;
 - tenant-scoped lists, notifications и отклонение client `companyId`.
+
+TASK-009 identity suite дополнительно проверяет safe primary-login errors, TOTP enrollment and
+challenge, invalid/replayed OTP, recovery-code use/reuse denial, password change, reset code only
+in POST body, session listing/revocation, ADMIN policy, CLIENT denial, open-redirect denial and
+email-only linking denial. Test-only codes come from guarded responses/session storage and never
+become URL parameters.
 
 Responsive проекты используют фиксированные viewport: desktop `1440x900`, tablet `834x1112`
 и mobile `390x844`. Проверяются horizontal overflow, desktop/mobile navigation, dialog
@@ -103,3 +111,5 @@ Job `browser-accessibility`:
 - является blocking check.
 
 Никакие внешние AI, Jira, email, object storage или OCR providers browser suite не вызывает.
+Реальный screen-reader/assistive-technology review остаётся manual external gate и не выводится из
+успеха axe.

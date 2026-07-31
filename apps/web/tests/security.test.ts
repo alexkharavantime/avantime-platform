@@ -108,7 +108,8 @@ test('portal session validation rejects inactive and cross-tenant identities', a
     email: current.email,
     role: current.role,
     active: true,
-    companyId: current.companyId ?? null,
+    disabledAt: null,
+    memberships: [{ companyId: current.companyId!, active: true }],
   };
   assert.equal(
     await validatePortalSession(current, {
@@ -127,7 +128,10 @@ test('portal session validation rejects inactive and cross-tenant identities', a
   assert.equal(
     await validatePortalSession(current, {
       databaseConfigured: true,
-      loadIdentity: async () => ({ ...validIdentity, companyId: 'other-company' }),
+      loadIdentity: async () => ({
+        ...validIdentity,
+        memberships: [{ companyId: 'other-company', active: true }],
+      }),
     }),
     null,
   );
@@ -241,8 +245,8 @@ test('company, team, and notification audit records contain no user content', ()
     },
     {
       action: 'portal.team.invite',
-      targetType: 'user',
-      targetId: 'invited-user',
+      targetType: 'invitation',
+      targetId: 'invitation-1',
       result: 'SUCCEEDED',
       metadata: { name: 'Invitee', email: 'invitee@example.com', invitation: 'token' },
     },

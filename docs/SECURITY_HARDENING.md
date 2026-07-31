@@ -14,22 +14,36 @@
 - backup/restore commands use argument arrays, explicit target confirmation and
   isolated environment guards;
 - OCR uses `spawn` without shell, allowlists languages and cleans random temp dirs;
+- identity uses source-scoped credentials/external subjects and separate organization membership;
+- production sessions are opaque, hashed in PostgreSQL, revocable and bounded by idle/absolute
+  expiry;
+- local passwords use versioned scrypt with legacy PBKDF2 rehash; TOTP secrets and OIDC PKCE
+  verifiers use versioned AES-256-GCM; recovery/reset/verification/invitation codes are stored only
+  as hashes;
+- identity mutations enforce same-origin, distributed rate limit, server-derived tenant policy
+  and allowlisted security audit metadata;
 - containers run non-root with restricted filesystems/networks.
 
 ## Threat review
 
-| Threat                              | Control                                                   |
-| ----------------------------------- | --------------------------------------------------------- |
-| Cross-tenant metadata/vector access | tenant in every repository key/query and regression tests |
-| Queue tampering/duplicate delivery  | payload validation, idempotency, job version, fence       |
-| Redis unauthorized access           | `rediss`, authentication, private network, fail closed    |
-| Rate/budget bypass                  | Redis atomic script and PostgreSQL locked reservation     |
-| Audit tampering                     | append-only application contract and restricted DB role   |
-| Backup exposure/wrong restore       | encryption, separate bucket, explicit isolated target     |
-| Provider secret leak/SSRF           | no secret output, endpoint validation, egress allowlist   |
-| Command/path injection              | no shell, strict names/paths, random OCR temp             |
-| Container escalation                | non-root, no privilege/capabilities/socket                |
-| Citation forgery                    | server rebuild from tenant-authorized provenance          |
+| Threat                              | Control                                                    |
+| ----------------------------------- | ---------------------------------------------------------- |
+| Cross-tenant metadata/vector access | tenant in every repository key/query and regression tests  |
+| Queue tampering/duplicate delivery  | payload validation, idempotency, job version, fence        |
+| Redis unauthorized access           | `rediss`, authentication, private network, fail closed     |
+| Rate/budget bypass                  | Redis atomic script and PostgreSQL locked reservation      |
+| Audit tampering                     | append-only application contract and restricted DB role    |
+| Backup exposure/wrong restore       | encryption, separate bucket, explicit isolated target      |
+| Provider secret leak/SSRF           | no secret output, endpoint validation, egress allowlist    |
+| Command/path injection              | no shell, strict names/paths, random OCR temp              |
+| Container escalation                | non-root, no privilege/capabilities/socket                 |
+| Citation forgery                    | server rebuild from tenant-authorized provenance           |
+| Credential enumeration/brute force  | uniform errors, dummy KDF, Redis rate limit, bounded input |
+| Session theft/fixation              | opaque token hash, rotation, revoke, idle/absolute expiry  |
+| MFA secret/code disclosure/replay   | AES-GCM, hashed recovery codes, persisted TOTP counter     |
+| Cross-tenant identity linking       | provider subject identity separate from membership         |
+| OIDC code/token substitution        | PKCE, state, nonce, exact redirect, issuer/audience/JWKS   |
+| Recovery or invitation replay       | hashed one-time codes, TTL, atomic consume and tenant bind |
 
 ## Dependency review
 
@@ -79,6 +93,10 @@ patterns or public image sources.
 ```bash
 npm run security:secret-scan -w @avantime/web
 npm run security:migration-scan -w @avantime/web
+npm run security:identity-scan
+npm run security:forbidden-credential-scan
+npm run security:default-secret-scan
+npm run security:client-tenant-scan
 ```
 
 Also review client-side `companyId`, direct provider SDK usage outside AI Gateway,
@@ -97,4 +115,8 @@ unsafe logging keys and deployment manifests containing credentials.
 - [AI Cost Control](./AI_COST_CONTROL.md)
 - [Dependency Security Review](./DEPENDENCY_SECURITY_REVIEW.md)
 - [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md)
+- [Authentication](./authentication.md)
+- [Identity Architecture](./IDENTITY_ARCHITECTURE.md)
+- [Identity Production Ceremony](./IDENTITY_PRODUCTION_CEREMONY.md)
 - [TASK-005](./tasks/TASK-005.md)
+- [TASK-009](./tasks/TASK-009.md)
