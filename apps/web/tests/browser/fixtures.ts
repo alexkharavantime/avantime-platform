@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test as base, type TestInfo } from '@playwright/test';
+import { createHash } from 'node:crypto';
 
 import { browserIdentities } from './environment';
 
@@ -14,6 +15,7 @@ type Diagnostic = {
 };
 
 type BrowserFixtures = {
+  browserRateLimitIsolation: void;
   diagnostics: Diagnostic[];
   loginAs: (identity: BrowserIdentity) => Promise<void>;
   allowApiFailure: (method: string, path: string, status: number, consume?: boolean) => boolean;
@@ -45,6 +47,18 @@ async function attachDiagnostics(testInfo: TestInfo, diagnostics: Diagnostic[]) 
 }
 
 export const test = base.extend<BrowserFixtures>({
+  browserRateLimitIsolation: [
+    async ({ context }, provide, testInfo) => {
+      const hash = createHash('sha256')
+        .update(`${testInfo.project.name}\0${testInfo.titlePath.join('\0')}\0${testInfo.retry}`)
+        .digest('hex');
+      const clientIp = `2001:db8:${hash.slice(0, 4)}:${hash.slice(4, 8)}:${hash.slice(8, 12)}:${hash.slice(12, 16)}::1`;
+      await context.setExtraHTTPHeaders({ 'x-forwarded-for': clientIp });
+      await provide();
+    },
+    { auto: true },
+  ],
+
   diagnostics: async ({ page, allowApiFailure }, provide, testInfo) => {
     const diagnostics: Diagnostic[] = [];
     page.on('console', (message) => {
@@ -56,17 +70,15 @@ export const test = base.extend<BrowserFixtures>({
       diagnostics.push({ kind: 'page-error', message: safeMessage(error.message) });
     });
     page.on('requestfailed', (request) => {
-      if (
-        (request.isNavigationRequest() || request.headers().rsc === '1') &&
-        request.failure()?.errorText === 'net::ERR_ABORTED'
-      ) {
+      const path = safePath(request.url());
+      if (request.failure()?.errorText === 'net::ERR_ABORTED' && request.method() === 'GET') {
         return;
       }
       diagnostics.push({
         kind: 'request-failed',
         message: safeMessage(request.failure()?.errorText ?? 'request failed'),
         method: request.method(),
-        path: safePath(request.url()),
+        path,
       });
     });
     page.on('response', (response) => {
@@ -122,7 +134,7 @@ export const test = base.extend<BrowserFixtures>({
       const targetPage = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === targetPath &&
-          response.request().resourceType() === 'fetch' &&
+          response.request().isNavigationRequest() &&
           response.ok(),
         { timeout: 50_000 },
       );

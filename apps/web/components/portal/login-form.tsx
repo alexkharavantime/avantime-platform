@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export function LoginForm({
   returnTo,
@@ -17,7 +16,6 @@ export function LoginForm({
   oidcEnrollmentRequired?: boolean;
   oidcError?: boolean;
 }) {
-  const router = useRouter();
   const [email, setEmail] = useState(demoEnabled ? 'demo@avantime.lv' : '');
   const [password, setPassword] = useState(demoEnabled ? 'avantime' : '');
   const [error, setError] = useState(
@@ -71,8 +69,9 @@ export function LoginForm({
       setPassword('');
       return;
     }
-    router.push(data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'));
-    router.refresh();
+    window.location.replace(
+      data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'),
+    );
   }
 
   function useAdminDemo() {
