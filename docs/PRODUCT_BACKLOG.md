@@ -881,7 +881,10 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Защитить `/dashboard`, document API и AI API серверной сессией. Базовый этап реализован: `/dashboard/**` закрыт middleware и серверным layout, внутренние AI-маршруты требуют сессию, document API временно ограничен ролью `ADMIN`, а редирект на вход сохраняет безопасный `returnTo`.
+- **Описание:** Защитить `/dashboard`, document API и AI API серверной сессией. TASK-009
+  заменяет signed profile cookie на opaque PostgreSQL session с revoke, rotation,
+  inactivity/absolute expiry и повторной проверкой active membership. Полная platform permission
+  matrix остаётся в SEC-002.
 - **Критерии готовности:** анонимный доступ закрыт; проверяется организация и ресурс; security-тесты; безопасные редиректы.
 - **Зависимости:** PORTAL-001.
 
@@ -906,6 +909,8 @@ Product Backlog — основной управляемый перечень п�
 - **Версия:** Version 2.0
 - **Статус:** In Progress
 - **Описание:** Унифицировать аудит входов, прав, документов, администрирования и AI Tools.
+  TASK-009 добавляет allowlisted identity security events и generic notifications без
+  credentials/codes/provider claims; retention/immutability operations остаются.
 - **Критерии готовности:** неизменяемые записи; actor; organization; action; resource; correlation ID; политика хранения.
 - **Зависимости:** INFRA-001, INFRA-002.
 
@@ -917,7 +922,9 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** TASK-005 добавляет distributed tenant/user/provider AI limits. Лимиты входа, восстановления пароля и загрузки файлов остаются.
+- **Описание:** TASK-005 добавляет distributed tenant/user/provider AI limits. TASK-009 добавляет
+  Redis-backed login, password-reset и MFA limits с production fail-closed. Upload limits и
+  централизованные metrics/administrative exceptions остаются.
 - **Критерии готовности:** лимиты по IP, пользователю и организации; корректный ответ; метрики; административные исключения.
 - **Зависимости:** INFRA-001.
 
@@ -944,6 +951,24 @@ Product Backlog — основной управляемый перечень п�
 - **Описание:** TASK-005 добавляет guarded PostgreSQL/object backup, isolated restore rehearsal и DR runbook. Production schedule, PITR и provider retention требуют environment evidence.
 - **Критерии готовности:** расписание; шифрование; retention; RPO/RTO; успешный тест восстановления; оповещения.
 - **Зависимости:** INFRA-001, DOC-001.
+
+### SEC-007 — Production Identity, MFA and SSO Foundation
+
+- **ID:** SEC-007
+- **Название:** Production Identity, MFA and SSO Foundation
+- **Эпик:** EPIC-011 Безопасность
+- **Приоритет:** P0
+- **Версия:** Version 2.0 foundation / Version 3.0 SSO rollout
+- **Статус:** In Progress
+- **Описание:** TASK-009 разделяет global identity, source-scoped local/external credentials и
+  organization membership; добавляет versioned password KDF, TOTP/recovery codes, tenant-aware
+  MFA policy, server-side sessions, reset/verification/invitation lifecycle, provider-neutral OIDC
+  validator/mock и disabled-by-default OIDC/SAML model.
+- **Критерии готовности:** opaque/revocable sessions; safe migration; MFA/recovery; tenant policy;
+  uniform login errors; distributed limits; security audit; staging key/enrollment/revoke
+  evidence. Repository boundary реализован; production ceremony, реальные OIDC callbacks/provider
+  tenant validation и manual assistive review остаются внешними gates.
+- **Зависимости:** SEC-001, SEC-002, SEC-003, SEC-004, SEC-005, INFRA-001.
 
 ## EPIC-012 UI/UX
 

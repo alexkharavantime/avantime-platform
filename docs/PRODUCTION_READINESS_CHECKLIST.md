@@ -11,6 +11,7 @@ immutable CI artifact, release digest, runbook record or approved ticket.
 | PostgreSQL/pgvector              | DBA               | Pending       | Yes             | migrations, capacity and PITR evidence                                             |
 | Object storage                   | Platform          | Pending       | Yes             | private policy/versioning/backup evidence                                          |
 | Redis queue/rate limit           | Platform          | Pending       | Yes             | queue integration and TLS/auth check                                               |
+| Identity/MFA/session lifecycle   | Security          | Pending       | Yes             | TASK-009 migration, key rotation, admin enrollment and staging login/revoke smoke  |
 | Document workers/OCR             | Operations        | Pending       | Yes             | heartbeat and real OCR smoke                                                       |
 | Embedding workers                | Operations        | Pending       | Yes             | embedding/vector checks                                                            |
 | AI providers                     | AI owner          | Pending       | Yes             | safe configuration/model/dimension check                                           |
@@ -63,6 +64,11 @@ Perform one authorized document/OCR/embedding/RAG flow with non-sensitive stagin
 data, then verify citations, audit event, ledger entry and absence of content in
 logs.
 
+Identity staging evidence must separately confirm legacy credential migration,
+admin TOTP enrollment before enforcement, recovery-code custody, password reset
+delivery, session revoke/idle expiry and `MFA_ENCRYPTION_KEY` rotation procedure.
+TASK-009 local tests do not mark this environment row `Verified`.
+
 ## Рекомендации по улучшению
 
 - Replace role labels with named owners before staging approval.
@@ -78,4 +84,6 @@ logs.
 - [Observability](./OBSERVABILITY.md)
 - [Security Hardening](./SECURITY_HARDENING.md)
 - [Dependency Security Review](./DEPENDENCY_SECURITY_REVIEW.md)
+- [Authentication](./authentication.md)
 - [TASK-005](./tasks/TASK-005.md)
+- [TASK-009](./tasks/TASK-009.md)

@@ -3,7 +3,7 @@ import { getPrisma } from '@avantime/database';
 
 import type { AppSession } from './session';
 
-export type PortalNotificationCategory = 'REQUEST' | 'MESSAGE' | 'DOCUMENT' | 'SYSTEM';
+export type PortalNotificationCategory = 'REQUEST' | 'MESSAGE' | 'DOCUMENT' | 'SYSTEM' | 'SECURITY';
 
 export type PortalNotificationItem = {
   id: string;
@@ -21,7 +21,8 @@ export function isSafePortalNotificationHref(href: string) {
     href === '/portal' ||
     href.startsWith('/portal/requests/') ||
     href.startsWith('/portal/documents/') ||
-    href === '/portal/knowledge'
+    href === '/portal/knowledge' ||
+    href === '/portal/settings/security'
   );
 }
 

@@ -30,6 +30,16 @@ export const browserIdentities = {
     password: 'browser-admin-password',
     companyId: 'avantime',
   },
+  identityClient: {
+    email: 'browser.identity.client@example.test',
+    password: 'browser-identity-client-password',
+    companyId: 'browser-identity-tenant',
+  },
+  identityAdmin: {
+    email: 'browser.identity.admin@example.test',
+    password: 'browser-identity-admin-password',
+    companyId: 'browser-identity-tenant',
+  },
 } as const;
 
 export const browserFixtureIds = {
@@ -48,7 +58,12 @@ export const browserServerEnvironment: Record<string, string> = {
   NODE_ENV: 'test',
   DATABASE_URL: BROWSER_DATABASE_URL,
   SESSION_SECRET: 'browser-tests-only-session-secret-32-characters-minimum',
+  AUTH_PUBLIC_ORIGIN: BROWSER_BASE_URL,
+  AUTH_ADMIN_MFA_REQUIRED: 'false',
+  MFA_ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  MFA_ENCRYPTION_KEY_VERSION: 'browser-v1',
   ENABLE_DEMO_AUTH: 'false',
+  IDENTITY_TEST_MODE: 'browser',
   DOCUMENT_STORAGE_DRIVER: 'local',
   DOCUMENT_METADATA_DRIVER: 'postgresql',
   DOCUMENT_PROCESSING_QUEUE_DRIVER: 'local',

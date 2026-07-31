@@ -112,7 +112,10 @@ export function PortalNotificationCenter() {
         </div>
       )}
       {visible.length > 0 && (
-        <ul className="mt-6 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <ul
+          aria-label="Список уведомлений"
+          className="mt-6 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white"
+        >
           {visible.map((item) => (
             <li key={item.id} className={`p-5 ${item.read ? '' : 'bg-blue-50/50'}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

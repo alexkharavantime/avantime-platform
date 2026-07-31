@@ -747,6 +747,20 @@ JWT применяется только там, где необходим нез
 
 Сессионные cookies имеют атрибуты `HttpOnly`, `Secure` в production и подходящий `SameSite`. Идентификатор сессии не содержит прав или секретных пользовательских данных.
 
+## Production Identity
+
+TASK-009 реализует ADR-0026: `User` является global identity, local credential уникален своим
+normalized identifier, external identity — `(provider, subject)`, а organization access выдаёт
+отдельный `OrganizationMembership`. Совпадение email не создаёт link или membership.
+
+Browser cookie содержит только opaque random token. PostgreSQL хранит hash, user/server-selected
+tenant, absolute/idle expiry, revoke/rotation и coarse device label без IP/fingerprinting. Login
+использует short-lived hashed pre-auth challenge; session создаётся только после required MFA.
+
+Первая MFA реализация — AES-256-GCM encrypted TOTP с persisted replay counter и hashed one-time
+recovery codes. Tenant policy, grace/enforcement и exemptions загружаются только из server-side
+context. OIDC/SAML/WebAuthn/IdP claims в TASK-009 являются disabled foundation, а не готовым SSO.
+
 ## API Security
 
 - проверка входных схем;

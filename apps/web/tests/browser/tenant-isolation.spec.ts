@@ -32,8 +32,22 @@ test.describe('browser tenant isolation', () => {
     await expect(page.getByText('beta-confidential-fixture.png')).toHaveCount(0);
 
     await page.goto('/portal/notifications?companyId=browser-tenant-b');
-    await expect(page.getByText('Alpha browser notification')).toBeVisible();
     await expect(page.getByText('Beta confidential notification')).toHaveCount(0);
+    const notificationTitles = await page.evaluate(async () => {
+      const titles: string[] = [];
+      for (let pageNumber = 1; pageNumber <= 5; pageNumber += 1) {
+        const response = await fetch(`/api/portal/notifications?page=${pageNumber}`);
+        const data = (await response.json()) as {
+          items?: Array<{ title?: string }>;
+          total?: number;
+        };
+        titles.push(...(data.items ?? []).flatMap((item) => (item.title ? [item.title] : [])));
+        if (titles.length >= (data.total ?? 0)) break;
+      }
+      return titles;
+    });
+    expect(notificationTitles).toContain('Alpha browser notification');
+    expect(notificationTitles).not.toContain('Beta confidential notification');
   });
 
   test('client companyId in notification action cannot switch tenant', async ({ page }) => {

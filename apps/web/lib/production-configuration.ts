@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 
 import { loadDocumentConfiguration } from './document-configuration';
+import { getMfaEncryptionKey } from './mfa';
 import { loadRagConfiguration } from './rag-configuration';
 
 export type ProductionConfigurationSummary = {
@@ -13,6 +14,14 @@ export type ProductionConfigurationSummary = {
   costLedger: { driver: 'postgresql'; currency: 'EUR' };
   backups: { configured: true; encrypted: true };
   monitoring: { configured: true };
+  identity: {
+    sessions: 'postgresql';
+    rateLimiter: 'redis';
+    mfaEncryption: true;
+    keyVersion: string;
+    adminMfaRequired: true;
+    emailDelivery: 'resend';
+  };
   providers: { embedding: 'openai' | 'gemini'; answer: 'openai' | 'gemini' };
 };
 
@@ -120,6 +129,17 @@ export function validateProductionConfiguration(
   }
 
   requireSecret(environment, 'SESSION_SECRET');
+  getMfaEncryptionKey(environment);
+  const identityKeyVersion = requireValue(environment, 'MFA_ENCRYPTION_KEY_VERSION');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,31}$/u.test(identityKeyVersion)) {
+    throw new Error('MFA_ENCRYPTION_KEY_VERSION is invalid.');
+  }
+  requireDriver(environment, 'AUTH_ADMIN_MFA_REQUIRED', 'true');
+  requireDriver(environment, 'IDENTITY_EMAIL_DRIVER', 'resend');
+  requireValue(environment, 'MAIL_FROM');
+  requireSecret(environment, 'RESEND_API_KEY', 20);
+  const authOrigin = parseUrl(environment, 'AUTH_PUBLIC_ORIGIN');
+  assertPublicProviderUrl(authOrigin, 'AUTH_PUBLIC_ORIGIN');
   requireSecret(environment, 'BACKUP_ENCRYPTION_KEY');
   requireSecret(environment, 'AUDIT_INTEGRITY_KEY');
   if (rag.embedding.driver === 'openai' || rag.answer.driver === 'openai') {
@@ -156,6 +176,14 @@ export function validateProductionConfiguration(
     costLedger: { driver: 'postgresql', currency: 'EUR' },
     backups: { configured: true, encrypted: true },
     monitoring: { configured: true },
+    identity: {
+      sessions: 'postgresql',
+      rateLimiter: 'redis',
+      mfaEncryption: true,
+      keyVersion: identityKeyVersion,
+      adminMfaRequired: true,
+      emailDelivery: 'resend',
+    },
     providers: {
       embedding: rag.embedding.driver as 'openai' | 'gemini',
       answer: rag.answer.driver as 'openai' | 'gemini',

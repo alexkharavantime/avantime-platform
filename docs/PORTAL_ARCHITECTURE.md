@@ -33,8 +33,10 @@ redirect loops or a second navigation model.
 
 ## Security boundary
 
-- Every protected portal render validates the signed session and, when PostgreSQL is configured,
-  confirms that the user is active and still belongs to the company encoded in the session.
+- Every protected portal render resolves an opaque server-side session and confirms that the user
+  is active and still has the server-selected organization membership.
+- Session validation applies inactivity/absolute expiry and revocation. Cookie payload contains no
+  user or tenant data.
 - Tenant identifiers are derived from the validated server session. Client requests containing
   `companyId` are rejected.
 - Client document reads are scoped by the compound `(companyId, id)` identity. Mutating document
@@ -51,6 +53,15 @@ redirect loops or a second navigation model.
   and exposes no sink detail to the client.
 - Existing request/document mutation audit and RAG telemetry remain their authoritative event
   sources and are not duplicated by the portal helper.
+- `/portal/settings/security` manages TOTP, one-time recovery codes, password and minimized active
+  sessions. Identity mutations reject client tenant identifiers; password/MFA reset revokes
+  sessions. Identity security telemetry contains only allowlisted method/reason/session metadata.
+- The same page shows configured enterprise identity providers and linked identity status; it never
+  exposes secret references, claims or provider tokens. Only a server-validated OIDC callback may
+  link an identity, and matching email is explicitly insufficient.
+- Team invite creates a tenant-bound pending invitation, not a user or membership. The fixed
+  `CLIENT` grant appears only after an authenticated verified identity atomically accepts the
+  one-time code.
 
 ## Compatibility lifecycle
 
@@ -64,6 +75,7 @@ TASK-008 проверяет portal architecture отдельным Playwright/Ch
 - guarded loopback PostgreSQL database `avantime_browser_integration`;
 - deterministic fixtures двух companies, двух `CLIENT` и отдельного `ADMIN`;
 - обычная `/portal/login` DB authentication и повторная portal membership validation;
+- source-scoped local credential, legacy PBKDF2 rehash и opaque PostgreSQL session;
 - desktop portal smoke, `/dashboard/**` redirects и direct cross-tenant URLs;
 - tablet/mobile overflow и accessible navigation dialog;
 - axe WCAG A/AA blocking для `critical` и `serious`.

@@ -24,6 +24,20 @@ async function main() {
 
   for (const file of files) {
     if (mode === 'migrations' && !file.endsWith('/migration.sql')) continue;
+    if (
+      (mode === 'identity' || mode === 'credentials' || mode === 'client-tenant') &&
+      !file.startsWith('apps/web/app/api/auth/') &&
+      !file.startsWith('apps/web/app/api/account/security/') &&
+      !file.startsWith('apps/web/components/portal/') &&
+      !file.startsWith('apps/web/lib/identity') &&
+      !file.startsWith('apps/web/lib/oidc') &&
+      file !== '.env.example'
+    ) {
+      continue;
+    }
+    if (mode === 'defaults' && file !== '.env.example' && !file.startsWith('apps/web/lib/')) {
+      continue;
+    }
     let content: string;
     try {
       content = await readFile(new URL(file, repositoryRoot), 'utf8');
@@ -44,6 +58,46 @@ async function main() {
       /\b(?:DROP\s+(?:TABLE|COLUMN|DATABASE)|TRUNCATE\s+TABLE)\b/i.test(content)
     ) {
       findings.push(`${file}: destructive migration statement`);
+    }
+    if (
+      (mode === 'identity' || mode === 'credentials') &&
+      /\.(?:ts|tsx)$/u.test(file) &&
+      /console\.(?:log|info|warn|error)\([^)]*(?:password|token|cookie|authorization|otp|recovery|secret|claims)/iu.test(
+        content,
+      )
+    ) {
+      findings.push(`${file}: identity credential may be logged`);
+    }
+    if (
+      (mode === 'identity' || mode === 'client-tenant') &&
+      file.startsWith('apps/web/components/portal/') &&
+      content.startsWith("'use client'") &&
+      /(?:companyId|organizationId|tenantId)/u.test(content)
+    ) {
+      findings.push(`${file}: client identity component contains a tenant identifier`);
+    }
+    if (
+      (mode === 'identity' || mode === 'defaults') &&
+      file === '.env.example' &&
+      !/^MFA_ENCRYPTION_KEY=""$/mu.test(content)
+    ) {
+      findings.push(`${file}: MFA encryption key must not have a default`);
+    }
+    if (
+      mode === 'defaults' &&
+      file === '.env.example' &&
+      (!/^SESSION_SECRET=""$/mu.test(content) || !/^RESEND_API_KEY=""$/mu.test(content))
+    ) {
+      findings.push(`${file}: production identity credentials must not have defaults`);
+    }
+    if (
+      mode === 'defaults' &&
+      file.startsWith('apps/web/lib/') &&
+      /(?:SESSION_SECRET|MFA_ENCRYPTION_KEY|RESEND_API_KEY)\s*(?:\?\?|\|\|)\s*['"][^'"]+['"]/u.test(
+        content,
+      )
+    ) {
+      findings.push(`${file}: production credential has a source-code fallback`);
     }
   }
 

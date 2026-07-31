@@ -9,6 +9,7 @@ const routes = [
   ['/portal/team', 'team'],
   ['/portal/notifications', 'notifications'],
   ['/portal/settings', 'settings'],
+  ['/portal/settings/security', 'security-settings'],
 ] as const;
 
 test.describe('@accessibility portal WCAG automation', () => {

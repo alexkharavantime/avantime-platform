@@ -1901,6 +1901,84 @@ remote host, другое database name и production mode. Внешние provi
 
 ---
 
+## ADR-0026
+
+**Название:** Global identity, source-scoped credentials и server-side MFA sessions
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-30
+
+### Контекст
+
+До TASK-009 `User` одновременно представлял identity, local credential и одну company
+membership, а подписанная cookie содержала user profile. Такой boundary не поддерживал revoke,
+idle timeout, MFA или безопасное linking будущих OIDC/SAML identities. Global unique email также
+смешивал разные identity sources и провоцировал небезопасное автоматическое linking.
+
+### Варианты
+
+- сохранить signed profile cookie и добавить MFA flags;
+- передать identity полностью внешнему SaaS provider;
+- создавать отдельного пользователя на каждый tenant;
+- оставить global `User`, вынести credential/provider identities и membership, а sessions хранить
+  server-side.
+
+### Принятое решение
+
+`User` остаётся глобальной identity. Local identifier уникален в `UserCredential`, external
+subject — в пределах `IdentityProvider`, а tenant access выдаёт отдельный
+`OrganizationMembership`. Совпадение email никогда не создаёт external link или membership
+автоматически.
+
+Cookie содержит только random opaque token; PostgreSQL хранит hash и lifecycle `UserSession`.
+Primary login создаёт короткоживущий hashed `LoginChallenge`, а полная session появляется только
+после required MFA. Первая MFA реализация — encrypted TOTP и hashed one-time recovery codes.
+Tenant policy получает organization исключительно из server-side membership/session.
+
+Local password KDF — versioned Node.js scrypt. Legacy PBKDF2 проверяется только для совместимого
+login и немедленно rehash-ится. Argon2id не добавляется на этом этапе, чтобы не вводить новый
+native dependency/runtime boundary во время container hardening; versioned contract допускает
+последующую миграцию.
+
+OIDC foundation включает provider-neutral metadata/secret-manager reference, Authorization Code
+Flow contract, S256 PKCE, state/nonce transaction, RS256/JWKS validator и deterministic mock IdP.
+Реальный callback/provider tenant validation отсутствует, поэтому решение не заявляет готовый
+enterprise SSO. SAML и WebAuthn/IdP claim kinds остаются только зарезервированными.
+
+### Последствия
+
+- revoke, rotation, inactivity/absolute expiry и device/session listing становятся server-side;
+- password/MFA reset может транзакционно инвалидировать sessions;
+- membership removal не удаляет identity, а identity linking не даёт tenant access;
+- production требует PostgreSQL, Redis, отдельный MFA encryption key и trusted public origin;
+- password reset, email verification и invitation delivery требуют production Resend boundary и
+  никогда не выводят one-time code в URL или non-production logs;
+- старые signed cookies становятся недействительными после deployment;
+- case-insensitive duplicate local identifiers блокируют migration до ручного review;
+- текущие роли `CLIENT`/`ADMIN` и single-company portal UX не расширяются;
+- будущий multi-tenant selector и реальные OIDC/SAML callbacks требуют отдельного решения.
+
+### Связанные документы
+
+- `docs/authentication.md`;
+- `docs/IDENTITY_ARCHITECTURE.md`;
+- `docs/IDENTITY_PRODUCTION_CEREMONY.md`;
+- `docs/PORTAL_ARCHITECTURE.md`;
+- `docs/SECURITY_HARDENING.md`;
+- `docs/tasks/TASK-009.md`.
+
+### Связанные задачи Product Backlog
+
+- SEC-001;
+- SEC-002;
+- SEC-003;
+- SEC-004;
+- SEC-005;
+- SEC-007.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1908,7 +1986,6 @@ remote host, другое database name и production mode. Внешние provi
 | Предлагаемая тема                                            | Ожидаемая версия         | Причина                                                                                       |
 | ------------------------------------------------------------ | ------------------------ | --------------------------------------------------------------------------------------------- |
 | Выбор конкретного S3-совместимого провайдера и bucket policy | Version 2.0              | Контракт принят в ADR-0016; требуется инфраструктурный выбор, encryption, versioning и backup |
-| Модель сессий, MFA и корпоративного входа                    | Version 2.0–3.0          | Требуется определить жизненный цикл identity                                                  |
 | Выбор платформы мониторинга и трассировки                    | Version 2.0              | Нужна единая наблюдаемость                                                                    |
 | Формат очередей и событий Integration Hub                    | Version 2.1              | Требуются стабильные интеграционные контракты                                                 |
 | Модель мультитенантности                                     | Version 3.0              | Необходимо обеспечить строгую изоляцию организаций                                            |
@@ -1917,7 +1994,7 @@ remote host, другое database name и production mode. Внешние provi
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0026`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0027`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

@@ -11,6 +11,9 @@ export function LoginForm({ returnTo, demoEnabled }: { returnTo?: string; demoEn
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [challengeToken, setChallengeToken] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+  const [enrollmentRequired, setEnrollmentRequired] = useState(false);
 
   useEffect(() => setHydrated(true), []);
 
@@ -18,15 +21,31 @@ export function LoginForm({ returnTo, demoEnabled }: { returnTo?: string; demoEn
     event.preventDefault();
     setPending(true);
     setError('');
-    const response = await fetch('/api/auth/login', {
+    const mfaPending = Boolean(challengeToken);
+    const response = await fetch(mfaPending ? '/api/auth/mfa/challenge' : '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(
+        mfaPending ? { challengeToken, code: mfaCode } : { email, password, returnTo },
+      ),
     });
-    const data = (await response.json()) as { error?: string; role?: 'CLIENT' | 'ADMIN' };
+    const data = (await response.json()) as {
+      error?: string;
+      role?: 'CLIENT' | 'ADMIN';
+      mfaRequired?: boolean;
+      challengeToken?: string;
+      enrollmentRequired?: boolean;
+      returnTo?: string;
+    };
     setPending(false);
     if (!response.ok) return setError(data.error ?? 'Не удалось войти.');
-    router.push(returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'));
+    if (data.mfaRequired && data.challengeToken) {
+      setChallengeToken(data.challengeToken);
+      setEnrollmentRequired(Boolean(data.enrollmentRequired));
+      setPassword('');
+      return;
+    }
+    router.push(data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'));
     router.refresh();
   }
 
@@ -68,18 +87,46 @@ export function LoginForm({ returnTo, demoEnabled }: { returnTo?: string; demoEn
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           type="email"
+          autoComplete="username"
+          disabled={Boolean(challengeToken)}
           className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
         />
       </label>
-      <label className="block">
-        <span className="mb-2 block text-sm font-bold text-slate-700">Пароль</span>
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
-        />
-      </label>
+      {challengeToken ? (
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold text-slate-700">
+            Код MFA или recovery code
+          </span>
+          <input
+            value={mfaCode}
+            onChange={(event) => setMfaCode(event.target.value)}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            disabled={enrollmentRequired}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+          />
+        </label>
+      ) : (
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold text-slate-700">Пароль</span>
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
+          />
+        </label>
+      )}
+      {enrollmentRequired && (
+        <p
+          role="alert"
+          className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800"
+        >
+          Политика организации требует MFA. Обратитесь к администратору для безопасного
+          первоначального подключения.
+        </p>
+      )}
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
           {error}
@@ -92,11 +139,25 @@ export function LoginForm({ returnTo, demoEnabled }: { returnTo?: string; demoEn
         Забыли пароль?
       </Link>
       <button
-        disabled={pending || !hydrated}
+        disabled={pending || !hydrated || enrollmentRequired}
         className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
       >
-        {pending ? 'Входим…' : 'Войти'}
+        {pending ? 'Проверяем…' : challengeToken ? 'Подтвердить' : 'Войти'}
       </button>
+      {challengeToken && (
+        <button
+          type="button"
+          onClick={() => {
+            setChallengeToken('');
+            setMfaCode('');
+            setEnrollmentRequired(false);
+            setError('');
+          }}
+          className="w-full text-sm font-bold text-slate-600"
+        >
+          Начать вход заново
+        </button>
+      )}
       {demoEnabled && (
         <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
           <p>

@@ -11,6 +11,7 @@ const clientRoutes = [
   ['/portal/team', /Команда компании/],
   ['/portal/notifications', /Уведомления/],
   ['/portal/settings', /Настройки кабинета/],
+  ['/portal/settings/security', /Безопасность/],
 ] as const;
 
 test.describe('portal browser smoke', () => {
@@ -29,7 +30,7 @@ test.describe('portal browser smoke', () => {
         await expect(page.getByText('alpha-browser-fixture.png')).toBeVisible();
       }
       if (route === '/portal/notifications') {
-        await expect(page.getByText('Alpha browser notification')).toBeVisible();
+        await expect(page.getByRole('list', { name: 'Список уведомлений' })).toBeVisible();
       }
       await expect(page.locator('main')).toHaveCount(1);
       await expect(page.locator('body')).not.toContainText(

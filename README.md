@@ -52,6 +52,24 @@ npm run build
 
 Production startup requires `SESSION_SECRET`; configure PostgreSQL before deployment.
 
+## Production identity and MFA
+
+TASK-009 adds source-scoped local/external identities, organization memberships, opaque
+PostgreSQL sessions, password recovery/email verification, TOTP and recovery codes, tenant MFA
+policy, secure invitations and a disabled-by-default enterprise OIDC validator foundation.
+
+```bash
+npm run test:identity
+npm run identity:docs-check
+npm run security:identity-scan
+```
+
+Production additionally requires Redis, a versioned MFA encryption key, Resend identity delivery
+and completion of the owner-controlled ceremony. No real Entra, Google Workspace or generic OIDC
+tenant has been validated. See [Identity Architecture](./docs/IDENTITY_ARCHITECTURE.md),
+[Authentication](./docs/authentication.md) and
+[Identity Production Ceremony](./docs/IDENTITY_PRODUCTION_CEREMONY.md).
+
 ## Unified client portal
 
 `/portal` is the canonical authenticated client cabinet for requests, documents,
