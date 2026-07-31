@@ -96,6 +96,20 @@ Required before validation:
 5. Preserve redacted audit/evidence references and repeat validation after any issuer, client,
    redirect, mapping or secret-boundary change.
 
+### Database rollback limitations
+
+- `20260731120000_oidc_production_rollout` is an expand migration and has no automatic down
+  migration. Rollback uses a forward fix plus application rollback after compatibility review.
+- The nullable TASK-009 `IdentityProvider.clientSecretRef` storage remains physically present but
+  is retired: Prisma and application code do not map or read it. Existing values are retained only
+  for rollback/data preservation, while legacy OIDC providers are disabled and marked
+  `REVALIDATION_REQUIRED`.
+- A physical removal of that retired column requires a separately approved contract migration
+  after the rollback window, retention decision and backup evidence are complete.
+- The migration adds enums, tables, nullable fields and guarded constraints; it does not remove a
+  table or column. Restoring the earlier application still requires compatibility testing because
+  new validation and SSO state may have been written.
+
 Stop promotion on issuer/audience/signature mismatch, unexpected tenant/hosted domain, auto-created
 membership, sensitive data in logs, unresolved secret, stale metadata, failed replay denial,
 missing audit evidence or absent owner acceptance.

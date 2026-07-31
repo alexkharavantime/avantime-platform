@@ -85,7 +85,8 @@ server-controlled validation callback, но не содержит кнопки �
 - PostgreSQL integration: full deterministic callback, encrypted secret reference, prelinked
   identity, provider-linked session result, tenant-isolated ADMIN lifecycle, issuer revalidation и
   fail-closed enable;
-- migration deploy: legacy baseline → all identity migrations, включая quarantine legacy OIDC.
+- migration deploy: empty database и staged TASK-009 legacy baseline → TASK-010; legacy OIDC
+  reference сохраняется, provider quarantined, повторный deploy идемпотентен.
 
 Deterministic mock IdP является только test evidence. Он не подтверждает Microsoft Entra ID,
 Google Workspace или generic production tenant.
@@ -100,6 +101,7 @@ Google Workspace или generic production tenant.
 | `npm run test:production-integration` | passed, 1/1                                                |
 | `npm run test:rag-integration`        | passed, 1/1                                                |
 | migration rehearsal                   | passed, empty/legacy upgrade и repeated deploy             |
+| migration security scan               | passed, destructive statements отсутствуют                 |
 | `npm run typecheck -- --force`        | passed, 4/4 workspaces без cache                           |
 | `npm run lint`                        | passed; web ESLint, остальные workspace placeholders       |
 | `npm run build`                       | passed с CI test-only environment                          |
@@ -112,6 +114,13 @@ harness всё ещё ожидал восемь platform migrations. Invariant �
 чего empty/legacy rehearsal и repeated deploy прошли. Первый локальный build без environment
 ожидаемо остановился на production fail-fast `SESSION_SECRET`; повторный build с тем же публичным
 test-only environment, который задан в CI, прошёл.
+
+Migration security review сохранил nullable TASK-009 `clientSecretRef` как retired physical
+storage вместо необратимого удаления. Поле отсутствует в Prisma/application surface; legacy OIDC
+отключается, очищает runtime endpoints и требует controlled revalidation. Физическое удаление
+допустимо только отдельной contract migration после rollback window и retention decision. Новые
+обязательные поля добавляются nullable-first, получают guarded backfill и только затем `NOT NULL`
+и domain constraints.
 
 ## Acceptance checklist
 

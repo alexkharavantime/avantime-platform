@@ -34,18 +34,32 @@ ALTER TABLE "IdentityProvider"
   ADD COLUMN "clientSecretRefEncrypted" TEXT,
   ADD COLUMN "secretKeyVersion" VARCHAR(32),
   ADD COLUMN "redirectUris" JSONB,
-  ADD COLUMN "organizationMappingMode" "OidcOrganizationMappingMode" NOT NULL DEFAULT 'STATIC',
-  ADD COLUMN "defaultRole" "UserRole" NOT NULL DEFAULT 'CLIENT',
-  ADD COLUMN "sessionPolicy" "OidcProviderSessionPolicy" NOT NULL DEFAULT 'REVOKE_ON_DISABLE',
-  ADD COLUMN "validationStatus" "OidcProviderValidationStatus" NOT NULL DEFAULT 'NOT_VALIDATED',
+  ADD COLUMN "organizationMappingMode" "OidcOrganizationMappingMode" DEFAULT 'STATIC',
+  ADD COLUMN "defaultRole" "UserRole" DEFAULT 'CLIENT',
+  ADD COLUMN "sessionPolicy" "OidcProviderSessionPolicy" DEFAULT 'REVOKE_ON_DISABLE',
+  ADD COLUMN "validationStatus" "OidcProviderValidationStatus" DEFAULT 'NOT_VALIDATED',
   ADD COLUMN "validationEvidenceRef" VARCHAR(200),
   ADD COLUMN "createdBy" VARCHAR(200),
   ADD COLUMN "updatedBy" VARCHAR(200),
-  ADD COLUMN "configurationVersion" INTEGER NOT NULL DEFAULT 1;
+  ADD COLUMN "configurationVersion" INTEGER DEFAULT 1;
+
+UPDATE "IdentityProvider"
+SET
+  "organizationMappingMode" = COALESCE("organizationMappingMode", 'STATIC'),
+  "defaultRole" = COALESCE("defaultRole", 'CLIENT'),
+  "sessionPolicy" = COALESCE("sessionPolicy", 'REVOKE_ON_DISABLE'),
+  "validationStatus" = COALESCE("validationStatus", 'NOT_VALIDATED'),
+  "configurationVersion" = COALESCE("configurationVersion", 1)
+WHERE
+  "organizationMappingMode" IS NULL
+  OR "defaultRole" IS NULL
+  OR "sessionPolicy" IS NULL
+  OR "validationStatus" IS NULL
+  OR "configurationVersion" IS NULL;
 
 UPDATE "IdentityProvider"
 SET "redirectUris" = jsonb_build_array("redirectUri")
-WHERE "redirectUri" IS NOT NULL;
+WHERE "redirectUri" IS NOT NULL AND "redirectUris" IS NULL;
 
 -- Legacy TASK-009 OIDC rows did not have a trusted tenant mapping. Preserve
 -- them for operator review, but quarantine them from login and force explicit
@@ -62,18 +76,35 @@ SET
   "metadataExpiresAt" = NULL
 WHERE "kind" = 'OIDC' AND "companyId" IS NULL;
 
--- TASK-009 did not permit production credentials. Any legacy reference must be
--- re-entered through the encrypted TASK-010 boundary.
+-- Retain the nullable TASK-009 reference as retired storage during the expand
+-- phase. Prisma and the application no longer map or read it; operators must
+-- re-enter the reference through the encrypted TASK-010 boundary. Physical
+-- removal requires a later, separately approved contract migration after the
+-- rollback window and data-retention decision have closed.
+COMMENT ON COLUMN "IdentityProvider"."clientSecretRef" IS
+  'Retired TASK-009 reference; application access forbidden; retained for rollback and data preservation';
+
 ALTER TABLE "IdentityProvider"
-  DROP COLUMN "clientSecretRef";
+  ALTER COLUMN "organizationMappingMode" SET NOT NULL,
+  ALTER COLUMN "defaultRole" SET NOT NULL,
+  ALTER COLUMN "sessionPolicy" SET NOT NULL,
+  ALTER COLUMN "validationStatus" SET NOT NULL,
+  ALTER COLUMN "configurationVersion" SET NOT NULL;
 
 CREATE UNIQUE INDEX "IdentityProvider_id_companyId_key"
   ON "IdentityProvider"("id", "companyId");
 
 ALTER TABLE "OidcAuthorizationRequest"
-  ADD COLUMN "purpose" "OidcAuthorizationPurpose" NOT NULL DEFAULT 'LOGIN',
+  ADD COLUMN "purpose" "OidcAuthorizationPurpose" DEFAULT 'LOGIN',
   ADD COLUMN "returnTo" TEXT,
   ADD COLUMN "validatedAt" TIMESTAMP(3);
+
+UPDATE "OidcAuthorizationRequest"
+SET "purpose" = 'LOGIN'
+WHERE "purpose" IS NULL;
+
+ALTER TABLE "OidcAuthorizationRequest"
+  ALTER COLUMN "purpose" SET NOT NULL;
 
 CREATE TABLE "OidcTokenReplay" (
   "id" TEXT NOT NULL,
@@ -117,12 +148,30 @@ ALTER TABLE "LoginChallenge"
   ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "OrganizationIdentityPolicy"
-  ADD COLUMN "ssoRequirement" "OrganizationSsoRequirement" NOT NULL DEFAULT 'DISABLED',
+  ADD COLUMN "ssoRequirement" "OrganizationSsoRequirement" DEFAULT 'DISABLED',
   ADD COLUMN "ssoProviderId" TEXT,
   ADD COLUMN "ssoEnforcementAt" TIMESTAMP(3),
-  ADD COLUMN "ssoGracePeriodDays" INTEGER NOT NULL DEFAULT 0,
-  ADD COLUMN "localLoginAllowed" BOOLEAN NOT NULL DEFAULT true,
-  ADD COLUMN "configurationVersion" INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN "ssoGracePeriodDays" INTEGER DEFAULT 0,
+  ADD COLUMN "localLoginAllowed" BOOLEAN DEFAULT true,
+  ADD COLUMN "configurationVersion" INTEGER DEFAULT 1;
+
+UPDATE "OrganizationIdentityPolicy"
+SET
+  "ssoRequirement" = COALESCE("ssoRequirement", 'DISABLED'),
+  "ssoGracePeriodDays" = COALESCE("ssoGracePeriodDays", 0),
+  "localLoginAllowed" = COALESCE("localLoginAllowed", true),
+  "configurationVersion" = COALESCE("configurationVersion", 1)
+WHERE
+  "ssoRequirement" IS NULL
+  OR "ssoGracePeriodDays" IS NULL
+  OR "localLoginAllowed" IS NULL
+  OR "configurationVersion" IS NULL;
+
+ALTER TABLE "OrganizationIdentityPolicy"
+  ALTER COLUMN "ssoRequirement" SET NOT NULL,
+  ALTER COLUMN "ssoGracePeriodDays" SET NOT NULL,
+  ALTER COLUMN "localLoginAllowed" SET NOT NULL,
+  ALTER COLUMN "configurationVersion" SET NOT NULL,
   ADD CONSTRAINT "OrganizationIdentityPolicy_ssoGracePeriodDays_check"
     CHECK ("ssoGracePeriodDays" >= 0 AND "ssoGracePeriodDays" <= 365);
 
