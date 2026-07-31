@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Завершить production-like staging ceremony для TASK-009 и подготовить следующий этап
-организационной RBAC и единой knowledge permission model, не смешивая identity и membership.
+Завершить repository-level TASK-010 OIDC rollout boundary, затем выполнить production-like
+identity/provider ceremonies без смешивания identity и organization membership.
 
 ### 📈 Общий процент готовности
 
@@ -19,23 +19,22 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-009 добавляет source-scoped credentials, отдельный organization membership и
-   disabled-by-default enterprise IdP foundation;
-2. локальная аутентификация усилена versioned scrypt rehash, TOTP/recovery codes, tenant-aware MFA
-   policy и opaque PostgreSQL sessions;
-3. 133 unit/security, 19 integration, 6 identity Chromium и 11 accessibility tests подтверждают
-   основной identity/migration/browser boundary; финальный targeted tenant rerun остаётся pending.
+1. TASK-010 добавляет полный server-side OIDC callback и tenant-bound versioned provider lifecycle;
+2. Entra `tid`, Google Workspace `hd`, no-email-only linking и organization SSO policy закреплены
+   fail-closed controls;
+3. dedicated identity 21/21, unit 138/138, integration 20/20 и browser/accessibility 54/54
+   подтверждают deterministic callback, provider lifecycle, migration quarantine и ADMIN UI.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
-2. Production identity staging ceremony для MFA encryption key, первого ADMIN enrollment и
-   emergency revoke ещё не выполнена;
+2. Production identity и OIDC ceremonies, реальные Entra/Google/generic tenant connections и
+   Security Owner acceptance ещё не выполнены;
 3. accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12, а initial SLO не подтверждены production-like измерениями.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Подтвердить TASK-009 в production-like staging и продолжить организационную RBAC.
+1. Validate TASK-010 providers в production-like staging и принять evidence владельцами.
 2. Развернуть reference topology в managed staging и подтвердить backup/PITR/alerts.
 3. Провести ручной screen-reader/assistive-technology review и расширять browser coverage вместе с критическими сценариями.
 
@@ -46,11 +45,11 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.19                                                                                      |
-| Дата последнего обновления       | 2026-07-30                                                                                |
+| Версия документа                 | 1.20                                                                                      |
+| Дата последнего обновления       | 2026-07-31                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-009-production-identity`                                                    |
-| Последний commit                 | `61cde23 feat(ops): add TASK-005 production readiness foundations (#10)`                  |
+| Текущая ветка Git                | `feature/task-010-oidc-production-rollout`                                                |
+| Последний commit                 | `efda4c4` — TASK-009 integration                                                          |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
 | Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
@@ -155,6 +154,17 @@ Chromium и 11 accessibility tests. После появления new-session no
 устаревшее pagination expectation tenant browser test; его финальный rerun и последние `tsx` scans
 не выполнены из-за локального approval/credits limit. Статус остаётся `In Progress`, также до
 production ceremony, real IdP validation и manual assistive review.
+
+[TASK-010](./tasks/TASK-010.md) находится `In Progress`: реализованы server-side Authorization
+Code callback, PKCE/state/nonce, server-side token/JWKS exchange, durable replay, tenant-bound
+versioned provider lifecycle, encrypted write-only secret reference, controlled issuer
+revalidation, provider-specific tenant mapping, explicit linking, provider-linked sessions,
+organization SSO policy и ADMIN UI/API. Migration не угадывает tenant для legacy OIDC и
+quarantines такие rows disabled. Прошли unit 138/138, identity 21/21, integration 20/20,
+production/RAG integration 1/1, migration rehearsal, clean typecheck, lint, build, browser и
+accessibility 54/54, пять security scans без findings и documentation check по 14 документам.
+Реальные Entra, Google Workspace и generic tenants не подключались и не считаются validated;
+staging rollout/rollback и Security Owner acceptance остаются внешними gates.
 
 Проверки четвёртой итерации TASK-002:
 
@@ -499,6 +509,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
 | ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-07-31 | 1.20   | Codex, по поручению владельца проекта | TASK-010 repository OIDC callback/lifecycle, tenant mapping, SSO policy, ADMIN UI, rollout/evidence docs; local unit/integration/build/browser/security gates passed, real tenant validation pending   |
 | 2026-07-30 | 1.19   | Codex, по поручению владельца проекта | Полная TASK-009 gap analysis: verification/invitation/OIDC/key rotation/ceremony/CI/browser coverage; 133 unit, 19 integration, 6 identity и 11 accessibility tests passed; final tenant rerun pending |
 | 2026-07-30 | 1.18   | Codex, по поручению владельца проекта | TASK-009 application boundary: source-scoped identity/membership, scrypt migration, MFA/recovery, opaque sessions, security settings; local unit/integration/browser/security gates passed             |
 | 2026-07-30 | 1.17   | Codex, по поручению владельца проекта | TASK-008 завершена: 43 Playwright/Chromium tests, axe WCAG A/AA, isolated DB fixtures, trace redaction и blocking browser CI job; ручной assistive-technology review не выполнялся                     |

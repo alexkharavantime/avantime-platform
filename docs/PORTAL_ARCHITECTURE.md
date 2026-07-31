@@ -59,6 +59,11 @@ redirect loops or a second navigation model.
 - The same page shows configured enterprise identity providers and linked identity status; it never
   exposes secret references, claims or provider tokens. Only a server-validated OIDC callback may
   link an identity, and matching email is explicitly insufficient.
+- Tenant ADMIN provider lifecycle lives at
+  `/portal/settings/security/identity-providers`, `/new` and `/[id]`. The UI receives only safe
+  projections, treats the client-secret reference as write-only and cannot self-declare a real
+  tenant validated. Provider and SSO policy mutations derive company from the validated server
+  session and reject client tenant identifiers.
 - Team invite creates a tenant-bound pending invitation, not a user or membership. The fixed
   `CLIENT` grant appears only after an authenticated verified identity atomically accepts the
   one-time code.

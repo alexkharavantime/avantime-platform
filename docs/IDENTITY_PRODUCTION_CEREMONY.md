@@ -33,6 +33,10 @@ already be healthy.
 10. Run `npm run identity:ceremony-check` in the controlled environment with the non-secret evidence
     references below.
 11. Security Owner reviews the evidence and records approval outside the repository.
+12. For each OIDC provider, complete the separate
+    [OIDC Production Rollout](./OIDC_PRODUCTION_ROLLOUT.md) and retain the restricted
+    [OIDC Provider Validation Evidence](./OIDC_PROVIDER_VALIDATION_EVIDENCE.md). The identity
+    ceremony alone never marks a provider tenant validated.
 
 ## Automated guard inputs
 

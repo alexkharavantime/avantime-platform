@@ -7,7 +7,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 8;
+const EXPECTED_MIGRATION_COUNT = 9;
 
 type RehearsalPrismaClient = {
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;

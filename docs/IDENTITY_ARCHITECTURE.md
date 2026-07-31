@@ -1,6 +1,7 @@
 # Production Identity Architecture
 
-TASK-009 introduces a server-side identity boundary without expanding the existing
+TASK-009 introduces a server-side identity boundary and TASK-010 completes its repository-level
+OIDC callback/lifecycle without expanding the existing
 `CLIENT`/`ADMIN` authorization model. Identity proves who a person is; an active
 `OrganizationMembership` grants tenant access. External identity linking never creates a
 membership.
@@ -10,12 +11,12 @@ membership.
 - `UserCredential` owns the normalized local identifier and versioned password hash.
 - `ExternalIdentity` is unique by `(providerId, subject)`; matching email alone is never a linking
   signal.
-- `IdentityProvider` stores provider-neutral OIDC metadata and a secret-manager reference, never a
-  client secret.
+- `IdentityProvider` stores tenant-bound, versioned OIDC metadata and an encrypted write-only
+  secret-manager reference, never a client secret value.
 - `UserSession` stores only a hash of an opaque browser token and enforces idle, absolute, revoke
   and rotation rules.
-- `OrganizationIdentityPolicy` applies tenant MFA requirements using only server-derived company
-  context.
+- `OrganizationIdentityPolicy` applies tenant MFA and SSO requirements using only server-derived
+  company context.
 
 Legacy PBKDF2 hashes are copied into the local credential and upgraded to versioned scrypt only
 after a successful login. Existing users are backfilled as email-verified so rollout does not
@@ -50,21 +51,29 @@ Rotation procedure:
 5. verify enrollment/login/recovery evidence;
 6. remove the old key only after no old-version ciphertext remains.
 
-## Enterprise OIDC foundation
+## Enterprise OIDC rollout boundary
 
 The disabled-by-default boundary supports profiles for Microsoft Entra ID, Google Workspace and
-generic enterprise OIDC. The contract includes issuer, client ID, secret-manager reference,
-discovery/authorization/token/JWKS endpoints, exact redirect URI, allowed domains, tenant mapping,
-claim mapping and group-to-role mapping data.
+generic enterprise OIDC. The contract includes immutable-without-revalidation issuer, client ID,
+encrypted write-only secret reference, redirect allowlist, discovery/authorization/token/JWKS
+endpoints, allowed domains, tenant/claim/group mapping, `CLIENT` default role, validation/evidence
+state and optimistic configuration version.
 
-The validator enforces Authorization Code Flow, S256 PKCE, hashed state and nonce, exact redirect,
-RS256 allowlisting, `kid`/JWKS selection, issuer, audience, signature, `exp`/`nbf` skew,
-`email_verified` and token-ID replay rejection. Metadata refresh validates the configured issuer and
-endpoints before audit. A deterministic local mock IdP tests key selection and rotation contracts.
+The callback exchanges the authorization code server-side and returns neither access nor refresh
+tokens to application code. It enforces S256 PKCE, hashed state and nonce, exact redirect, RS256
+allowlisting, `kid`/JWKS selection, issuer, audience/authorized party, signature, `exp`/`nbf` skew,
+`email_verified`, consumed state and durable token-ID replay rejection. Metadata refresh fetches
+discovery server-side with timeout/size/redirect/egress controls.
 
-No callback exchanges a real authorization code yet, and no real Entra, Google or generic tenant
-has been validated. Therefore the repository provides a secure validator and linking boundary, not
-production-ready SSO.
+Entra mapping requires an allowlisted `tid`; Google Workspace requires an allowlisted `hd` and
+does not infer tenant from email suffix. Generic OIDC uses an explicit static, tenant, hosted-domain
+or custom-claim policy. A deterministic local mock IdP verifies the full callback, but no real
+Entra, Google or generic tenant has been validated. Repository readiness therefore does not equal
+environment/provider acceptance.
+
+A separate `PROVIDER_VALIDATION` transaction is allowed for a disabled metadata-validated provider
+only from a recent MFA-satisfied tenant ADMIN session. It executes the same real token/JWKS/claim
+checks, creates no login session and records `TENANT_VALIDATED` only after all checks pass.
 
 Linking requires a recent server-side reauthentication record and a validated OIDC assertion.
 Ownership of the current local identity and provider identity is therefore proven independently.
@@ -83,7 +92,8 @@ create and verify the identity before the same acceptance endpoint can be used.
 
 Security actions pass through a fixed action allowlist. Tenant is attached only when it exists in
 server-side context. Safe metadata is limited to MFA method, reason code and safe session ID.
-Notifications contain a generic title and fixed security-settings link.
+Notifications contain a generic title and fixed security-settings link. Provider lifecycle events
+add only safe provider ID, configuration version, validation status and reason code.
 
 The boundary never records raw email, full IP, user-agent, URL query, request body, password, OTP,
 recovery/reset/invitation code, cookie, authorization header, TOTP secret, provider token, raw
@@ -101,7 +111,8 @@ migrations.
 Repository-level gates cover unit/security, PostgreSQL integration, migration rehearsal, browser
 identity scenarios, secret/default/credential/client-tenant scans and documentation links.
 Environment acceptance remains blocked on the production-like ceremony in
-[Identity Production Ceremony](./IDENTITY_PRODUCTION_CEREMONY.md), real IdP validation and manual
+[Identity Production Ceremony](./IDENTITY_PRODUCTION_CEREMONY.md), the per-provider
+[OIDC Production Rollout](./OIDC_PRODUCTION_ROLLOUT.md), real IdP validation and manual
 assistive-technology review.
 
 ## Related documents
@@ -111,3 +122,4 @@ assistive-technology review.
 - [Portal Architecture](./PORTAL_ARCHITECTURE.md)
 - [ADR-0026](./DECISIONS.md#adr-0026)
 - [TASK-009](./tasks/TASK-009.md)
+- [TASK-010](./tasks/TASK-010.md)

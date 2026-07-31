@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -219,6 +220,14 @@ export function SecuritySettings({ initial }: { initial: SecurityOverview }) {
           {overview.policy.requirement}. Recovery codes осталось:{' '}
           {overview.mfa.recoveryCodesRemaining}.
         </p>
+        {overview.policy.canManage && (
+          <Link
+            href="/portal/settings/security/identity-providers"
+            className="mt-4 inline-flex rounded-xl border border-blue-300 px-4 py-2 text-sm font-bold text-blue-700"
+          >
+            Управлять identity providers и SSO policy
+          </Link>
+        )}
         {!overview.mfa.enabled && !enrollment && (
           <button
             type="button"

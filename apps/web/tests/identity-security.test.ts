@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { isSameOriginMutation } from '../lib/identity-auth';
 import { sendIdentityEmail } from '../lib/identity-email';
-import { evaluateMfaPolicy } from '../lib/identity-policy';
+import { evaluateMfaPolicy, isOrganizationLoginMethodAllowed } from '../lib/identity-policy';
 import { MemoryIdentityRateLimiter } from '../lib/identity-rate-limit';
 import { identityTestResponseEnabled, parseIdentityMutation } from '../lib/identity-route';
 import {
@@ -217,6 +217,44 @@ test('tenant MFA policy respects enforcement, grace, explicit exemption, and act
   );
 });
 
+test('organization SSO policy controls local and provider login after enforcement', () => {
+  const now = new Date('2026-07-31T12:00:00.000Z');
+  const required = {
+    ssoRequirement: 'REQUIRED' as const,
+    ssoProviderId: 'provider-a',
+    ssoEnforcementAt: new Date('2026-07-30T12:00:00.000Z'),
+    ssoGracePeriodDays: 0,
+    localLoginAllowed: false,
+  };
+  assert.equal(
+    isOrganizationLoginMethodAllowed({
+      policy: required,
+      method: 'OIDC',
+      providerId: 'provider-a',
+      now,
+    }),
+    true,
+  );
+  assert.equal(
+    isOrganizationLoginMethodAllowed({
+      policy: required,
+      method: 'OIDC',
+      providerId: 'provider-b',
+      now,
+    }),
+    false,
+  );
+  assert.equal(isOrganizationLoginMethodAllowed({ policy: required, method: 'LOCAL', now }), false);
+  assert.equal(
+    isOrganizationLoginMethodAllowed({
+      policy: { ...required, localLoginAllowed: true },
+      method: 'LOCAL',
+      now: new Date('2026-07-29T12:00:00.000Z'),
+    }),
+    true,
+  );
+});
+
 test('identity mutation enforces same-origin and rejects client tenant identifiers', async () => {
   assert.equal(
     identityTestResponseEnabled({ NODE_ENV: 'production', IDENTITY_TEST_MODE: 'browser' }),
@@ -364,6 +402,12 @@ test('identity audit action allowlist includes the required lifecycle without se
     'identity.session.revoked_all',
     'identity.external.linked',
     'identity.external.unlinked',
+    'identity.provider.created',
+    'identity.provider.updated',
+    'identity.provider.enabled',
+    'identity.provider.disabled',
+    'identity.provider.metadata_refreshed',
+    'identity.provider.tenant_validated',
     'identity.policy.updated',
     'identity.invitation.created',
     'identity.invitation.accepted',
@@ -371,5 +415,8 @@ test('identity audit action allowlist includes the required lifecycle without se
   ]) {
     assert.match(source, new RegExp(action.replaceAll('.', '\\.'), 'u'));
   }
-  assert.doesNotMatch(source, /rawEmail|rawUserAgent|requestBody|providerToken|authorization/u);
+  assert.doesNotMatch(
+    source,
+    /rawEmail|rawUserAgent|requestBody|providerToken|clientSecret|authorizationCode/u,
+  );
 });

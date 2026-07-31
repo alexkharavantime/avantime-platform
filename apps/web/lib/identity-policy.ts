@@ -56,3 +56,28 @@ export function evaluateMfaPolicy(context: MfaPolicyContext): MfaPolicyDecision 
 export function requireAdminMfa(environment: Record<string, string | undefined> = process.env) {
   return environment.AUTH_ADMIN_MFA_REQUIRED === 'true';
 }
+
+export function isOrganizationLoginMethodAllowed(input: {
+  policy?: {
+    ssoRequirement: 'DISABLED' | 'OPTIONAL' | 'REQUIRED';
+    ssoProviderId: string | null;
+    ssoEnforcementAt: Date | null;
+    ssoGracePeriodDays: number;
+    localLoginAllowed: boolean;
+  } | null;
+  method: 'LOCAL' | 'OIDC';
+  providerId?: string;
+  now?: Date;
+}) {
+  const policy = input.policy;
+  if (!policy || policy.ssoRequirement === 'DISABLED') return input.method === 'LOCAL';
+  if (input.method === 'OIDC') return Boolean(policy.ssoProviderId === input.providerId);
+  if (!policy.localLoginAllowed) return false;
+  if (policy.ssoRequirement !== 'REQUIRED') return true;
+  const now = input.now ?? new Date();
+  if (!policy.ssoEnforcementAt) return true;
+  const enforcedAt = new Date(
+    policy.ssoEnforcementAt.getTime() + Math.max(0, policy.ssoGracePeriodDays) * 86_400_000,
+  );
+  return enforcedAt > now;
+}

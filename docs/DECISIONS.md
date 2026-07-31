@@ -1979,6 +1979,69 @@ enterprise SSO. SAML и WebAuthn/IdP claim kinds остаются только �
 
 ---
 
+## ADR-0027
+
+**Название:** Tenant-bound OIDC provider lifecycle и evidence-gated production enablement
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-31
+
+### Контекст
+
+ADR-0026 принял provider-neutral validator и linking boundary, но не определил production callback,
+configuration lifecycle, provider-specific tenant mapping или доказательство реального tenant
+connection. Простое наличие валидного ID token или совпадение email domain не доказывает
+принадлежность к нужной организации.
+
+### Варианты
+
+- включать provider после успешного discovery;
+- автоматически связывать identity и tenant по verified email domain;
+- хранить один global provider config и принимать tenant ID от browser;
+- хранить tenant-bound versioned config, использовать provider claims и разрешать enable только
+  после внешней validation ceremony.
+
+### Принятое решение
+
+OIDC provider configuration принадлежит одной organization и выбирается сервером по stable global
+provider key; browser не передаёт Avantime tenant ID. Client-secret value остаётся во внешней
+secret boundary, а база хранит только encrypted write-only reference.
+
+Authorization Code callback использует S256 PKCE, hashed state/nonce, exact redirect, server-side
+code exchange, pinned discovery issuer/JWKS and durable token replay record. Entra organization
+mapping использует allowlisted `tid`, Google Workspace — allowlisted `hd`; email-only linking и JIT
+membership запрещены.
+
+Provider остаётся disabled до `TENANT_VALIDATED`. Metadata validation недостаточна. Реальный tenant
+status записывается только после внешней ceremony и non-secret evidence reference. Issuer или
+critical configuration change сбрасывает evidence, отключает provider и требует revalidation.
+Organization SSO enforcement является отдельной versioned policy.
+
+### Последствия
+
+- repository tests могут подтвердить protocol implementation, но не реальный Entra/Google/generic
+  tenant;
+- legacy OIDC rows без trusted tenant quarantined disabled, а не автоматически маппятся;
+- provider disable блокирует новые входы и применяет explicit preserve/revoke session policy;
+- production egress должен allowlist exact discovery/token/JWKS hosts;
+- ADMIN UI не возвращает secret reference и не может self-declare tenant validation;
+- rollout требует Provider, Platform и Security Owners и rollback drill.
+
+### Связанные документы
+
+- `docs/OIDC_PRODUCTION_ROLLOUT.md`;
+- `docs/OIDC_PROVIDER_VALIDATION_EVIDENCE.md`;
+- `docs/IDENTITY_ARCHITECTURE.md`;
+- `docs/authentication.md`;
+- `docs/tasks/TASK-010.md`.
+
+### Связанные задачи Product Backlog
+
+- SEC-007.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -1994,7 +2057,7 @@ enterprise SSO. SAML и WebAuthn/IdP claim kinds остаются только �
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0027`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0028`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

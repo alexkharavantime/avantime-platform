@@ -92,36 +92,77 @@ enum OidcProviderProfile {
   GENERIC_OIDC
 }
 
+enum OidcOrganizationMappingMode {
+  STATIC
+  PROVIDER_TENANT_CLAIM
+  HOSTED_DOMAIN
+  CLAIM
+}
+
+enum OidcProviderValidationStatus {
+  NOT_VALIDATED
+  METADATA_VALIDATED
+  TENANT_VALIDATED
+  REVALIDATION_REQUIRED
+  FAILED
+}
+
+enum OidcProviderSessionPolicy {
+  PRESERVE_EXISTING
+  REVOKE_ON_DISABLE
+}
+
+enum OidcAuthorizationPurpose {
+  LOGIN
+  LINK
+  PROVIDER_VALIDATION
+}
+
 model IdentityProvider {
-  id                    String                     @id @default(cuid())
-  key                   String                     @unique
-  kind                  IdentityProviderKind
-  oidcProfile           OidcProviderProfile?
-  displayName           String
-  company               Company?                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  companyId             String?
-  issuer                String?
-  clientId              String?
-  clientSecretRef       String?
-  discoveryUrl          String?
-  authorizationEndpoint String?
-  tokenEndpoint         String?
-  jwksUri               String?
-  redirectUri           String?
-  allowedDomains        Json?
-  tenantMappingPolicy   Json?
-  claimMapping          Json?
-  groupRoleMapping      Json?
-  metadataRefreshedAt   DateTime?
-  metadataExpiresAt     DateTime?
-  enabled               Boolean                    @default(false)
-  externalIdentities    ExternalIdentity[]
-  authorizationRequests OidcAuthorizationRequest[]
-  createdAt             DateTime                   @default(now())
-  updatedAt             DateTime                   @updatedAt
+  id                       String                       @id @default(cuid())
+  key                      String                       @unique
+  kind                     IdentityProviderKind
+  oidcProfile              OidcProviderProfile?
+  displayName              String
+  company                  Company?                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId                String?
+  issuer                   String?
+  clientId                 String?
+  clientSecretRefEncrypted String?
+  secretKeyVersion         String?
+  discoveryUrl             String?
+  authorizationEndpoint    String?
+  tokenEndpoint            String?
+  jwksUri                  String?
+  redirectUri              String?
+  redirectUris             Json?
+  allowedDomains           Json?
+  organizationMappingMode  OidcOrganizationMappingMode  @default(STATIC)
+  tenantMappingPolicy      Json?
+  claimMapping             Json?
+  groupRoleMapping         Json?
+  defaultRole              UserRole                     @default(CLIENT)
+  sessionPolicy            OidcProviderSessionPolicy    @default(REVOKE_ON_DISABLE)
+  metadataRefreshedAt      DateTime?
+  metadataExpiresAt        DateTime?
+  validationStatus         OidcProviderValidationStatus @default(NOT_VALIDATED)
+  validationEvidenceRef    String?
+  createdBy                String?
+  updatedBy                String?
+  configurationVersion     Int                          @default(1)
+  enabled                  Boolean                      @default(false)
+  externalIdentities       ExternalIdentity[]
+  authorizationRequests    OidcAuthorizationRequest[]
+  tokenReplays             OidcTokenReplay[]
+  sessions                 UserSession[]
+  loginChallenges          LoginChallenge[]
+  ssoPolicies              OrganizationIdentityPolicy[] @relation("OrganizationSsoProvider")
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
 
   @@index([companyId, enabled])
   @@index([kind, enabled])
+  @@unique([id, companyId])
 }
 
 model ExternalIdentity {
@@ -148,16 +189,31 @@ model OidcAuthorizationRequest {
   providerId            String
   user                  User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId                String?
+  purpose               OidcAuthorizationPurpose @default(LOGIN)
   stateHash             String           @unique @db.VarChar(64)
   nonceHash             String           @db.VarChar(64)
   pkceVerifierEncrypted String
   redirectUri           String
+  returnTo              String?
   expiresAt             DateTime
   consumedAt            DateTime?
+  validatedAt           DateTime?
   createdAt             DateTime         @default(now())
 
   @@index([providerId, expiresAt])
   @@index([userId, expiresAt])
+}
+
+model OidcTokenReplay {
+  id          String           @id @default(cuid())
+  provider    IdentityProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  providerId  String
+  tokenIdHash String          @db.VarChar(64)
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+
+  @@unique([providerId, tokenIdHash])
+  @@index([expiresAt])
 }
 
 enum CredentialKind {
@@ -180,37 +236,43 @@ model UserCredential {
 }
 
 model UserSession {
-  id               String    @id @default(cuid())
-  tokenHash        String    @unique @db.VarChar(64)
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId           String
-  companyId        String?
-  createdAt        DateTime  @default(now())
-  lastActivityAt   DateTime  @default(now())
-  expiresAt        DateTime
-  idleExpiresAt    DateTime
-  revokedAt        DateTime?
-  rotatedFromId    String?
-  deviceLabel      String?   @db.VarChar(120)
-  authenticationAt DateTime  @default(now())
+  id                 String            @id @default(cuid())
+  tokenHash          String            @unique @db.VarChar(64)
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId             String
+  companyId          String?
+  identityProvider   IdentityProvider? @relation(fields: [identityProviderId], references: [id], onDelete: SetNull)
+  identityProviderId String?
+  createdAt          DateTime          @default(now())
+  lastActivityAt     DateTime          @default(now())
+  expiresAt          DateTime
+  idleExpiresAt      DateTime
+  revokedAt          DateTime?
+  rotatedFromId      String?
+  deviceLabel        String?           @db.VarChar(120)
+  authenticationAt   DateTime          @default(now())
 
   @@index([userId, revokedAt, expiresAt])
+  @@index([identityProviderId, revokedAt, expiresAt])
   @@index([expiresAt])
 }
 
 model LoginChallenge {
-  id         String    @id @default(cuid())
-  tokenHash  String    @unique @db.VarChar(64)
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     String
-  companyId  String?
-  redirectTo String?
-  attempts   Int       @default(0)
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id                 String            @id @default(cuid())
+  tokenHash          String            @unique @db.VarChar(64)
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId             String
+  companyId          String?
+  identityProvider   IdentityProvider? @relation(fields: [identityProviderId], references: [id], onDelete: Cascade)
+  identityProviderId String?
+  redirectTo         String?
+  attempts           Int               @default(0)
+  expiresAt          DateTime
+  consumedAt         DateTime?
+  createdAt          DateTime          @default(now())
 
   @@index([userId, expiresAt])
+  @@index([identityProviderId, expiresAt])
   @@index([expiresAt])
 }
 
@@ -318,16 +380,29 @@ enum OrganizationMfaRequirement {
   ALL_MEMBERS
 }
 
+enum OrganizationSsoRequirement {
+  DISABLED
+  OPTIONAL
+  REQUIRED
+}
+
 model OrganizationIdentityPolicy {
-  company         Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  companyId       String                     @id
-  mfaRequirement  OrganizationMfaRequirement @default(OPTIONAL)
-  gracePeriodDays Int                        @default(0)
-  enforcementAt   DateTime?
-  updatedBy       String?
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
-  exemptions      OrganizationMfaExemption[]
+  company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId           String                     @id
+  mfaRequirement      OrganizationMfaRequirement @default(OPTIONAL)
+  gracePeriodDays     Int                        @default(0)
+  enforcementAt       DateTime?
+  ssoRequirement      OrganizationSsoRequirement @default(DISABLED)
+  ssoProvider         IdentityProvider?          @relation("OrganizationSsoProvider", fields: [ssoProviderId, companyId], references: [id, companyId], onDelete: Restrict)
+  ssoProviderId       String?
+  ssoEnforcementAt    DateTime?
+  ssoGracePeriodDays  Int                        @default(0)
+  localLoginAllowed   Boolean                    @default(true)
+  configurationVersion Int                       @default(1)
+  updatedBy           String?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  exemptions          OrganizationMfaExemption[]
 }
 
 model OrganizationMfaExemption {
