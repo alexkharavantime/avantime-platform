@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { pbkdf2Sync } from 'node:crypto';
 import test from 'node:test';
 
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { createEmailVerification, verifyEmailToken } from '../../lib/email-verification';
 import { authenticateMfaChallenge, authenticatePrimaryCredential } from '../../lib/identity-auth';
@@ -15,6 +15,14 @@ import { acceptCompanyInvitation, inviteCompanyMember } from '../../lib/team';
 import { integrationDatabase } from './integration-test-environment';
 
 const MFA_KEY = 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY';
+
+const recoveryCodeHashSelect = {
+  codeHash: true,
+} satisfies Prisma.RecoveryCodeSelect;
+
+type StoredRecoveryCodeHash = Prisma.RecoveryCodeGetPayload<{
+  select: typeof recoveryCodeHashSelect;
+}>;
 
 function legacyPasswordHash(password: string, salt: string) {
   const digest = pbkdf2Sync(password, salt, 210_000, 32, 'sha256').toString('hex');
@@ -190,9 +198,9 @@ test('production identity persists opaque sessions, MFA, recovery, and reset lif
       enrollmentTime,
     );
     assert.equal(recoveryCodes.length, 10);
-    const storedRecovery = await prisma.recoveryCode.findMany({
+    const storedRecovery: StoredRecoveryCodeHash[] = await prisma.recoveryCode.findMany({
       where: { userId },
-      select: { codeHash: true },
+      select: recoveryCodeHashSelect,
     });
     assert.equal(storedRecovery.length, 10);
     assert.equal(

@@ -16,6 +16,58 @@ import { revokeAllUserSessions, type AppSession } from './session';
 
 const MFA_ENROLLMENT_TTL_MS = 10 * 60_000;
 
+const securityMfaMethodSelect = {
+  id: true,
+  kind: true,
+  status: true,
+  label: true,
+  confirmedAt: true,
+  createdAt: true,
+} satisfies Prisma.MfaMethodSelect;
+
+const securitySessionSelect = {
+  id: true,
+  deviceLabel: true,
+  createdAt: true,
+  lastActivityAt: true,
+  expiresAt: true,
+} satisfies Prisma.UserSessionSelect;
+
+const securityIdentityProviderSelect = {
+  id: true,
+  key: true,
+  kind: true,
+  oidcProfile: true,
+  displayName: true,
+  enabled: true,
+} satisfies Prisma.IdentityProviderSelect;
+
+const securityExternalIdentitySelect = {
+  id: true,
+  emailVerified: true,
+  createdAt: true,
+  provider: {
+    select: {
+      key: true,
+      displayName: true,
+      kind: true,
+    },
+  },
+} satisfies Prisma.ExternalIdentitySelect;
+
+type SecurityMfaMethod = Prisma.MfaMethodGetPayload<{
+  select: typeof securityMfaMethodSelect;
+}>;
+type SecuritySession = Prisma.UserSessionGetPayload<{
+  select: typeof securitySessionSelect;
+}>;
+type SecurityIdentityProvider = Prisma.IdentityProviderGetPayload<{
+  select: typeof securityIdentityProviderSelect;
+}>;
+type SecurityExternalIdentity = Prisma.ExternalIdentityGetPayload<{
+  select: typeof securityExternalIdentitySelect;
+}>;
+
 export class IdentityOperationError extends Error {
   constructor(
     readonly code:
@@ -51,40 +103,44 @@ function recoveryRows(userId: string, codes: string[], batchId: string) {
 export async function getSecurityOverview(session: AppSession) {
   const prisma = requireDatabase((await getPrisma()) as PrismaClient | null);
   const now = new Date();
+  const methodsQuery: Prisma.PrismaPromise<SecurityMfaMethod[]> = prisma.mfaMethod.findMany({
+    where: { userId: session.userId, status: { in: ['PENDING', 'ACTIVE'] } },
+    select: securityMfaMethodSelect,
+    orderBy: { createdAt: 'desc' },
+  });
+  const sessionsQuery: Prisma.PrismaPromise<SecuritySession[]> = prisma.userSession.findMany({
+    where: {
+      userId: session.userId,
+      revokedAt: null,
+      expiresAt: { gt: now },
+      idleExpiresAt: { gt: now },
+    },
+    select: securitySessionSelect,
+    orderBy: { lastActivityAt: 'desc' },
+    take: 50,
+  });
+  const providersQuery: Prisma.PrismaPromise<SecurityIdentityProvider[]> =
+    prisma.identityProvider.findMany({
+      where: {
+        kind: { in: ['OIDC', 'SAML'] },
+        OR: [{ companyId: null }, ...(session.companyId ? [{ companyId: session.companyId }] : [])],
+      },
+      select: securityIdentityProviderSelect,
+      orderBy: { displayName: 'asc' },
+    });
+  const externalIdentitiesQuery: Prisma.PrismaPromise<SecurityExternalIdentity[]> =
+    prisma.externalIdentity.findMany({
+      where: { userId: session.userId },
+      select: securityExternalIdentitySelect,
+      orderBy: { createdAt: 'asc' },
+    });
   const [methods, recoveryRemaining, sessions, policy, exemption, providers, externalIdentities] =
     await Promise.all([
-      prisma.mfaMethod.findMany({
-        where: { userId: session.userId, status: { in: ['PENDING', 'ACTIVE'] } },
-        select: {
-          id: true,
-          kind: true,
-          status: true,
-          label: true,
-          confirmedAt: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
+      methodsQuery,
       prisma.recoveryCode.count({
         where: { userId: session.userId, usedAt: null },
       }),
-      prisma.userSession.findMany({
-        where: {
-          userId: session.userId,
-          revokedAt: null,
-          expiresAt: { gt: now },
-          idleExpiresAt: { gt: now },
-        },
-        select: {
-          id: true,
-          deviceLabel: true,
-          createdAt: true,
-          lastActivityAt: true,
-          expiresAt: true,
-        },
-        orderBy: { lastActivityAt: 'desc' },
-        take: 50,
-      }),
+      sessionsQuery,
       session.companyId
         ? prisma.organizationIdentityPolicy.findUnique({
             where: { companyId: session.companyId },
@@ -100,38 +156,10 @@ export async function getSecurityOverview(session: AppSession) {
             },
           })
         : null,
-      prisma.identityProvider.findMany({
-        where: {
-          kind: { in: ['OIDC', 'SAML'] },
-          OR: [
-            { companyId: null },
-            ...(session.companyId ? [{ companyId: session.companyId }] : []),
-          ],
-        },
-        select: {
-          id: true,
-          key: true,
-          kind: true,
-          oidcProfile: true,
-          displayName: true,
-          enabled: true,
-        },
-        orderBy: { displayName: 'asc' },
-      }),
-      prisma.externalIdentity.findMany({
-        where: { userId: session.userId },
-        select: {
-          id: true,
-          emailVerified: true,
-          createdAt: true,
-          provider: {
-            select: { key: true, displayName: true, kind: true },
-          },
-        },
-        orderBy: { createdAt: 'asc' },
-      }),
+      providersQuery,
+      externalIdentitiesQuery,
     ]);
-  const hasActiveMfa = methods.some((method: { status: string }) => method.status === 'ACTIVE');
+  const hasActiveMfa = methods.some((method) => method.status === 'ACTIVE');
   const policyDecision = evaluateMfaPolicy({
     role: session.role,
     hasActiveMfa,
