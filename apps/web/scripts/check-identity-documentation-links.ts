@@ -6,6 +6,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const documents = [
   'README.md',
   'docs/IDENTITY_ARCHITECTURE.md',
+  'docs/AUTHORIZATION_ARCHITECTURE.md',
   'docs/IDENTITY_PRODUCTION_CEREMONY.md',
   'docs/authentication.md',
   'docs/SECURITY_HARDENING.md',
@@ -18,6 +19,8 @@ const documents = [
   'docs/PROJECT_STATUS.md',
   'docs/tasks/README.md',
   'docs/tasks/TASK-009.md',
+  'docs/tasks/TASK-010.md',
+  'docs/tasks/TASK-011.md',
 ];
 
 async function main() {

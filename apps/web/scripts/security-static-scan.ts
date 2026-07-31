@@ -25,13 +25,28 @@ async function main() {
   for (const file of files) {
     if (mode === 'migrations' && !file.endsWith('/migration.sql')) continue;
     if (
-      (mode === 'identity' || mode === 'credentials' || mode === 'client-tenant') &&
+      (mode === 'identity' ||
+        mode === 'credentials' ||
+        mode === 'client-tenant' ||
+        mode === 'permissions') &&
+      mode !== 'permissions' &&
       !file.startsWith('apps/web/app/api/auth/') &&
       !file.startsWith('apps/web/app/api/account/security/') &&
       !file.startsWith('apps/web/components/portal/') &&
       !file.startsWith('apps/web/lib/identity') &&
       !file.startsWith('apps/web/lib/oidc') &&
       file !== '.env.example'
+    ) {
+      continue;
+    }
+    if (
+      mode === 'permissions' &&
+      !file.startsWith('apps/web/app/api/') &&
+      !file.startsWith('apps/web/lib/organization-') &&
+      file !== 'apps/web/lib/team.ts' &&
+      file !== 'apps/web/lib/portal-navigation.ts' &&
+      !file.startsWith('apps/web/lib/oidc') &&
+      file !== 'apps/web/components/portal/team-management.tsx'
     ) {
       continue;
     }
@@ -98,6 +113,41 @@ async function main() {
       )
     ) {
       findings.push(`${file}: production credential has a source-code fallback`);
+    }
+    if (mode === 'permissions' && file.startsWith('apps/web/app/api/')) {
+      const inlineRoleChecks = content.match(
+        /\b(?:session|authorization\.session|user|identity)\.role\s*(?:===|!==)\s*['"](?:ADMIN|CLIENT)['"]/gu,
+      );
+      const callbackProjection =
+        file === 'apps/web/app/api/auth/oidc/callback/route.ts' &&
+        inlineRoleChecks?.length === 1 &&
+        inlineRoleChecks[0] === "identity.role === 'ADMIN'";
+      if (inlineRoleChecks?.length && !callbackProjection) {
+        findings.push(`${file}: inline API role authorization check`);
+      }
+    }
+    if (
+      mode === 'permissions' &&
+      file.startsWith('apps/web/lib/oidc') &&
+      /(?:defaultRole|groupRoleMapping|groupMapping)[^\n]{0,120}(?:OWNER|['"]OWNER['"])/u.test(
+        content,
+      )
+    ) {
+      findings.push(`${file}: OIDC role mapping may assign OWNER`);
+    }
+    if (
+      mode === 'permissions' &&
+      file === 'apps/web/lib/organization-permissions.ts' &&
+      /(?:allowed|permission)[^\n]{0,80}(?:\?\?\s*true|\|\|\s*true)/u.test(content)
+    ) {
+      findings.push(`${file}: permission decision contains a permissive fallback`);
+    }
+    if (
+      mode === 'permissions' &&
+      file === 'apps/web/lib/organization-audit.ts' &&
+      /safeMetadata\([^)]*(?:email|documentText|requestContent|token|secret|claims)/iu.test(content)
+    ) {
+      findings.push(`${file}: organization audit may accept sensitive metadata`);
     }
   }
 

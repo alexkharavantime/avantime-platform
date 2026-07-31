@@ -128,6 +128,7 @@ export function AdminDocumentManagement() {
     try {
       const response = await fetch(`/api/documents/upload?id=${encodeURIComponent(document.id)}`, {
         method: 'DELETE',
+        headers: { 'x-avantime-confirmation': 'DELETE DOCUMENT' },
       });
 
       const result = await response.json();

@@ -109,21 +109,28 @@ export const test = base.extend<BrowserFixtures>({
   loginAs: async ({ page }, provide) => {
     await provide(async (identity) => {
       const credentials = browserIdentities[identity];
-      const target =
-        identity === 'admin' || identity === 'identityAdmin' ? /\/admin$/ : /\/portal$/;
+      const targetPath =
+        identity === 'admin' || identity === 'identityAdmin' ? '/admin' : '/portal';
       await page.goto('/portal/login');
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        await page.getByLabel('Email').fill(credentials.email);
-        await page.getByLabel('Пароль').fill(credentials.password);
-        await page.getByRole('button', { name: 'Войти' }).click();
-        try {
-          await page.waitForURL(target, { timeout: 10_000 });
-          await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-          return;
-        } catch (error) {
-          if (attempt === 2) throw error;
-        }
-      }
+      await page.getByLabel('Email').fill(credentials.email);
+      await page.getByLabel('Пароль').fill(credentials.password);
+      const loginResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/auth/login' &&
+          response.request().method() === 'POST',
+      );
+      const targetPage = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === targetPath &&
+          response.request().resourceType() === 'fetch' &&
+          response.ok(),
+        { timeout: 50_000 },
+      );
+      await page.getByRole('button', { name: 'Войти' }).click();
+      expect((await loginResponse).ok()).toBe(true);
+      await targetPage;
+      await expect(page).toHaveURL(new RegExp(`${targetPath.replace('/', '\\/')}$`, 'u'));
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     });
   },
 

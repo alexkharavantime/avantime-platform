@@ -3,10 +3,12 @@ import { NextResponse } from 'next/server';
 import { updateOrganizationMfaPolicy } from '../../../../../lib/identity-management';
 import { identityCorrelationId, parseIdentityMutation } from '../../../../../lib/identity-route';
 import { recordIdentitySecurityEvent } from '../../../../../lib/identity-security-events';
-import { authorizePortalApi } from '../../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 
 export async function PUT(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('identity.policy.manage', {
+    correlationId: identityCorrelationId(request),
+  });
   if (authorization.response) return authorization.response;
   const parsed = await parseIdentityMutation(request);
   if (parsed.response) return parsed.response;

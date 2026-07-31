@@ -5,21 +5,11 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import type { AppSession } from '../../lib/session';
-
-const navigation = [
-  { href: '/portal', label: 'Главная', exact: true },
-  { href: '/portal/requests', label: 'Обращения', exact: false },
-  { href: '/portal/documents', label: 'Документы', exact: false },
-  { href: '/portal/knowledge', label: 'База знаний', exact: false },
-  { href: '/portal/company', label: 'Компания', exact: false },
-  { href: '/portal/team', label: 'Команда', exact: false },
-  { href: '/portal/notifications', label: 'Уведомления', exact: false },
-  { href: '/portal/settings', label: 'Настройки', exact: false },
-] as const;
+import type { PortalNavigationItem } from '../../lib/portal-navigation';
 
 const publicPaths = new Set(['/portal/login', '/portal/forgot-password', '/portal/reset-password']);
 
-function titleForPath(pathname: string) {
+function titleForPath(pathname: string, navigation: readonly PortalNavigationItem[]) {
   if (/^\/portal\/requests\/[^/]+$/.test(pathname)) return 'Обращение';
   if (/^\/portal\/documents\/[^/]+$/.test(pathname)) return 'Документ';
   return (
@@ -31,11 +21,11 @@ function titleForPath(pathname: string) {
 
 function PortalNavigation({
   pathname,
-  role,
+  navigation,
   onNavigate,
 }: {
   pathname: string;
-  role: AppSession['role'];
+  navigation: readonly PortalNavigationItem[];
   onNavigate?: () => void;
 }) {
   return (
@@ -52,31 +42,26 @@ function PortalNavigation({
             className={`block rounded-xl px-4 py-3 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 ${
               active
                 ? 'bg-white text-slate-950'
-                : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                : item.emphasized
+                  ? 'mt-4 border border-white/15 text-cyan-200 hover:bg-white/10'
+                  : 'text-slate-300 hover:bg-white/10 hover:text-white'
             }`}
           >
             {item.label}
           </Link>
         );
       })}
-      {role === 'ADMIN' && (
-        <Link
-          href="/admin"
-          onClick={onNavigate}
-          className="mt-4 block rounded-xl border border-white/15 px-4 py-3 text-sm font-bold text-cyan-200 transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
-        >
-          Администрирование
-        </Link>
-      )}
     </nav>
   );
 }
 
 export function PortalShell({
   session,
+  navigation,
   children,
 }: {
   session: AppSession | null;
+  navigation: readonly PortalNavigationItem[];
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -127,7 +112,7 @@ export function PortalShell({
 
   if (publicPaths.has(pathname)) return children;
 
-  const title = titleForPath(pathname);
+  const title = titleForPath(pathname, navigation);
   const initials = session?.name
     .split(/\s+/)
     .filter(Boolean)
@@ -154,7 +139,7 @@ export function PortalShell({
             <span className="block text-xs text-slate-400">Кабинет клиента</span>
           </span>
         </Link>
-        <PortalNavigation pathname={pathname} role={session?.role ?? 'CLIENT'} />
+        <PortalNavigation pathname={pathname} navigation={navigation} />
         <p className="mt-auto px-3 text-xs leading-5 text-slate-400">
           Данные доступны только участникам вашей компании.
         </p>
@@ -190,7 +175,7 @@ export function PortalShell({
             </div>
             <PortalNavigation
               pathname={pathname}
-              role={session?.role ?? 'CLIENT'}
+              navigation={navigation}
               onNavigate={() => setMobileOpen(false)}
             />
           </aside>

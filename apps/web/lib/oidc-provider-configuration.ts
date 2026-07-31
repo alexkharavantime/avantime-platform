@@ -7,6 +7,7 @@ import {
   getIdentityEncryptionKey,
 } from './identity-encryption';
 import { recordIdentitySecurityEvent } from './identity-security-events';
+import { createOrganizationSecurityNotification } from './organization-audit';
 import {
   discoverOidcProvider,
   environmentOidcSecretResolver,
@@ -14,6 +15,10 @@ import {
   type OidcSecretResolver,
 } from './oidc-http';
 import type { AppSession } from './session';
+import {
+  evaluateOrganizationPermission,
+  type OrganizationPermission,
+} from './organization-permissions';
 
 const SAFE_KEY = /^[a-z0-9][a-z0-9._-]{1,99}$/u;
 const SAFE_TEXT = /^[\p{L}\p{N}][\p{L}\p{N} ._()/-]{1,119}$/u;
@@ -103,8 +108,9 @@ type OidcProviderRow = Prisma.IdentityProviderGetPayload<{
   select: typeof providerSafeSelect;
 }>;
 
-function requireAdminTenant(session: AppSession) {
-  if (session.role !== 'ADMIN' || !session.companyId) {
+function requirePermissionTenant(session: AppSession, permission: OrganizationPermission) {
+  const decision = evaluateOrganizationPermission(session, permission);
+  if (!decision.allowed || !session.companyId) {
     throw new OidcProviderConfigurationError('ADMIN_TENANT_REQUIRED');
   }
   return session.companyId;
@@ -334,7 +340,7 @@ async function loadProvider(prisma: PrismaClient, companyId: string, id: string)
 }
 
 export async function listOidcProviders(session: AppSession) {
-  const companyId = requireAdminTenant(session);
+  const companyId = requirePermissionTenant(session, 'identity.providers.manage');
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
   const rows = await prisma.identityProvider.findMany({
@@ -346,14 +352,14 @@ export async function listOidcProviders(session: AppSession) {
 }
 
 export async function getOidcProvider(session: AppSession, id: string) {
-  const companyId = requireAdminTenant(session);
+  const companyId = requirePermissionTenant(session, 'identity.providers.manage');
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
   return toSafeOidcProvider(await loadProvider(prisma, companyId, id));
 }
 
 export async function getOrganizationSsoPolicy(session: AppSession) {
-  const companyId = requireAdminTenant(session);
+  const companyId = requirePermissionTenant(session, 'identity.policy.manage');
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
   const policy = await prisma.organizationIdentityPolicy.findUnique({
@@ -382,7 +388,7 @@ export async function createOidcProvider(input: {
   configuration: OidcProviderConfigurationInput;
   correlationId: string;
 }) {
-  const companyId = requireAdminTenant(input.session);
+  const companyId = requirePermissionTenant(input.session, 'identity.providers.manage');
   const normalized = validateOidcProviderConfigurationInput(input.configuration);
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
@@ -446,7 +452,7 @@ export async function updateOidcProvider(input: {
   controlledIssuerRevalidation: boolean;
   correlationId: string;
 }) {
-  const companyId = requireAdminTenant(input.session);
+  const companyId = requirePermissionTenant(input.session, 'identity.providers.manage');
   const normalized = validateOidcProviderConfigurationInput(input.configuration);
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
@@ -532,7 +538,7 @@ export async function setOidcProviderEnabled(input: {
   correlationId: string;
   secretResolver?: OidcSecretResolver;
 }) {
-  const companyId = requireAdminTenant(input.session);
+  const companyId = requirePermissionTenant(input.session, 'identity.providers.manage');
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
   const provider = await loadProvider(prisma, companyId, input.providerId);
@@ -623,7 +629,7 @@ export async function refreshOidcProviderMetadata(input: {
   fetcher?: OidcFetch;
   now?: Date;
 }) {
-  const companyId = requireAdminTenant(input.session);
+  const companyId = requirePermissionTenant(input.session, 'identity.providers.manage');
   const prisma = (await getPrisma()) as PrismaClient | null;
   if (!prisma) throw new OidcProviderConfigurationError('DATABASE_UNAVAILABLE');
   const provider = await loadProvider(prisma, companyId, input.providerId);
@@ -696,7 +702,7 @@ export async function recordOidcTenantValidationFromCallback(input: {
   correlationId: string;
   now?: Date;
 }) {
-  const companyId = requireAdminTenant(input.session);
+  const companyId = requirePermissionTenant(input.session, 'identity.providers.manage');
   const evidenceReference = validateOidcEvidenceReference(
     `oidc-validation:${input.authorizationRequestId}`,
   );
@@ -773,7 +779,7 @@ export async function updateOrganizationSsoPolicy(input: {
   expectedVersion: number;
   correlationId: string;
 }) {
-  const companyId = requireAdminTenant(input.session);
+  const companyId = requirePermissionTenant(input.session, 'identity.policy.manage');
   if (
     !Number.isSafeInteger(input.gracePeriodDays) ||
     input.gracePeriodDays < 0 ||
@@ -848,6 +854,13 @@ export async function updateOrganizationSsoPolicy(input: {
     notify: true,
     target: { type: 'organization-policy', id: companyId },
   });
+  if (input.requirement === 'REQUIRED') {
+    await createOrganizationSecurityNotification({
+      session: input.session,
+      targetUserId: input.session.userId,
+      title: 'Политика обязательного SSO изменена',
+    });
+  }
   return {
     requirement: policy.ssoRequirement,
     providerId: policy.ssoProviderId,

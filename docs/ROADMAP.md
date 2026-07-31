@@ -596,6 +596,8 @@ security/dependency gate, назначения owners и environment evidence.
 - TASK-009 identity foundation и TASK-010 repository OIDC rollout boundary: source-scoped
   credentials, opaque sessions, TOTP/recovery, organization MFA/SSO policy, production callback,
   tenant-bound provider lifecycle и deterministic mock без реального IdP tenant acceptance;
+- TASK-011 tenant-aware system roles, deny-by-default permission service, OWNER governance,
+  versioned membership lifecycle and permission-aware portal navigation;
 - целевая архитектура модулей и AI;
 - продуктовая концепция портала и интеграций.
 
@@ -604,7 +606,8 @@ security/dependency gate, назначения owners и environment evidence.
 - завершить архитектуру 2.x;
 - выполнить production identity/OIDC ceremonies и validate реальные Entra/Google/generic OIDC
   tenants по evidence template;
-- внедрить tenant-контекст во все данные и запросы;
+- завершить tenant ownership migration для legacy platform-wide articles и других моделей без
+  organization owner;
 - стабилизировать API и события;
 - создать Developer Platform и плагинный runtime;
 - поддержать локальные развёртывания;

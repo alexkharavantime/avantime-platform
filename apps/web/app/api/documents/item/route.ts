@@ -7,6 +7,7 @@ import {
   toDocumentApiItem,
 } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
+import { hasOrganizationPermission } from '../../../../lib/organization-permissions';
 
 export async function GET(request: Request) {
   const authorization = await authorizeDocumentReadApi();
@@ -24,9 +25,8 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    document:
-      authorization.session.role === 'ADMIN'
-        ? toDocumentApiItem(document)
-        : toClientDocumentApiItem(document),
+    document: hasOrganizationPermission(authorization.session, 'documents.manage')
+      ? toDocumentApiItem(document)
+      : toClientDocumentApiItem(document),
   });
 }

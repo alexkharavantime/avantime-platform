@@ -27,22 +27,29 @@ export async function getAccountProfile(session: AppSession): Promise<AccountPro
       const prisma = await getPrisma();
       const user = await prisma?.user.findUnique({
         where: { id: session.userId },
-        include: { company: true },
+        include: {
+          memberships: {
+            where: { companyId: session.companyId, active: true, status: 'ACTIVE' },
+            include: { company: true },
+            take: 1,
+          },
+        },
       });
+      const membership = user?.memberships[0];
       if (
         user &&
+        membership &&
         user.active &&
-        user.email.toLowerCase() === session.email.toLowerCase() &&
-        (user.companyId ?? undefined) === session.companyId
+        user.email.toLowerCase() === session.email.toLowerCase()
       ) {
         return {
           name: user.name,
           email: user.email,
           phone: user.phone ?? '',
           jobTitle: user.jobTitle ?? '',
-          companyName: user.company?.name ?? session.company,
-          registrationNumber: user.company?.registrationNumber ?? '',
-          address: user.company?.address ?? '',
+          companyName: membership.company.name ?? session.company,
+          registrationNumber: membership.company.registrationNumber ?? '',
+          address: membership.company.address ?? '',
         };
       }
     } catch {
@@ -68,15 +75,28 @@ export async function getAccountProfile(session: AppSession): Promise<AccountPro
     : demoProfile;
 }
 
-export async function updateAccountProfile(session: AppSession, input: AccountProfile) {
+export async function updateAccountProfile(
+  session: AppSession,
+  input: AccountProfile,
+  options: { allowCompanyUpdate?: boolean } = {},
+) {
   if (process.env.DATABASE_URL) {
     const prisma = await getPrisma();
     if (prisma) {
-      const user = await prisma.user.findUnique({ where: { id: session.userId } });
+      const user = await prisma.user.findUnique({
+        where: { id: session.userId },
+        include: {
+          memberships: {
+            where: { companyId: session.companyId, active: true, status: 'ACTIVE' },
+            select: { companyId: true },
+            take: 1,
+          },
+        },
+      });
       if (
         user?.active &&
         user.email.toLowerCase() === session.email.toLowerCase() &&
-        (user.companyId ?? undefined) === session.companyId
+        user.memberships[0]?.companyId === session.companyId
       ) {
         await prisma.$transaction([
           prisma.user.update({
@@ -87,10 +107,10 @@ export async function updateAccountProfile(session: AppSession, input: AccountPr
               jobTitle: input.jobTitle || null,
             },
           }),
-          ...(user.companyId
+          ...(options.allowCompanyUpdate && session.companyId
             ? [
                 prisma.company.update({
-                  where: { id: user.companyId },
+                  where: { id: session.companyId },
                   data: {
                     name: input.companyName,
                     registrationNumber: input.registrationNumber || null,
@@ -100,6 +120,7 @@ export async function updateAccountProfile(session: AppSession, input: AccountPr
               ]
             : []),
         ]);
+        return input;
       } else {
         throw new Error('Account membership is no longer valid.');
       }

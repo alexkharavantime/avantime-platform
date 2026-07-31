@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 
 import { getValidatedPortalSession } from '../../../lib/portal-session';
 import { listRequests } from '../../../lib/requests-store';
+import { hasOrganizationPermission } from '../../../lib/organization-permissions';
 
 const statusLabels = {
   NEW: 'Новое',
@@ -14,6 +15,7 @@ const statusLabels = {
 export default async function PortalRequestsPage() {
   const session = await getValidatedPortalSession();
   if (!session) redirect('/portal/login?returnTo=/portal/requests');
+  if (!hasOrganizationPermission(session, 'requests.view')) redirect('/portal');
   const requests = await listRequests(session);
 
   return (
@@ -24,12 +26,14 @@ export default async function PortalRequestsPage() {
           <h1 className="mt-3 text-4xl font-black tracking-tight">Обращения</h1>
           <p className="mt-3 text-slate-600">Заявки, сообщения и вложения вашей компании.</p>
         </div>
-        <Link
-          href="/portal/requests/new"
-          className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white"
-        >
-          Создать обращение
-        </Link>
+        {hasOrganizationPermission(session, 'requests.create') && (
+          <Link
+            href="/portal/requests/new"
+            className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white"
+          >
+            Создать обращение
+          </Link>
+        )}
       </div>
       {requests.length === 0 ? (
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-10 text-center">

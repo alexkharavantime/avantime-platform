@@ -24,6 +24,11 @@ TASK-010 расширяет identity suite полным deterministic Authorizat
 Google Workspace `hd`, organization SSO policy и tenant-isolated ADMIN provider lifecycle.
 Deterministic mock evidence не означает validation реального provider tenant.
 
+TASK-011 добавляет `test:permissions`, PostgreSQL authorization integration и Playwright role
+governance. Проверяются пять system roles, deny-by-default, delegation/last OWNER, membership
+version и session revocation, suspension/removal, SSO OWNER denial, tenant mismatch, audit/
+notification redaction, permission-aware navigation и protected deep links.
+
 Identity-specific commands:
 
 ```bash
@@ -33,6 +38,8 @@ npm run security:identity-scan
 npm run security:forbidden-credential-scan
 npm run security:default-secret-scan
 npm run security:client-tenant-scan
+npm run test:permissions
+npm run security:permission-scan
 ```
 
 Каждый integration/browser runner использует собственный guarded namespace или database.

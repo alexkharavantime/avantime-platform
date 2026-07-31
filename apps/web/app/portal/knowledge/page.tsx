@@ -1,10 +1,16 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import { KnowledgeAsk } from '../../../components/knowledge-ask';
 import { PortalDocumentSearch } from '../../../components/portal/document-search';
 import { listKnowledgeArticles } from '../../../lib/knowledge-store';
+import { getValidatedPortalSession } from '../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../lib/organization-permissions';
 
 export default async function PortalKnowledgePage() {
+  const session = await getValidatedPortalSession();
+  if (!session) redirect('/portal/login?returnTo=/portal/knowledge');
+  if (!hasOrganizationPermission(session, 'knowledge.view')) redirect('/portal');
   const articles = await listKnowledgeArticles();
   return (
     <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8">

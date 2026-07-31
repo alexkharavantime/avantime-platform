@@ -37,14 +37,28 @@ test.describe.serial('production identity browser lifecycle', () => {
     await submitPrimary(page, browserIdentities.identityClient.email, currentPassword);
     await expect(page).toHaveURL(/\/portal$/u);
     await page.goto('/portal/settings/security');
+    const enrollmentResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/account/security/mfa/totp/enroll' &&
+        response.request().method() === 'POST',
+      { timeout: 50_000 },
+    );
     await page.getByRole('button', { name: 'Подключить TOTP' }).click();
+    expect((await enrollmentResponse).ok()).toBe(true);
     const secretBlock = page.locator('code').first();
     await expect(secretBlock).toBeVisible();
     secret = (await secretBlock.textContent())?.trim() ?? '';
     expect(secret).toMatch(/^[A-Z2-7]+$/u);
     const counter = Math.floor(Date.now() / 1000 / 30);
     await page.getByLabel('Код подтверждения').fill(totpAtCounter(secret, counter));
+    const confirmationResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/account/security/mfa/totp/confirm' &&
+        response.request().method() === 'POST',
+      { timeout: 50_000 },
+    );
     await page.getByRole('button', { name: 'Подтвердить и включить' }).click();
+    expect((await confirmationResponse).ok()).toBe(true);
     const codeItems = page.locator('li').filter({ hasText: /^[A-Z0-9]{4}-/u });
     await expect(codeItems.first()).toBeVisible();
     recoveryCodes = await codeItems.allTextContents();
@@ -131,7 +145,15 @@ test.describe.serial('production identity browser lifecycle', () => {
 
     await page.goto('/portal/forgot-password');
     await page.getByLabel('Email').fill(browserIdentities.identityClient.email);
+    const resetPasswordPage = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/portal/reset-password' &&
+        response.request().resourceType() === 'fetch' &&
+        response.ok(),
+      { timeout: 50_000 },
+    );
     await page.getByRole('button', { name: 'Получить инструкцию' }).click();
+    await resetPasswordPage;
     await expect(page).toHaveURL(/\/portal\/reset-password$/u);
     await expect(page.getByLabel('Код восстановления')).not.toHaveValue('');
     const resetPassword = 'browser-identity-client-reset-password';

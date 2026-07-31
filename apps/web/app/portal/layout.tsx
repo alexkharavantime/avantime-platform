@@ -6,6 +6,7 @@ import { PortalShell } from '../../components/portal/portal-shell';
 import { appendPortalAudit } from '../../lib/portal-audit';
 import { getValidatedPortalSession } from '../../lib/portal-session';
 import { safeReturnTo } from '../../lib/safe-return-to';
+import { buildPortalNavigation } from '../../lib/portal-navigation';
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const requestHeaders = await headers();
@@ -28,5 +29,9 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     );
   }
 
-  return <PortalShell session={session}>{children}</PortalShell>;
+  return (
+    <PortalShell session={session} navigation={buildPortalNavigation(session)}>
+      {children}
+    </PortalShell>
+  );
 }

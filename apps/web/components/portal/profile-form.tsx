@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import type { AccountProfile } from '../../lib/account';
 
-export function ProfileForm({ initialProfile }: { initialProfile: AccountProfile }) {
+export function ProfileForm({
+  initialProfile,
+  canUpdateCompany,
+}: {
+  initialProfile: AccountProfile;
+  canUpdateCompany: boolean;
+}) {
   const [profile, setProfile] = useState(initialProfile);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [message, setMessage] = useState('');
@@ -53,9 +59,9 @@ export function ProfileForm({ initialProfile }: { initialProfile: AccountProfile
       <div className="border-t border-slate-200 pt-6">
         <h2 className="text-2xl font-black">Компания</h2>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
-          {field('companyName', 'Название компании')}
-          {field('registrationNumber', 'Регистрационный номер')}
-          <div className="md:col-span-2">{field('address', 'Адрес')}</div>
+          {field('companyName', 'Название компании', !canUpdateCompany)}
+          {field('registrationNumber', 'Регистрационный номер', !canUpdateCompany)}
+          <div className="md:col-span-2">{field('address', 'Адрес', !canUpdateCompany)}</div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-4">

@@ -2,10 +2,13 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { NewRequestForm } from '../../../../components/portal/new-request-form';
 import { getValidatedPortalSession } from '../../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../../lib/organization-permissions';
 
 export const metadata: Metadata = { title: 'Новое обращение — Avantime' };
 export default async function NewRequestPage() {
-  if (!(await getValidatedPortalSession())) redirect('/portal/login?returnTo=/portal/requests/new');
+  const session = await getValidatedPortalSession();
+  if (!session) redirect('/portal/login?returnTo=/portal/requests/new');
+  if (!hasOrganizationPermission(session, 'requests.create')) redirect('/portal/requests');
   return (
     <section className="py-10">
       <div className="mx-auto max-w-3xl px-6">

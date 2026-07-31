@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 
 import {
-  authorizeDocumentApi,
+  authorizeDocumentDeleteApi,
   authorizeDocumentReadApi,
+  authorizeDocumentUploadApi,
 } from '../../../../lib/document-authorization';
 import {
   getDocumentTenantContext,
@@ -17,6 +18,8 @@ import {
 import { detectDocumentFile } from '../../../../lib/document-file-detection';
 import { loadDocumentConfiguration } from '../../../../lib/document-configuration';
 import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
+import { authorizeCriticalOrganizationAction } from '../../../../lib/organization-authorization';
+import { hasOrganizationPermission } from '../../../../lib/organization-permissions';
 
 export const runtime = 'nodejs';
 
@@ -30,7 +33,7 @@ export async function GET() {
 
     return NextResponse.json({
       documents: documents.map((document) =>
-        authorization.session.role === 'ADMIN'
+        hasOrganizationPermission(authorization.session, 'documents.manage')
           ? toDocumentApiItem(document)
           : toClientDocumentApiItem(document),
       ),
@@ -44,7 +47,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentUploadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
@@ -158,8 +161,15 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentDeleteApi();
     if (authorization.response) return authorization.response;
+
+    const critical = await authorizeCriticalOrganizationAction(authorization.session, {
+      action: 'documents.delete',
+      confirmation: request.headers.get('x-avantime-confirmation'),
+      correlationId: request.headers.get('x-avantime-correlation-id'),
+    });
+    if (critical.response) return critical.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
     const id = new URL(request.url).searchParams.get('id');

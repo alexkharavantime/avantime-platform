@@ -1,8 +1,16 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import type { OrganizationRole } from '../../lib/session';
 
-export function TeamInviteForm() {
+const roleLabels: Record<Exclude<OrganizationRole, 'OWNER'>, string> = {
+  ADMIN: 'Администратор',
+  MANAGER: 'Менеджер',
+  MEMBER: 'Участник',
+  VIEWER: 'Наблюдатель',
+};
+
+export function TeamInviteForm({ roles }: { roles: Exclude<OrganizationRole, 'OWNER'>[] }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -18,6 +26,7 @@ export function TeamInviteForm() {
         name: form.get('name'),
         email: form.get('email'),
         jobTitle: form.get('jobTitle'),
+        role: form.get('role'),
       }),
     });
     const data = (await response.json()) as { error?: string };
@@ -30,7 +39,7 @@ export function TeamInviteForm() {
   return (
     <form onSubmit={submit} className="rounded-3xl border border-slate-200 bg-white p-6">
       <h2 className="text-2xl font-black">Добавить сотрудника</h2>
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <label className="grid gap-2">
           <span className="text-sm font-bold text-slate-700">Имя</span>
           <input
@@ -39,6 +48,16 @@ export function TeamInviteForm() {
             autoComplete="name"
             className="rounded-2xl border border-slate-300 px-4 py-3"
           />
+        </label>
+        <label className="grid gap-2">
+          <span className="text-sm font-bold text-slate-700">Роль</span>
+          <select name="role" className="rounded-2xl border border-slate-300 px-4 py-3">
+            {roles.map((role) => (
+              <option key={role} value={role}>
+                {roleLabels[role]}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="grid gap-2">
           <span className="text-sm font-bold text-slate-700">Email</span>

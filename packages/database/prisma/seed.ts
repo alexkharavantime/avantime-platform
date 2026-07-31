@@ -43,8 +43,19 @@ async function main() {
 
   await prisma.organizationMembership.upsert({
     where: { userId_companyId: { userId: user.id, companyId: company.id } },
-    update: { active: true, role: 'CLIENT' },
-    create: { userId: user.id, companyId: company.id, role: 'CLIENT' },
+    update: {
+      active: true,
+      role: 'CLIENT',
+      organizationRole: 'MEMBER',
+      status: 'ACTIVE',
+    },
+    create: {
+      userId: user.id,
+      companyId: company.id,
+      role: 'CLIENT',
+      organizationRole: 'MEMBER',
+      status: 'ACTIVE',
+    },
   });
   await prisma.userCredential.upsert({
     where: { userId_kind: { userId: user.id, kind: 'PASSWORD' } },

@@ -2,7 +2,12 @@ import { getPrisma } from '@avantime/database';
 import { NextResponse } from 'next/server';
 
 import { authorizeSession } from './authorization';
-import { getSession, type AppSession } from './session';
+import {
+  getSession,
+  type AppSession,
+  type MembershipStatus,
+  type OrganizationRole,
+} from './session';
 
 type PortalIdentity = {
   id: string;
@@ -10,7 +15,13 @@ type PortalIdentity = {
   role: 'CLIENT' | 'ADMIN';
   active: boolean;
   disabledAt?: Date | null;
-  memberships: Array<{ companyId: string; active: boolean }>;
+  memberships: Array<{
+    companyId: string;
+    active: boolean;
+    organizationRole?: OrganizationRole;
+    status?: MembershipStatus;
+    version?: number;
+  }>;
 };
 
 type PortalIdentityLoader = (userId: string) => Promise<PortalIdentity | null>;
@@ -38,8 +49,14 @@ async function loadPortalIdentity(userId: string): Promise<PortalIdentity | null
       active: true,
       disabledAt: true,
       memberships: {
-        where: { active: true },
-        select: { companyId: true, active: true },
+        where: { active: true, status: 'ACTIVE' },
+        select: {
+          companyId: true,
+          active: true,
+          organizationRole: true,
+          status: true,
+          version: true,
+        },
       },
     },
   });
@@ -73,13 +90,35 @@ export async function validatePortalSession(
       (authorization.session.companyId
         ? !identity.memberships.some(
             (membership) =>
-              membership.active && membership.companyId === authorization.session.companyId,
+              membership.active &&
+              (membership.status === 'ACTIVE' ||
+                (membership.status === undefined && membership.active)) &&
+              membership.companyId === authorization.session.companyId &&
+              (!authorization.session.organizationRole ||
+                (membership.organizationRole ??
+                  (identity.role === 'ADMIN' ? 'ADMIN' : 'MEMBER')) ===
+                  authorization.session.organizationRole) &&
+              (!authorization.session.membershipVersion ||
+                (membership.version ?? 1) === authorization.session.membershipVersion),
           )
         : authorization.session.role === 'CLIENT')
     ) {
       return null;
     }
-    return authorization.session;
+    const membership = authorization.session.companyId
+      ? identity.memberships.find(
+          (candidate) => candidate.companyId === authorization.session.companyId,
+        )
+      : undefined;
+    return membership
+      ? {
+          ...authorization.session,
+          organizationRole:
+            membership.organizationRole ?? (identity.role === 'ADMIN' ? 'ADMIN' : 'MEMBER'),
+          membershipStatus: membership.status ?? (membership.active ? 'ACTIVE' : 'SUSPENDED'),
+          membershipVersion: membership.version ?? 1,
+        }
+      : authorization.session;
   } catch {
     return null;
   }

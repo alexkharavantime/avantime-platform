@@ -7,7 +7,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 9;
+const EXPECTED_MIGRATION_COUNT = 10;
 const PRE_OIDC_ROLLOUT_MIGRATIONS = [
   '20260727190000_document_processing_queue',
   '20260728120000_document_intelligence',
@@ -428,6 +428,9 @@ async function rehearseLegacyDatabase(options: {
         credentialIdentifier: string;
         credentialHash: string;
         membershipCompanyId: string;
+        organizationRole: string;
+        membershipStatus: string;
+        membershipVersion: number;
         emailVerifiedAt: Date | null;
       }>
     >(
@@ -437,6 +440,9 @@ async function rehearseLegacyDatabase(options: {
          credential."identifierNormalized" AS "credentialIdentifier",
          credential."passwordHash" AS "credentialHash",
          membership."companyId" AS "membershipCompanyId",
+         membership."organizationRole"::text AS "organizationRole",
+         membership."status"::text AS "membershipStatus",
+         membership."version" AS "membershipVersion",
          user_record."emailVerifiedAt"
        FROM "User" user_record
        JOIN "UserCredential" credential ON credential."userId" = user_record."id"
@@ -449,6 +455,9 @@ async function rehearseLegacyDatabase(options: {
       identity[0]?.credentialIdentifier !== 'legacy.user@example.test' ||
       !identity[0]?.credentialHash.startsWith('pbkdf2$210000$') ||
       identity[0]?.membershipCompanyId !== 'integration-identity-company' ||
+      identity[0]?.organizationRole !== 'MEMBER' ||
+      identity[0]?.membershipStatus !== 'ACTIVE' ||
+      identity[0]?.membershipVersion !== 1 ||
       !identity[0]?.emailVerifiedAt
     ) {
       throw new Error('Legacy identity was not normalized safely.');

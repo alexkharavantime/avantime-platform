@@ -2042,6 +2042,61 @@ Organization SSO enforcement является отдельной versioned polic
 
 ---
 
+## ADR-0028
+
+**Название:** Tenant-aware system roles, central deny-by-default permissions и OWNER governance
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-07-31
+
+### Контекст
+
+Global `User.role` (`CLIENT/ADMIN`) одновременно использовалась для platform operations и
+organization data. Inline checks расходились между portal, API и UI, не выражали делегирование и
+не защищали lifecycle владельца.
+
+### Принятое решение
+
+Организационная авторизация использует immutable system roles `OWNER`, `ADMIN`, `MANAGER`,
+`MEMBER`, `VIEWER` и фиксированный permission allowlist. Central service получает только validated
+server session, active tenant membership, permission и optional server-loaded resource context.
+Неизвестное или неполное состояние запрещается.
+
+Migration сохраняет legacy role/active, backfills `ADMIN → ADMIN`, `CLIENT → MEMBER` и не создаёт
+OWNER. Первый OWNER назначается отдельным MFA/recent-auth/confirmation bootstrap при отсутствии
+active owner. Последний OWNER защищён transaction-level organization lock. Role/status mutations
+versioned и отзывают target sessions. SSO никогда не назначает OWNER.
+
+Global role compatibility сохраняется для platform-wide моделей и старых sessions на
+ограниченный migration period, логируется в development/test и не разрешает client tenant input.
+Arbitrary custom roles, permission editor и per-document ACL не реализуются.
+
+### Последствия
+
+- portal menu и deep links используют одну permission model;
+- UI visibility не заменяет server-side enforcement;
+- legacy platform article/request/system administration остаётся отдельной documented boundary;
+- no permission cache: fresh membership is the authorization source of truth;
+- critical registry создаёт foundation для будущего two-person approval без ложного утверждения о
+  его реализации.
+
+### Связанные документы
+
+- `docs/AUTHORIZATION_ARCHITECTURE.md`;
+- `docs/PORTAL_ARCHITECTURE.md`;
+- `docs/IDENTITY_ARCHITECTURE.md`;
+- `docs/SECURITY_HARDENING.md`;
+- `docs/tasks/TASK-011.md`.
+
+### Связанные задачи Product Backlog
+
+- SEC-001;
+- SEC-002;
+- SEC-003.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -2057,7 +2112,7 @@ Organization SSO enforcement является отдельной versioned polic
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0028`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0029`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

@@ -81,6 +81,23 @@ remain separate at `/admin/documents`.
 See [Portal Architecture](./docs/PORTAL_ARCHITECTURE.md) and
 [TASK-007](./docs/tasks/TASK-007.md).
 
+## Organization permissions
+
+TASK-011 separates global platform role from tenant-bound organization roles: `OWNER`, `ADMIN`,
+`MANAGER`, `MEMBER` and `VIEWER`. Portal navigation and changed organization APIs use the same
+server-side deny-by-default permission service; membership status/version is revalidated from
+PostgreSQL and client `companyId` is never trusted.
+
+```bash
+npm run test:permissions
+npm run security:permission-scan
+```
+
+Legacy memberships are migrated additively (`ADMIN → ADMIN`, `CLIENT → MEMBER`) without automatic
+OWNER assignment. See [Authorization Architecture](./docs/AUTHORIZATION_ARCHITECTURE.md) and
+[TASK-011](./docs/tasks/TASK-011.md). This repository boundary does not claim arbitrary custom
+roles, real IdP validation or full product production readiness.
+
 ## Browser and accessibility validation
 
 TASK-008 adds an isolated Playwright/Chromium gate for portal smoke, legacy

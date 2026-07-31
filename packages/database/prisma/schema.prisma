@@ -65,19 +65,42 @@ model Company {
 }
 
 model OrganizationMembership {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  companyId String
-  role      UserRole @default(CLIENT)
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String           @id @default(cuid())
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId        String
+  // Compatibility field retained during the CLIENT/ADMIN migration period.
+  role             UserRole         @default(CLIENT)
+  organizationRole OrganizationRole @default(MEMBER)
+  status           MembershipStatus @default(ACTIVE)
+  version          Int              @default(1)
+  active           Boolean          @default(true)
+  suspendedAt      DateTime?
+  removedAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([userId, companyId])
   @@index([companyId, active])
+  @@index([companyId, status, organizationRole])
   @@index([userId, active])
+  @@index([userId, status])
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  REMOVED
 }
 
 enum IdentityProviderKind {
@@ -336,7 +359,9 @@ model IdentityInvitation {
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   companyId       String
   emailNormalized String
-  role            UserRole  @default(CLIENT)
+  // Legacy role is retained for backwards-compatible invitation reads.
+  role            UserRole         @default(CLIENT)
+  organizationRole OrganizationRole @default(MEMBER)
   inviter         User      @relation("IdentityInvitationInviter", fields: [invitedBy], references: [id], onDelete: Restrict)
   invitedBy       String
   accepter        User?     @relation("IdentityInvitationAccepter", fields: [acceptedBy], references: [id], onDelete: SetNull)

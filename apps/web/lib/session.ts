@@ -5,7 +5,10 @@ import { cookies } from 'next/headers';
 import { SESSION_COOKIE } from './session-constants';
 
 export { SESSION_COOKIE };
-export type UserRole = 'CLIENT' | 'ADMIN';
+export type PlatformRole = 'CLIENT' | 'ADMIN';
+export type UserRole = PlatformRole;
+export type OrganizationRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'MEMBER' | 'VIEWER';
+export type MembershipStatus = 'ACTIVE' | 'INVITED' | 'SUSPENDED' | 'REMOVED';
 
 export const SESSION_ABSOLUTE_TTL_SECONDS = 60 * 60 * 8;
 export const SESSION_IDLE_TTL_SECONDS = 60 * 30;
@@ -20,7 +23,10 @@ export type AppSession = {
   companyId?: string;
   identityProviderId?: string;
   email: string;
-  role: UserRole;
+  role: PlatformRole;
+  organizationRole?: OrganizationRole;
+  membershipStatus?: MembershipStatus;
+  membershipVersion?: number;
   mfaSatisfied?: boolean;
   authenticationAt?: number;
   expiresAt: number;
@@ -130,6 +136,9 @@ function toAppSession(
       memberships: Array<{
         companyId: string;
         active: boolean;
+        organizationRole: OrganizationRole;
+        status: MembershipStatus;
+        version: number;
         company: { name: string };
       }>;
     };
@@ -139,7 +148,10 @@ function toAppSession(
   if (!row.user.active || row.user.disabledAt) return null;
   const membership = row.companyId
     ? row.user.memberships.find(
-        (candidate) => candidate.active && candidate.companyId === row.companyId,
+        (candidate) =>
+          candidate.active &&
+          candidate.status === 'ACTIVE' &&
+          candidate.companyId === row.companyId,
       )
     : undefined;
   if (row.user.role === 'CLIENT' && !membership) return null;
@@ -152,6 +164,9 @@ function toAppSession(
     identityProviderId: row.identityProviderId ?? undefined,
     email: row.user.email,
     role: row.user.role,
+    organizationRole: membership?.organizationRole,
+    membershipStatus: membership?.status,
+    membershipVersion: membership?.version,
     mfaSatisfied,
     authenticationAt: row.authenticationAt.getTime(),
     expiresAt: row.expiresAt.getTime(),
@@ -186,8 +201,13 @@ export async function createUserSession(
         active: true,
         disabledAt: true,
         memberships: {
-          where: { active: true },
-          select: { companyId: true },
+          where: { active: true, status: 'ACTIVE' },
+          select: {
+            companyId: true,
+            organizationRole: true,
+            status: true,
+            version: true,
+          },
         },
       },
     });
@@ -196,11 +216,21 @@ export async function createUserSession(
       user.disabledAt ||
       user.email.toLowerCase() !== identity.email.toLowerCase() ||
       user.role !== identity.role ||
-      (identity.role === 'CLIENT' &&
-        (!identity.companyId ||
-          !user.memberships.some(
-            (membership: { companyId: string }) => membership.companyId === identity.companyId,
-          )))
+      (identity.companyId &&
+        !user.memberships.some(
+          (membership: {
+            companyId: string;
+            organizationRole: OrganizationRole;
+            status: MembershipStatus;
+            version: number;
+          }) =>
+            membership.companyId === identity.companyId &&
+            membership.status === 'ACTIVE' &&
+            (!identity.organizationRole ||
+              membership.organizationRole === identity.organizationRole) &&
+            (!identity.membershipVersion || membership.version === identity.membershipVersion),
+        )) ||
+      (identity.role === 'CLIENT' && !identity.companyId)
     ) {
       throw new Error('Session identity is no longer active.');
     }
@@ -276,7 +306,7 @@ async function resolveDatabaseSession(tokenHash: string, now: Date): Promise<App
         include: {
           company: { select: { name: true } },
           memberships: {
-            where: { active: true },
+            where: { active: true, status: 'ACTIVE' },
             include: { company: { select: { name: true } } },
           },
         },

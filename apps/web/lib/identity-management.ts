@@ -13,6 +13,7 @@ import {
 } from './mfa';
 import { hashPassword, validatePasswordPolicy, verifyPasswordVersioned } from './password';
 import { revokeAllUserSessions, type AppSession } from './session';
+import { evaluateOrganizationPermission } from './organization-permissions';
 
 const MFA_ENROLLMENT_TTL_MS = 10 * 60_000;
 
@@ -162,6 +163,7 @@ export async function getSecurityOverview(session: AppSession) {
   const hasActiveMfa = methods.some((method) => method.status === 'ACTIVE');
   const policyDecision = evaluateMfaPolicy({
     role: session.role,
+    organizationRole: session.organizationRole,
     hasActiveMfa,
     policy,
     exemption: exemption && exemption.expiresAt > now ? exemption : null,
@@ -187,7 +189,10 @@ export async function getSecurityOverview(session: AppSession) {
       gracePeriodDays: policy?.gracePeriodDays ?? 0,
       required: policyDecision.policyRequired,
       enrollmentRequired: policyDecision.enrollmentRequired,
-      canManage: session.role === 'ADMIN' && Boolean(session.companyId),
+      canManage: evaluateOrganizationPermission(session, 'identity.policy.manage').allowed,
+      canManageProviders: evaluateOrganizationPermission(session, 'identity.providers.manage')
+        .allowed,
+      canViewAudit: evaluateOrganizationPermission(session, 'identity.audit.view').allowed,
     },
     sessions: sessions.map((item) => ({
       id: item.id,
@@ -433,7 +438,10 @@ export async function updateOrganizationMfaPolicy(
     gracePeriodDays: number;
   },
 ) {
-  if (session.role !== 'ADMIN' || !session.companyId) {
+  if (
+    !evaluateOrganizationPermission(session, 'identity.policy.manage').allowed ||
+    !session.companyId
+  ) {
     throw new Error('Organization policy requires a tenant-scoped administrator.');
   }
   if (

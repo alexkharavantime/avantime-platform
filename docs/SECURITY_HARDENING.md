@@ -103,10 +103,19 @@ npm run security:identity-scan
 npm run security:forbidden-credential-scan
 npm run security:default-secret-scan
 npm run security:client-tenant-scan
+npm run security:permission-scan
 ```
 
 Also review client-side `companyId`, direct provider SDK usage outside AI Gateway,
 unsafe logging keys and deployment manifests containing credentials.
+
+TASK-011 permission scan блокирует новые inline `ADMIN/CLIENT` authorization checks в API,
+OIDC OWNER mapping и permissive fallback. Исключение ограничено единственной callback projection,
+которая выбирает post-login landing page и не предоставляет доступ. Organization audit принимает
+только allowlisted identifiers; deny audit bounded. OWNER lifecycle serialized by tenant row lock,
+а critical actions требуют MFA, recent authentication и exact server-side confirmation. Полная
+модель и compatibility boundary описаны в
+[Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md).
 
 ## Рекомендации по улучшению
 
@@ -128,3 +137,4 @@ unsafe logging keys and deployment manifests containing credentials.
 - [TASK-005](./tasks/TASK-005.md)
 - [TASK-009](./tasks/TASK-009.md)
 - [TASK-010](./tasks/TASK-010.md)
+- [TASK-011](./tasks/TASK-011.md)
