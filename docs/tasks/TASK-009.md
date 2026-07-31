@@ -4,6 +4,10 @@
 **Рабочая ветка:** `feature/task-009-production-identity`  
 **Дата начала:** 2026-07-30
 
+> Историческая граница TASK-009: production callback и provider rollout были исключены из этой
+> задачи. Их repository-level реализация продолжается в [TASK-010](./TASK-010.md); реальные IdP
+> tenants по-прежнему требуют внешней validation ceremony.
+
 ## Цель
 
 Создать production identity boundary для local credentials, MFA, account recovery, server-side

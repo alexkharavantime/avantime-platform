@@ -963,11 +963,13 @@ Product Backlog — основной управляемый перечень п�
 - **Описание:** TASK-009 разделяет global identity, source-scoped local/external credentials и
   organization membership; добавляет versioned password KDF, TOTP/recovery codes, tenant-aware
   MFA policy, server-side sessions, reset/verification/invitation lifecycle, provider-neutral OIDC
-  validator/mock и disabled-by-default OIDC/SAML model.
+  validator/mock и disabled-by-default OIDC/SAML model. TASK-010 завершает repository-level
+  Authorization Code callback, tenant-bound versioned provider lifecycle, Entra `tid`/Google `hd`
+  mapping, organization SSO policy, ADMIN UI и rollout evidence templates.
 - **Критерии готовности:** opaque/revocable sessions; safe migration; MFA/recovery; tenant policy;
   uniform login errors; distributed limits; security audit; staging key/enrollment/revoke
-  evidence. Repository boundary реализован; production ceremony, реальные OIDC callbacks/provider
-  tenant validation и manual assistive review остаются внешними gates.
+  evidence. Repository callback/lifecycle boundary реализован; production ceremony, реальные
+  provider tenant validation, staged rollout и manual assistive review остаются внешними gates.
 - **Зависимости:** SEC-001, SEC-002, SEC-003, SEC-004, SEC-005, INFRA-001.
 
 ## EPIC-012 UI/UX

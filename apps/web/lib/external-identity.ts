@@ -1,7 +1,6 @@
 import { getPrisma } from '@avantime/database';
 
 import type { ValidatedOidcIdentity } from './oidc';
-import { validateOidcProviderContract } from './oidc';
 import { normalizeIdentityEmail } from './identity-auth';
 import { recordIdentitySecurityEvent } from './identity-security-events';
 import type { AppSession } from './session';
@@ -63,6 +62,7 @@ export async function linkExternalIdentity(input: {
   if (
     !provider?.enabled ||
     provider.kind !== 'OIDC' ||
+    provider.validationStatus !== 'TENANT_VALIDATED' ||
     provider.issuer !== input.assertion.issuer ||
     (provider.companyId && provider.companyId !== input.session.companyId) ||
     !domainAllowed(input.assertion.email, provider.allowedDomains)
@@ -129,63 +129,6 @@ export async function unlinkExternalIdentity(input: {
     action: 'identity.external.unlinked',
     result: 'SUCCEEDED',
     notify: true,
-  });
-}
-
-export async function refreshOidcProviderMetadata(input: {
-  session: AppSession;
-  providerKey: string;
-  metadata: {
-    issuer: string;
-    authorizationEndpoint: string;
-    tokenEndpoint: string;
-    jwksUri: string;
-  };
-  expiresAt: Date;
-  correlationId: string;
-}) {
-  if (input.session.role !== 'ADMIN') throw new Error('Administrator access is required.');
-  const prisma = await getPrisma();
-  if (!prisma) throw new Error('Identity database is unavailable.');
-  const provider = await prisma.identityProvider.findUnique({
-    where: { key: input.providerKey },
-  });
-  if (
-    !provider ||
-    provider.kind !== 'OIDC' ||
-    !provider.clientId ||
-    !provider.redirectUri ||
-    provider.issuer !== input.metadata.issuer
-  ) {
-    throw new Error('OIDC provider metadata is invalid.');
-  }
-  validateOidcProviderContract({
-    key: provider.key,
-    issuer: input.metadata.issuer,
-    clientId: provider.clientId,
-    authorizationEndpoint: input.metadata.authorizationEndpoint,
-    tokenEndpoint: input.metadata.tokenEndpoint,
-    jwksUri: input.metadata.jwksUri,
-    redirectUri: provider.redirectUri,
-  });
-  await prisma.identityProvider.update({
-    where: { id: provider.id },
-    data: {
-      authorizationEndpoint: input.metadata.authorizationEndpoint,
-      tokenEndpoint: input.metadata.tokenEndpoint,
-      jwksUri: input.metadata.jwksUri,
-      metadataRefreshedAt: new Date(),
-      metadataExpiresAt: input.expiresAt,
-    },
-  });
-  await recordIdentitySecurityEvent({
-    context: {
-      userId: input.session.userId,
-      companyId: input.session.companyId ?? null,
-      correlationId: input.correlationId,
-    },
-    action: 'identity.provider.metadata_refreshed',
-    result: 'SUCCEEDED',
   });
 }
 

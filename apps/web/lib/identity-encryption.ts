@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 const KEY_VERSION_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,31}$/u;
+type IdentitySecretPurpose = 'totp' | 'oidc-pkce' | 'oidc-client-secret-ref';
 
 function decodeKey(value: string) {
   const trimmed = value.trim();
@@ -55,7 +56,7 @@ export function getIdentityEncryptionKey(
 
 export function encryptIdentitySecret(
   plaintext: string,
-  purpose: 'totp' | 'oidc-pkce',
+  purpose: IdentitySecretPurpose,
   environment: Record<string, string | undefined> = process.env,
 ) {
   const { key, version } = getIdentityEncryptionKey(environment);
@@ -74,7 +75,7 @@ export function encryptIdentitySecret(
 
 export function decryptIdentitySecret(
   encrypted: string,
-  purpose: 'totp' | 'oidc-pkce',
+  purpose: IdentitySecretPurpose,
   environment: Record<string, string | undefined> = process.env,
 ) {
   const [format, version, ivText, tagText, ciphertextText] = encrypted.split('.');

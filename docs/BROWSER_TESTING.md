@@ -73,6 +73,10 @@ in POST body, session listing/revocation, ADMIN policy, CLIENT denial, open-redi
 email-only linking denial. Test-only codes come from guarded responses/session storage and never
 become URL parameters.
 
+TASK-010 добавляет ADMIN routes provider lifecycle и organization SSO policy. Их browser smoke
+считается passed только после фактического Playwright запуска; deterministic unit/integration
+callback tests не заменяют UI/accessibility gate и не вызывают реальные IdP.
+
 Responsive проекты используют фиксированные viewport: desktop `1440x900`, tablet `834x1112`
 и mobile `390x844`. Проверяются horizontal overflow, desktop/mobile navigation, dialog
 semantics, keyboard focus containment, `Escape` и возврат фокуса.

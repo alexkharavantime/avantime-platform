@@ -142,17 +142,31 @@ Production identity messages contain a one-time code rather than a link with a t
 only through `IDENTITY_EMAIL_DRIVER=resend`. Tests and development neither send nor log the code or
 recipient.
 
-## Enterprise OIDC foundation
+## Enterprise OIDC callback and provider lifecycle
 
-Provider profiles cover Microsoft Entra ID, Google Workspace and generic OIDC using issuer, client
-ID, secret-manager reference, discovery/authorization/token/JWKS endpoints, exact redirect,
-allowed domains and mapping metadata. The validator enforces Authorization Code Flow, S256 PKCE,
-state, nonce, RS256/JWKS signature, issuer, audience, `exp`/`nbf`, `email_verified` and replay
-protection. A deterministic mock IdP is the only validated provider.
+Provider profiles cover Microsoft Entra ID, Google Workspace and generic OIDC using tenant-bound,
+versioned configuration. Client-secret values remain outside the database; only an encrypted
+write-only reference is stored and it is never returned by API/UI. Discovery is fetched
+server-side, issuer-pinned and subject to HTTPS/egress, response-size, timeout and redirect
+controls.
 
-Linking requires recent reauthentication and a validated assertion; email match alone is rejected.
-Unlinking requires step-up and cannot remove the last login method. No real provider callback or
-tenant validation is claimed.
+The callback implements Authorization Code Flow with S256 PKCE, state, nonce, exact redirect,
+RS256/JWKS signature, issuer, audience/authorized party, time, verified email and durable replay
+protection. Entra uses allowlisted `tid`; Google Workspace uses allowlisted `hd`, not email suffix.
+Unknown subjects cannot create a user or membership.
+
+Linking requires explicit `mode=link`, current server-side session, recent reauthentication and a
+validated assertion; email match alone is rejected. Unlinking requires step-up and cannot remove
+the last login method. Organization SSO policy can be disabled, optional or required with staged
+enforcement and an explicit local-login policy.
+
+Only the deterministic mock IdP is repository-validated. No real Entra, Google or generic tenant
+validation is claimed.
+
+Provider bootstrap uses a distinct `PROVIDER_VALIDATION` transaction. It requires a recent
+MFA-satisfied tenant ADMIN session, is available only after metadata validation, creates no user
+session and records technical evidence only after the real callback passes every token and tenant
+mapping check.
 
 ## Production configuration
 
@@ -166,6 +180,7 @@ MFA_ENCRYPTION_KEY=<base64url-encoded 32 bytes>
 MFA_ENCRYPTION_KEY_VERSION=<non-secret version>
 AUTH_PUBLIC_ORIGIN=https://portal.example.com
 AUTH_ADMIN_MFA_REQUIRED=true
+OIDC_ALLOWED_HOSTS=<comma-separated exact IdP hosts>
 IDENTITY_EMAIL_DRIVER=resend
 MAIL_FROM=security@portal.example.com
 RESEND_API_KEY=<secret-manager value>
@@ -174,10 +189,10 @@ RESEND_API_KEY=<secret-manager value>
 `MFA_ENCRYPTION_KEY` must be generated and delivered through the approved secret manager. It must
 not be reused as `SESSION_SECRET` or committed to Git.
 
-## Known foundation boundaries
+## Known rollout boundaries
 
-- OIDC provider records, validator/mock and safe `(provider, subject)` linking contract exist, but
-  no provider is enabled, no production callback is implemented and no real tenant is validated.
+- OIDC callback, ADMIN lifecycle UI/API, organization SSO policy and deterministic full-flow tests
+  exist, but no real provider is enabled or tenant-validated by repository work.
 - WebAuthn/passkeys and IdP MFA claims are reserved model kinds, not active factors.
 - Current portal roles remain `CLIENT` and `ADMIN`; TASK-009 does not implement the broader RBAC
   matrix or a multi-tenant selector.
@@ -193,3 +208,5 @@ not be reused as `SESSION_SECRET` or committed to Git.
 - [Security Hardening](./SECURITY_HARDENING.md)
 - [Testing](./TESTING.md)
 - [TASK-009](./tasks/TASK-009.md)
+- [OIDC Production Rollout](./OIDC_PRODUCTION_ROLLOUT.md)
+- [TASK-010](./tasks/TASK-010.md)

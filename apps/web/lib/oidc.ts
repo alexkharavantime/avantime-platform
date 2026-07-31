@@ -36,6 +36,19 @@ export type ValidatedOidcIdentity = {
   issuer: string;
   audience: string;
   tokenId?: string;
+  expiresAt: Date;
+  tenantId?: string;
+  hostedDomain?: string;
+  groups: string[];
+};
+
+export type OidcTokenClaimMapping = {
+  subject: string;
+  email: string;
+  emailVerified: string;
+  tenant: string;
+  groups: string;
+  hostedDomain: string;
 };
 
 export class OidcValidationError extends Error {
@@ -44,7 +57,7 @@ export class OidcValidationError extends Error {
   }
 }
 
-function digest(value: string) {
+export function hashOidcValue(value: string) {
   return createHash('sha256').update(value).digest('hex');
 }
 
@@ -130,9 +143,9 @@ export function buildOidcAuthorizationRequest(provider: OidcProviderContract, re
   return {
     authorizationUrl: url.toString(),
     state,
-    stateHash: digest(state),
+    stateHash: hashOidcValue(state),
     nonce,
-    nonceHash: digest(nonce),
+    nonceHash: hashOidcValue(nonce),
     codeVerifier: pkce.verifier,
   };
 }
@@ -141,6 +154,9 @@ export async function beginOidcAuthorization(input: {
   providerKey: string;
   redirectUri: string;
   userId?: string;
+  companyId?: string | null;
+  purpose?: 'LOGIN' | 'LINK' | 'PROVIDER_VALIDATION';
+  returnTo?: string;
   now?: Date;
 }) {
   const prisma = (await getPrisma()) as PrismaClient | null;
@@ -148,9 +164,20 @@ export async function beginOidcAuthorization(input: {
   const provider = await prisma.identityProvider.findUnique({
     where: { key: input.providerKey },
   });
+  const purpose = input.purpose ?? 'LOGIN';
+  const activeLogin = provider?.enabled && provider.validationStatus === 'TENANT_VALIDATED';
+  const providerValidation =
+    purpose === 'PROVIDER_VALIDATION' &&
+    provider?.enabled === false &&
+    provider.validationStatus === 'METADATA_VALIDATED';
   if (
-    !provider?.enabled ||
+    !provider ||
+    (!activeLogin && !providerValidation) ||
     provider.kind !== 'OIDC' ||
+    !provider.metadataExpiresAt ||
+    provider.metadataExpiresAt <= (input.now ?? new Date()) ||
+    !provider.companyId ||
+    (purpose !== 'LOGIN' && (!input.userId || provider.companyId !== input.companyId)) ||
     !provider.issuer ||
     !provider.clientId ||
     !provider.authorizationEndpoint ||
@@ -175,10 +202,12 @@ export async function beginOidcAuthorization(input: {
     data: {
       providerId: provider.id,
       userId: input.userId ?? null,
+      purpose,
       stateHash: request.stateHash,
       nonceHash: request.nonceHash,
       pkceVerifierEncrypted: encryptIdentitySecret(request.codeVerifier, 'oidc-pkce'),
       redirectUri: provider.redirectUri,
+      returnTo: input.returnTo ?? null,
       expiresAt: new Date(now.getTime() + OIDC_TRANSACTION_TTL_MS),
     },
   });
@@ -190,7 +219,7 @@ export async function beginOidcAuthorization(input: {
 }
 
 export async function consumeOidcAuthorization(input: {
-  providerKey: string;
+  providerKey?: string;
   state: string;
   redirectUri: string;
   now?: Date;
@@ -199,12 +228,19 @@ export async function consumeOidcAuthorization(input: {
   if (!prisma) throw new OidcValidationError('DATABASE_UNAVAILABLE');
   const now = input.now ?? new Date();
   const transaction = await prisma.oidcAuthorizationRequest.findUnique({
-    where: { stateHash: digest(input.state) },
+    where: { stateHash: hashOidcValue(input.state) },
     include: { provider: true },
   });
+  const providerEligible =
+    transaction?.purpose === 'PROVIDER_VALIDATION'
+      ? !transaction.provider.enabled &&
+        transaction.provider.validationStatus === 'METADATA_VALIDATED'
+      : transaction?.provider.enabled &&
+        transaction.provider.validationStatus === 'TENANT_VALIDATED';
   if (
     !transaction ||
-    transaction.provider.key !== input.providerKey ||
+    (input.providerKey && transaction.provider.key !== input.providerKey) ||
+    !providerEligible ||
     transaction.consumedAt ||
     transaction.expiresAt <= now ||
     !equalText(transaction.redirectUri, input.redirectUri)
@@ -220,6 +256,10 @@ export async function consumeOidcAuthorization(input: {
   });
   return {
     userId: transaction.userId,
+    purpose: transaction.purpose,
+    returnTo: transaction.returnTo,
+    provider: transaction.provider,
+    transactionId: transaction.id,
     nonceHash: transaction.nonceHash,
     codeVerifier: decryptIdentitySecret(transaction.pkceVerifierEncrypted, 'oidc-pkce'),
   };
@@ -240,6 +280,7 @@ export function validateOidcIdToken(input: {
   expectedNonceHash?: string;
   now?: Date;
   replayCache?: Set<string>;
+  claimMapping?: Partial<OidcTokenClaimMapping>;
 }) {
   const parts = input.token.split('.');
   if (parts.length !== 3) throw new OidcValidationError('MALFORMED_TOKEN');
@@ -272,22 +313,40 @@ export function validateOidcIdToken(input: {
     throw new OidcValidationError('AUDIENCE_MISMATCH');
   }
   if (
+    Array.isArray(claims.aud) &&
+    (typeof claims.azp !== 'string' || !equalText(claims.azp, input.provider.clientId))
+  ) {
+    throw new OidcValidationError('AUTHORIZED_PARTY_MISMATCH');
+  }
+  if (
     typeof claims.exp !== 'number' ||
     claims.exp < nowSeconds - OIDC_CLOCK_SKEW_SECONDS ||
+    (typeof claims.iat === 'number' && claims.iat > nowSeconds + OIDC_CLOCK_SKEW_SECONDS) ||
     (typeof claims.nbf === 'number' && claims.nbf > nowSeconds + OIDC_CLOCK_SKEW_SECONDS)
   ) {
     throw new OidcValidationError('TOKEN_TIME_INVALID');
   }
   const nonce = typeof claims.nonce === 'string' ? claims.nonce : '';
   const expectedNonceHash =
-    input.expectedNonceHash ?? (input.expectedNonce ? digest(input.expectedNonce) : '');
-  if (!expectedNonceHash || !equalText(digest(nonce), expectedNonceHash)) {
+    input.expectedNonceHash ?? (input.expectedNonce ? hashOidcValue(input.expectedNonce) : '');
+  if (!expectedNonceHash || !equalText(hashOidcValue(nonce), expectedNonceHash)) {
     throw new OidcValidationError('NONCE_MISMATCH');
   }
-  if (claims.email_verified !== true || typeof claims.email !== 'string') {
+  const mapping: OidcTokenClaimMapping = {
+    subject: 'sub',
+    email: 'email',
+    emailVerified: 'email_verified',
+    tenant: 'tid',
+    groups: 'groups',
+    hostedDomain: 'hd',
+    ...input.claimMapping,
+  };
+  const subject = claims[mapping.subject];
+  const email = claims[mapping.email];
+  if (claims[mapping.emailVerified] !== true || typeof email !== 'string') {
     throw new OidcValidationError('EMAIL_NOT_VERIFIED');
   }
-  if (typeof claims.sub !== 'string' || !claims.sub || claims.sub.length > 500) {
+  if (typeof subject !== 'string' || !subject || subject.length > 500) {
     throw new OidcValidationError('SUBJECT_INVALID');
   }
   const tokenId = typeof claims.jti === 'string' ? claims.jti : undefined;
@@ -296,12 +355,24 @@ export function validateOidcIdToken(input: {
     input.replayCache.add(tokenId);
   }
   return {
-    subject: claims.sub,
-    email: claims.email,
+    subject,
+    email,
     emailVerified: true,
     issuer: claims.iss as string,
     audience: input.provider.clientId,
     tokenId,
+    expiresAt: new Date((claims.exp as number) * 1000),
+    tenantId:
+      typeof claims[mapping.tenant] === 'string' ? (claims[mapping.tenant] as string) : undefined,
+    hostedDomain:
+      typeof claims[mapping.hostedDomain] === 'string'
+        ? (claims[mapping.hostedDomain] as string)
+        : undefined,
+    groups: Array.isArray(claims[mapping.groups])
+      ? (claims[mapping.groups] as unknown[]).flatMap((value) =>
+          typeof value === 'string' && value.length <= 200 ? [value] : [],
+        )
+      : [],
   } satisfies ValidatedOidcIdentity;
 }
 
@@ -334,6 +405,10 @@ export function createDeterministicMockOidcIdp(
       audienceOverride?: string;
       notBeforeOffsetSeconds?: number;
       algorithm?: 'RS256' | 'none';
+      tenantId?: string;
+      hostedDomain?: string;
+      groups?: string[];
+      additionalClaims?: Record<string, string | string[] | boolean>;
     }) {
       const header = {
         alg: input.algorithm ?? 'RS256',
@@ -352,6 +427,10 @@ export function createDeterministicMockOidcIdp(
         iat: nowSeconds,
         nbf: nowSeconds + (input.notBeforeOffsetSeconds ?? 0),
         exp: nowSeconds + (input.expiresInSeconds ?? 300),
+        ...(input.tenantId ? { tid: input.tenantId } : {}),
+        ...(input.hostedDomain ? { hd: input.hostedDomain } : {}),
+        ...(input.groups ? { groups: input.groups } : {}),
+        ...input.additionalClaims,
       };
       const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
       const encodedClaims = Buffer.from(JSON.stringify(claims)).toString('base64url');

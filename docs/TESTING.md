@@ -19,6 +19,11 @@ server-side session, TOTP/recovery, reset/verification single-use, invitation ac
 transaction replay. Migration rehearsal включает historical account baseline, verification
 backfill и обе identity migrations.
 
+TASK-010 расширяет identity suite полным deterministic Authorization Code callback: token exchange
+с PKCE, server-side secret resolution, discovery/JWKS controls, durable token replay, Entra `tid`,
+Google Workspace `hd`, organization SSO policy и tenant-isolated ADMIN provider lifecycle.
+Deterministic mock evidence не означает validation реального provider tenant.
+
 Identity-specific commands:
 
 ```bash
@@ -60,6 +65,8 @@ screen-reader и assistive-technology review.
 ## Общие правила
 
 - Не использовать production credentials, domains или реальные providers в test environment.
+- Не выставлять `TENANT_VALIDATED` для реального provider из deterministic fixture; test-only
+  evidence reference должен быть явно помечен как mock/integration.
 - Не принимать системную дату, произвольный sleep или external network за test oracle.
 - Tenant context должен выводиться через тот же server-side boundary, что и в приложении.
 - Failure artifacts не должны содержать cookies, authorization headers, credentials или bodies.

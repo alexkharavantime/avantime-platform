@@ -24,7 +24,12 @@ const IDENTITY_SECURITY_ACTIONS = new Set([
   'identity.session.revoked_all',
   'identity.external.linked',
   'identity.external.unlinked',
+  'identity.provider.created',
+  'identity.provider.updated',
+  'identity.provider.enabled',
+  'identity.provider.disabled',
   'identity.provider.metadata_refreshed',
+  'identity.provider.tenant_validated',
   'identity.policy.updated',
   'identity.invitation.created',
   'identity.invitation.accepted',
@@ -46,6 +51,14 @@ export type IdentitySecurityMetadata = {
   method?: 'TOTP' | 'RECOVERY_CODE';
   reasonCode?: string;
   sessionId?: string;
+  providerId?: string;
+  configurationVersion?: number;
+  validationStatus?:
+    | 'NOT_VALIDATED'
+    | 'METADATA_VALIDATED'
+    | 'TENANT_VALIDATED'
+    | 'REVALIDATION_REQUIRED'
+    | 'FAILED';
 };
 
 const SAFE_VALUE = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/;
@@ -59,6 +72,13 @@ function safeMetadata(metadata: IdentitySecurityMetadata = {}) {
     ...(metadata.method ? { method: metadata.method } : {}),
     ...(safeValue(metadata.reasonCode) ? { reasonCode: metadata.reasonCode } : {}),
     ...(safeValue(metadata.sessionId) ? { sessionId: metadata.sessionId } : {}),
+    ...(safeValue(metadata.providerId) ? { providerId: metadata.providerId } : {}),
+    ...(typeof metadata.configurationVersion === 'number' &&
+    Number.isSafeInteger(metadata.configurationVersion) &&
+    metadata.configurationVersion > 0
+      ? { configurationVersion: metadata.configurationVersion }
+      : {}),
+    ...(metadata.validationStatus ? { validationStatus: metadata.validationStatus } : {}),
   };
 }
 
@@ -68,6 +88,10 @@ export async function recordIdentitySecurityEvent(input: {
   result: SecurityResult;
   metadata?: IdentitySecurityMetadata;
   notify?: boolean;
+  target?: {
+    type: 'identity' | 'identity-provider' | 'organization-policy';
+    id: string | null;
+  };
 }) {
   if (!IDENTITY_SECURITY_ACTIONS.has(input.action)) {
     throw new Error('Identity security action is not allowlisted.');
@@ -105,8 +129,8 @@ export async function recordIdentitySecurityEvent(input: {
       companyId: input.context.companyId,
       actorId: input.context.userId,
       action: input.action,
-      targetType: 'identity',
-      targetId: input.context.userId,
+      targetType: input.target?.type ?? 'identity',
+      targetId: input.target?.id ?? input.context.userId,
       result: input.result,
       correlationId,
       safeMetadata: metadata,

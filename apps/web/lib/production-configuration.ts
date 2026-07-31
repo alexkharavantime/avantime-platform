@@ -21,6 +21,7 @@ export type ProductionConfigurationSummary = {
     keyVersion: string;
     adminMfaRequired: true;
     emailDelivery: 'resend';
+    oidcEgressAllowlist: true;
   };
   providers: { embedding: 'openai' | 'gemini'; answer: 'openai' | 'gemini' };
 };
@@ -96,6 +97,27 @@ function assertDatabaseTls(environment: Record<string, string | undefined>) {
   }
 }
 
+function assertOidcHostAllowlist(environment: Record<string, string | undefined>) {
+  const hosts = [
+    ...new Set(
+      requireValue(environment, 'OIDC_ALLOWED_HOSTS')
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (hosts.length === 0 || hosts.length > 20) {
+    throw new Error('OIDC_ALLOWED_HOSTS must contain 1 to 20 exact hosts.');
+  }
+  for (const host of hosts) {
+    const url = new URL(`https://${host}`);
+    if (url.hostname !== host || url.port || url.pathname !== '/') {
+      throw new Error('OIDC_ALLOWED_HOSTS must contain exact hostnames only.');
+    }
+    assertPublicProviderUrl(url, 'OIDC_ALLOWED_HOSTS');
+  }
+}
+
 export function validateProductionConfiguration(
   environment: Record<string, string | undefined> = process.env,
 ): ProductionConfigurationSummary {
@@ -140,6 +162,7 @@ export function validateProductionConfiguration(
   requireSecret(environment, 'RESEND_API_KEY', 20);
   const authOrigin = parseUrl(environment, 'AUTH_PUBLIC_ORIGIN');
   assertPublicProviderUrl(authOrigin, 'AUTH_PUBLIC_ORIGIN');
+  assertOidcHostAllowlist(environment);
   requireSecret(environment, 'BACKUP_ENCRYPTION_KEY');
   requireSecret(environment, 'AUDIT_INTEGRITY_KEY');
   if (rag.embedding.driver === 'openai' || rag.answer.driver === 'openai') {
@@ -183,6 +206,7 @@ export function validateProductionConfiguration(
       keyVersion: identityKeyVersion,
       adminMfaRequired: true,
       emailDelivery: 'resend',
+      oidcEgressAllowlist: true,
     },
     providers: {
       embedding: rag.embedding.driver as 'openai' | 'gemini',

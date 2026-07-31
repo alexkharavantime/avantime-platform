@@ -4,16 +4,30 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export function LoginForm({ returnTo, demoEnabled }: { returnTo?: string; demoEnabled: boolean }) {
+export function LoginForm({
+  returnTo,
+  demoEnabled,
+  oidcMfa = false,
+  oidcEnrollmentRequired = false,
+  oidcError = false,
+}: {
+  returnTo?: string;
+  demoEnabled: boolean;
+  oidcMfa?: boolean;
+  oidcEnrollmentRequired?: boolean;
+  oidcError?: boolean;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState(demoEnabled ? 'demo@avantime.lv' : '');
   const [password, setPassword] = useState(demoEnabled ? 'avantime' : '');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    oidcError ? 'Корпоративный вход не выполнен. Начните вход заново.' : '',
+  );
   const [pending, setPending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const [challengeToken, setChallengeToken] = useState('');
+  const [challengeToken, setChallengeToken] = useState(oidcMfa ? 'oidc-cookie' : '');
   const [mfaCode, setMfaCode] = useState('');
-  const [enrollmentRequired, setEnrollmentRequired] = useState(false);
+  const [enrollmentRequired, setEnrollmentRequired] = useState(oidcEnrollmentRequired);
 
   useEffect(() => setHydrated(true), []);
 
@@ -22,13 +36,25 @@ export function LoginForm({ returnTo, demoEnabled }: { returnTo?: string; demoEn
     setPending(true);
     setError('');
     const mfaPending = Boolean(challengeToken);
-    const response = await fetch(mfaPending ? '/api/auth/mfa/challenge' : '/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(
-        mfaPending ? { challengeToken, code: mfaCode } : { email, password, returnTo },
-      ),
-    });
+    const oidcMfaPending = challengeToken === 'oidc-cookie';
+    const response = await fetch(
+      oidcMfaPending
+        ? '/api/auth/oidc/mfa/challenge'
+        : mfaPending
+          ? '/api/auth/mfa/challenge'
+          : '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          oidcMfaPending
+            ? { code: mfaCode }
+            : mfaPending
+              ? { challengeToken, code: mfaCode }
+              : { email, password, returnTo },
+        ),
+      },
+    );
     const data = (await response.json()) as {
       error?: string;
       role?: 'CLIENT' | 'ADMIN';

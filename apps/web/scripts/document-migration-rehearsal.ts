@@ -7,7 +7,17 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 8;
+const EXPECTED_MIGRATION_COUNT = 9;
+const PRE_OIDC_ROLLOUT_MIGRATIONS = [
+  '20260727190000_document_processing_queue',
+  '20260728120000_document_intelligence',
+  '20260728180000_hybrid_rag',
+  '20260728220000_production_readiness',
+  '20260729120000_unified_portal_notifications',
+  '20260730120000_production_identity',
+  '20260730180000_identity_completion',
+] as const;
+const LEGACY_OIDC_REFERENCE = 'legacy-oidc-reference-for-rehearsal';
 
 type RehearsalPrismaClient = {
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
@@ -76,6 +86,45 @@ async function deployMigrations(
     cwd: repositoryRoot,
     environment: commandEnvironment,
   });
+}
+
+async function applyAndResolveMigration(options: {
+  repositoryRoot: string;
+  schema: string;
+  migrationsDirectory: string;
+  environment: NodeJS.ProcessEnv;
+  targetDatabaseUrl: string;
+  migration: string;
+}) {
+  const commandEnvironment = {
+    ...options.environment,
+    DATABASE_URL: options.targetDatabaseUrl,
+  };
+  assertSafeDocumentIntegrationEnvironment(commandEnvironment);
+  await runIntegrationCommand(
+    'npx',
+    [
+      'prisma',
+      'db',
+      'execute',
+      '--file',
+      path.join(options.migrationsDirectory, options.migration, 'migration.sql'),
+      '--schema',
+      options.schema,
+    ],
+    {
+      cwd: options.repositoryRoot,
+      environment: commandEnvironment,
+    },
+  );
+  await runIntegrationCommand(
+    'npx',
+    ['prisma', 'migrate', 'resolve', '--applied', options.migration, '--schema', options.schema],
+    {
+      cwd: options.repositoryRoot,
+      environment: commandEnvironment,
+    },
+  );
 }
 
 async function createLegacyAccountBaseline(targetDatabaseUrl: string, withIdentityFixture = false) {
@@ -295,6 +344,34 @@ async function rehearseLegacyDatabase(options: {
       environment: commandEnvironment,
     },
   );
+  for (const migration of PRE_OIDC_ROLLOUT_MIGRATIONS) {
+    await applyAndResolveMigration({
+      ...options,
+      migration,
+    });
+  }
+
+  const preRollout = await createPrismaClient(options.targetDatabaseUrl);
+  try {
+    await preRollout.$executeRawUnsafe(
+      `INSERT INTO "IdentityProvider" (
+         "id", "key", "kind", "oidcProfile", "displayName", "issuer", "clientId",
+         "enabled", "clientSecretRef", "discoveryUrl", "authorizationEndpoint",
+         "tokenEndpoint", "jwksUri", "redirectUri", "createdAt", "updatedAt"
+       ) VALUES (
+         'integration-legacy-oidc', 'integration-legacy-oidc', 'OIDC', 'GENERIC_OIDC',
+         'Integration Legacy OIDC', 'https://legacy-idp.example.test', 'legacy-client-id',
+         true, $1, 'https://legacy-idp.example.test/.well-known/openid-configuration',
+         'https://legacy-idp.example.test/authorize', 'https://legacy-idp.example.test/token',
+         'https://legacy-idp.example.test/jwks', 'https://legacy-app.example.test/callback',
+         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+       )`,
+      LEGACY_OIDC_REFERENCE,
+    );
+  } finally {
+    await preRollout.$disconnect();
+  }
+
   await deployMigrations(
     options.repositoryRoot,
     options.schema,
@@ -310,6 +387,40 @@ async function rehearseLegacyDatabase(options: {
 
   const verified = await createPrismaClient(options.targetDatabaseUrl);
   try {
+    const legacyProvider = await verified.$queryRawUnsafe<
+      Array<{
+        enabled: boolean;
+        validationStatus: string;
+        clientSecretRef: string | null;
+        clientSecretRefEncrypted: string | null;
+        authorizationEndpoint: string | null;
+        tokenEndpoint: string | null;
+        jwksUri: string | null;
+      }>
+    >(
+      `SELECT
+         "enabled",
+         "validationStatus"::text AS "validationStatus",
+         "clientSecretRef",
+         "clientSecretRefEncrypted",
+         "authorizationEndpoint",
+         "tokenEndpoint",
+         "jwksUri"
+       FROM "IdentityProvider"
+       WHERE "id" = 'integration-legacy-oidc'`,
+    );
+    if (
+      legacyProvider[0]?.enabled !== false ||
+      legacyProvider[0]?.validationStatus !== 'REVALIDATION_REQUIRED' ||
+      legacyProvider[0]?.clientSecretRef !== LEGACY_OIDC_REFERENCE ||
+      legacyProvider[0]?.clientSecretRefEncrypted !== null ||
+      legacyProvider[0]?.authorizationEndpoint !== null ||
+      legacyProvider[0]?.tokenEndpoint !== null ||
+      legacyProvider[0]?.jwksUri !== null
+    ) {
+      throw new Error('Legacy OIDC provider was not preserved and quarantined safely.');
+    }
+
     const identity = await verified.$queryRawUnsafe<
       Array<{
         emailNormalized: string;

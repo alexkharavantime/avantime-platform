@@ -3,7 +3,11 @@ import { getPrisma } from '@avantime/database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { getDemoIdentity } from './demo-auth';
-import { evaluateMfaPolicy, requireAdminMfa } from './identity-policy';
+import {
+  evaluateMfaPolicy,
+  isOrganizationLoginMethodAllowed,
+  requireAdminMfa,
+} from './identity-policy';
 import { decryptTotpSecret, hashRecoveryCode, verifyTotp } from './mfa';
 import { hashPassword, verifyPasswordAgainstDummy, verifyPasswordVersioned } from './password';
 import { safeReturnTo } from './safe-return-to';
@@ -160,6 +164,7 @@ async function createLoginChallenge(
   user: UserRow,
   redirectTo: string | undefined,
   now: Date,
+  identityProviderId?: string,
 ) {
   const rawToken = randomBytes(32).toString('base64url');
   const membership = chooseMembership(user);
@@ -168,11 +173,119 @@ async function createLoginChallenge(
       tokenHash: tokenHash(rawToken),
       userId: user.id,
       companyId: membership?.companyId ?? null,
+      identityProviderId: identityProviderId ?? null,
       redirectTo: safeReturnTo(redirectTo) ?? null,
       expiresAt: new Date(now.getTime() + LOGIN_CHALLENGE_TTL_MS),
     },
   });
   return rawToken;
+}
+
+async function loadAuthenticationUser(prisma: PrismaClient, userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      company: { select: { name: true } },
+      credentials: { where: { kind: 'PASSWORD' }, take: 1 },
+      memberships: {
+        where: { active: true },
+        include: { company: { select: { name: true } } },
+      },
+      mfaMethods: {
+        where: { kind: 'TOTP', status: 'ACTIVE' },
+        select: { id: true, secretEncrypted: true, lastUsedCounter: true },
+      },
+    },
+  });
+}
+
+export async function authenticateExternalIdentity(input: {
+  providerId: string;
+  subject: string;
+  redirectTo?: string;
+  now?: Date;
+}): Promise<PrimaryAuthenticationResult> {
+  const now = input.now ?? new Date();
+  try {
+    const prisma = (await getPrisma()) as PrismaClient | null;
+    if (!prisma) return { status: 'UNAVAILABLE' };
+    const external = await prisma.externalIdentity.findUnique({
+      where: {
+        providerId_subject: {
+          providerId: input.providerId,
+          subject: input.subject,
+        },
+      },
+      select: {
+        userId: true,
+        provider: {
+          select: {
+            id: true,
+            companyId: true,
+            enabled: true,
+            validationStatus: true,
+          },
+        },
+      },
+    });
+    if (
+      !external?.provider.enabled ||
+      external.provider.validationStatus !== 'TENANT_VALIDATED' ||
+      !external.provider.companyId
+    ) {
+      return { status: 'INVALID' };
+    }
+    const user = (await loadAuthenticationUser(prisma, external.userId)) as UserRow | null;
+    if (!user) return { status: 'INVALID' };
+    const identity = toIdentity(user, false);
+    if (!identity || identity.companyId !== external.provider.companyId) {
+      return { status: 'INVALID' };
+    }
+    const { policy, exemption } = await loadMfaPolicy(prisma, user, now);
+    if (
+      !isOrganizationLoginMethodAllowed({
+        policy,
+        method: 'OIDC',
+        providerId: external.provider.id,
+        now,
+      })
+    ) {
+      return { status: 'INVALID' };
+    }
+    const decision = evaluateMfaPolicy({
+      role: user.role,
+      hasActiveMfa: user.mfaMethods.length > 0,
+      policy,
+      exemption,
+      now,
+      requireAdminMfa: requireAdminMfa(),
+    });
+    if (decision.challengeRequired || decision.enrollmentRequired) {
+      return {
+        status: 'MFA_REQUIRED',
+        challengeToken: await createLoginChallenge(
+          prisma,
+          user,
+          input.redirectTo,
+          now,
+          external.provider.id,
+        ),
+        enrollmentRequired: decision.enrollmentRequired,
+        userId: user.id,
+        companyId: identity.companyId ?? null,
+      };
+    }
+    return {
+      status: 'AUTHENTICATED',
+      identity: {
+        ...identity,
+        mfaSatisfied: true,
+        identityProviderId: external.provider.id,
+      },
+    };
+  } catch {
+    return { status: 'UNAVAILABLE' };
+  }
 }
 
 export async function authenticatePrimaryCredential(input: {
@@ -250,6 +363,9 @@ export async function authenticatePrimaryCredential(input: {
     }
 
     const { policy, exemption } = await loadMfaPolicy(prisma, user, now);
+    if (!isOrganizationLoginMethodAllowed({ policy, method: 'LOCAL', now })) {
+      return { status: 'INVALID' };
+    }
     const decision = evaluateMfaPolicy({
       role: user.role,
       hasActiveMfa: user.mfaMethods.length > 0,
@@ -277,6 +393,13 @@ async function loadChallenge(prisma: PrismaClient, rawToken: string) {
   return prisma.loginChallenge.findUnique({
     where: { tokenHash: tokenHash(rawToken) },
     include: {
+      identityProvider: {
+        select: {
+          id: true,
+          enabled: true,
+          validationStatus: true,
+        },
+      },
       user: {
         include: {
           company: { select: { name: true } },
@@ -311,6 +434,9 @@ export async function authenticateMfaChallenge(input: {
       challenge.consumedAt ||
       challenge.expiresAt <= now ||
       challenge.attempts >= LOGIN_CHALLENGE_MAX_ATTEMPTS ||
+      (challenge.identityProviderId &&
+        (!challenge.identityProvider?.enabled ||
+          challenge.identityProvider.validationStatus !== 'TENANT_VALIDATED')) ||
       !challenge.user.active ||
       challenge.user.disabledAt
     ) {
@@ -408,7 +534,10 @@ export async function authenticateMfaChallenge(input: {
     return identity
       ? {
           status: 'AUTHENTICATED',
-          identity,
+          identity: {
+            ...identity,
+            identityProviderId: challenge.identityProviderId ?? undefined,
+          },
           recoveryCodeUsed,
           returnTo: safeReturnTo(challenge.redirectTo ?? undefined),
         }

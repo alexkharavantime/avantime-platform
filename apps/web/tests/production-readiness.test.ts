@@ -29,6 +29,7 @@ function productionEnvironment() {
     MFA_ENCRYPTION_KEY_VERSION: 'test-v1',
     AUTH_ADMIN_MFA_REQUIRED: 'true',
     AUTH_PUBLIC_ORIGIN: 'https://portal.example.com',
+    OIDC_ALLOWED_HOSTS: 'login.microsoftonline.com,accounts.google.com',
     IDENTITY_EMAIL_DRIVER: 'resend',
     MAIL_FROM: 'security@portal.example.com',
     RESEND_API_KEY: 'resend-key-with-more-than-20-characters',
@@ -248,6 +249,12 @@ test('production config rejects local adapters, placeholders, missing TLS, and p
     validateProductionConfiguration({
       ...productionEnvironment(),
       REDIS_URL: 'redis://default:password@redis.example.com:6379',
+    }),
+  );
+  assert.throws(() =>
+    validateProductionConfiguration({
+      ...productionEnvironment(),
+      OIDC_ALLOWED_HOSTS: 'localhost',
     }),
   );
 });

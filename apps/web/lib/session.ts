@@ -18,6 +18,7 @@ export type AppSession = {
   name: string;
   company: string;
   companyId?: string;
+  identityProviderId?: string;
   email: string;
   role: UserRole;
   mfaSatisfied?: boolean;
@@ -115,6 +116,7 @@ function toAppSession(
   row: {
     id: string;
     companyId: string | null;
+    identityProviderId: string | null;
     expiresAt: Date;
     authenticationAt: Date;
     user: {
@@ -147,6 +149,7 @@ function toAppSession(
     name: row.user.name,
     company: membership?.company.name ?? row.user.company?.name ?? 'Avantime',
     companyId: membership?.companyId,
+    identityProviderId: row.identityProviderId ?? undefined,
     email: row.user.email,
     role: row.user.role,
     mfaSatisfied,
@@ -201,6 +204,19 @@ export async function createUserSession(
     ) {
       throw new Error('Session identity is no longer active.');
     }
+    if (identity.identityProviderId) {
+      const provider = await prisma.identityProvider.findFirst({
+        where: {
+          id: identity.identityProviderId,
+          companyId: identity.companyId,
+          kind: 'OIDC',
+          enabled: true,
+          validationStatus: 'TENANT_VALIDATED',
+        },
+        select: { id: true },
+      });
+      if (!provider) throw new Error('External identity provider is no longer active.');
+    }
     let rotatedFromId: string | undefined;
     if (options.previousToken) {
       const previousHash = hashSessionToken(options.previousToken);
@@ -221,6 +237,7 @@ export async function createUserSession(
         tokenHash,
         userId: identity.userId,
         companyId: identity.companyId ?? null,
+        identityProviderId: identity.identityProviderId ?? null,
         expiresAt,
         idleExpiresAt,
         rotatedFromId,

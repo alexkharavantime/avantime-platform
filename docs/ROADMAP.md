@@ -593,15 +593,17 @@ security/dependency gate, назначения owners и environment evidence.
 - базовые сущности компаний и пользователей;
 - npm workspaces и общие пакеты;
 - ранние адаптеры внешних сервисов;
-- TASK-009 identity foundation: source-scoped credentials, opaque sessions, TOTP/recovery,
-  organization MFA policy и provider-neutral OIDC validator/mock без реального IdP rollout;
+- TASK-009 identity foundation и TASK-010 repository OIDC rollout boundary: source-scoped
+  credentials, opaque sessions, TOTP/recovery, organization MFA/SSO policy, production callback,
+  tenant-bound provider lifecycle и deterministic mock без реального IdP tenant acceptance;
 - целевая архитектура модулей и AI;
 - продуктовая концепция портала и интеграций.
 
 **Что ещё необходимо сделать:**
 
 - завершить архитектуру 2.x;
-- выполнить production identity ceremony и validate реальные Entra/Google/generic OIDC tenants;
+- выполнить production identity/OIDC ceremonies и validate реальные Entra/Google/generic OIDC
+  tenants по evidence template;
 - внедрить tenant-контекст во все данные и запросы;
 - стабилизировать API и события;
 - создать Developer Platform и плагинный runtime;

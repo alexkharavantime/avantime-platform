@@ -22,6 +22,10 @@
   as hashes;
 - identity mutations enforce same-origin, distributed rate limit, server-derived tenant policy
   and allowlisted security audit metadata;
+- OIDC providers are tenant-bound, disabled until real-tenant evidence is recorded, versioned,
+  issuer-pinned and resolved from a global provider key rather than a client tenant identifier;
+- OIDC discovery/token/JWKS requests use HTTPS, production host allowlists, bounded responses,
+  timeouts and no redirects; legacy unscoped OIDC rows are quarantined disabled;
 - containers run non-root with restricted filesystems/networks.
 
 ## Threat review
@@ -43,6 +47,8 @@
 | MFA secret/code disclosure/replay   | AES-GCM, hashed recovery codes, persisted TOTP counter     |
 | Cross-tenant identity linking       | provider subject identity separate from membership         |
 | OIDC code/token substitution        | PKCE, state, nonce, exact redirect, issuer/audience/JWKS   |
+| OIDC SSRF/discovery substitution    | HTTPS, host allowlist, no redirect, issuer pin, size/time  |
+| IdP tenant confusion                | server provider lookup, Entra `tid`, Google `hd` allowlist |
 | Recovery or invitation replay       | hashed one-time codes, TTL, atomic consume and tenant bind |
 
 ## Dependency review
@@ -118,5 +124,7 @@ unsafe logging keys and deployment manifests containing credentials.
 - [Authentication](./authentication.md)
 - [Identity Architecture](./IDENTITY_ARCHITECTURE.md)
 - [Identity Production Ceremony](./IDENTITY_PRODUCTION_CEREMONY.md)
+- [OIDC Production Rollout](./OIDC_PRODUCTION_ROLLOUT.md)
 - [TASK-005](./tasks/TASK-005.md)
 - [TASK-009](./tasks/TASK-009.md)
+- [TASK-010](./tasks/TASK-010.md)
