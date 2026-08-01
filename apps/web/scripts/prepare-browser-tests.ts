@@ -242,16 +242,27 @@ async function seedDatabase() {
         },
       ],
     });
-    await prisma.platformRoleAssignment.create({
-      data: {
-        id: 'browser-platform-admin-assignment',
-        userId: 'browser-admin',
-        role: 'PLATFORM_ADMIN',
-        active: true,
-        version: 1,
-        createdAt: FIXED_DATE,
-        updatedAt: FIXED_DATE,
-      },
+    await prisma.platformRoleAssignment.createMany({
+      data: [
+        {
+          id: 'browser-platform-admin-assignment',
+          userId: 'browser-admin',
+          role: 'PLATFORM_ADMIN',
+          active: true,
+          version: 1,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-platform-owner-assignment',
+          userId: 'browser-identity-owner',
+          role: 'PLATFORM_OWNER',
+          active: true,
+          version: 1,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+      ],
     });
     await prisma.userCredential.createMany({
       data: [
@@ -458,6 +469,64 @@ async function seedDatabase() {
           classificationEvidence: 'browser-organization-created-v1',
           authorId: 'browser-user-b',
           publishedAt: FIXED_DATE,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-article-publication-review',
+          slug: 'browser-publication-review',
+          title: 'Governance publication review',
+          summary: 'Non-confidential publication ceremony fixture.',
+          category: 'Testing',
+          content: [{ title: 'Review', paragraphs: ['Safe synthetic content.'] }],
+          status: 'REVIEW',
+          ownerScope: 'ORGANIZATION',
+          companyId: browserIdentities.identityOwner.companyId,
+          visibility: 'PRIVATE',
+          classificationEvidence: 'browser-organization-reviewed-v1',
+          authorId: 'browser-identity-owner',
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+      ],
+    });
+
+    await prisma.governanceApprovalRequest.createMany({
+      data: [
+        {
+          id: 'browser-approval-rejected',
+          actionType: 'PLATFORM_AUDIT_EXPORT',
+          scope: 'PLATFORM',
+          safeParameters: { from: '2026-01-01', to: '2026-01-02', format: 'json' },
+          payloadFingerprint: '1'.repeat(64),
+          requesterId: 'browser-admin',
+          status: 'REJECTED',
+          expiresAt: new Date('2026-01-15T10:10:00.000Z'),
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-approval-cancelled',
+          actionType: 'PLATFORM_AUDIT_EXPORT',
+          scope: 'PLATFORM',
+          safeParameters: { from: '2026-01-03', to: '2026-01-04', format: 'json' },
+          payloadFingerprint: '2'.repeat(64),
+          requesterId: 'browser-admin',
+          status: 'CANCELLED',
+          expiresAt: new Date('2026-01-15T10:10:00.000Z'),
+          cancelledAt: FIXED_DATE,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-approval-expired',
+          actionType: 'PLATFORM_AUDIT_EXPORT',
+          scope: 'PLATFORM',
+          safeParameters: { from: '2026-01-05', to: '2026-01-06', format: 'json' },
+          payloadFingerprint: '3'.repeat(64),
+          requesterId: 'browser-admin',
+          status: 'EXPIRED',
+          expiresAt: new Date('2026-01-15T10:10:00.000Z'),
           createdAt: FIXED_DATE,
           updatedAt: FIXED_DATE,
         },

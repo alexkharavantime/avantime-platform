@@ -46,7 +46,8 @@ export function buildPortalNavigation(session: AppSession | null): PortalNavigat
       exact: false,
       emphasized: true,
     });
-  } else if (hasOrganizationPermission(session, 'documents.manage')) {
+  }
+  if (hasOrganizationPermission(session, 'documents.manage')) {
     items.push({
       href: '/admin/documents',
       label: 'Управление документами',

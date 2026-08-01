@@ -27,7 +27,7 @@ export function ResetPasswordForm() {
     setMessage(data.error ?? data.message ?? '');
     if (response.ok) {
       window.sessionStorage.removeItem(RESET_STORAGE_KEY);
-      setTimeout(() => router.push('/portal/login'), 800);
+      router.replace('/portal/login');
     }
   }
 

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getPrisma } from '@avantime/database';
 import { articles as staticArticles, type Article } from './content';
+import type { AppSession } from './session';
 
 export type KnowledgeStatus = 'DRAFT' | 'REVIEW' | 'PUBLISHED' | 'ARCHIVED';
 export type KnowledgeOwnerScope = 'PLATFORM' | 'ORGANIZATION' | 'SYSTEM' | 'LEGACY_UNCLASSIFIED';
@@ -235,6 +236,33 @@ export async function setKnowledgeArticleStatus(
   item.updatedAt = new Date().toISOString();
   item.version += 1;
   return item;
+}
+
+export async function setOrganizationKnowledgeArticleStatus(input: {
+  session: AppSession;
+  id: string;
+  status: KnowledgeStatus;
+  expectedVersion: number;
+}) {
+  if (!input.session.companyId) return null;
+  const prisma = await getPrisma();
+  if (!prisma) return null;
+  const changed = await prisma.knowledgeArticle.updateMany({
+    where: {
+      id: input.id,
+      ownerScope: 'ORGANIZATION',
+      companyId: input.session.companyId,
+      version: input.expectedVersion,
+      quarantinedAt: null,
+    },
+    data: {
+      status: input.status,
+      publishedAt: input.status === 'PUBLISHED' ? new Date() : undefined,
+      version: { increment: 1 },
+    },
+  });
+  if (changed.count !== 1) return null;
+  return prisma.knowledgeArticle.findUnique({ where: { id: input.id } });
 }
 
 export async function findRelatedArticles(text: string, limit = 3) {

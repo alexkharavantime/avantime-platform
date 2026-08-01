@@ -1,3 +1,5 @@
+import { getPrisma } from '@avantime/database';
+
 import { PlatformGovernancePage } from '../../../../components/portal/platform-governance-page';
 import { requirePlatformPagePermission } from '../../../../lib/platform-page';
 
@@ -32,6 +34,9 @@ export default async function PlatformSupportPage() {
             }) => (
               <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5">
                 <h2 className="font-black">{item.company.name}</h2>
+                <p className="mt-2 text-sm font-bold text-emerald-700" role="status">
+                  Активна
+                </p>
                 <p className="mt-2 text-sm text-slate-600">
                   Ticket {item.ticketReference} · до {item.expiresAt.toLocaleString('ru-RU')}
                 </p>
@@ -43,4 +48,3 @@ export default async function PlatformSupportPage() {
     </PlatformGovernancePage>
   );
 }
-import { getPrisma } from '@avantime/database';

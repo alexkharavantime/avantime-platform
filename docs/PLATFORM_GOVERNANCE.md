@@ -21,7 +21,10 @@ field cannot distinguish a tenant administrator from a platform operator. For th
 `PLATFORM_OWNER`, two authorized operators use a controlled maintenance window: verify the exact
 user and MFA evidence, record the change ticket, insert one assignment, revoke that user's active
 sessions, retain database/audit evidence and validate the ordinary approval path immediately.
-Later owner changes must use the application approval executor; neither organization role nor
+TASK-013 implements that boundary as an integration/staging-only controlled CLI with exact
+ID/email, recent TOTP/session evidence, environment-bound single-use authorization, dry-run and a
+hash-only singleton ledger. Assignment, session revocation, audit and notification share one
+locked transaction. Later owner changes must use the application approval executor; neither organization role nor
 identity-provider claims may bootstrap platform access.
 
 ## Support-session runbook
@@ -68,6 +71,9 @@ break-glass drills.
 ## Связанные документы
 
 - [TASK-012](./tasks/TASK-012.md)
+- [TASK-013](./tasks/TASK-013.md)
+- [Governance Bootstrap](./GOVERNANCE_BOOTSTRAP.md)
+- [Governance Validation](./GOVERNANCE_VALIDATION.md)
 - [Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md)
 - [Security Hardening](./SECURITY_HARDENING.md)
 - [ADR-0029](./DECISIONS.md#adr-0029)

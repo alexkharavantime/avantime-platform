@@ -4,9 +4,12 @@ import { NextResponse } from 'next/server';
 import { authorizeGovernanceApprovalPolicy } from '../../../../../../lib/governance-approval-authorization';
 import { getGovernanceApprovalPolicy } from '../../../../../../lib/governance-approval-policy';
 import { decideGovernanceApproval } from '../../../../../../lib/governance-approvals';
+import { governanceMutationOriginAllowed } from '../../../../../../lib/governance-request-security';
 import { getSession } from '../../../../../../lib/session';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const body = (await request.json().catch(() => null)) as { approved?: unknown } | null;
   if (typeof body?.approved !== 'boolean')
     return NextResponse.json({ error: 'Некорректное решение.' }, { status: 400 });

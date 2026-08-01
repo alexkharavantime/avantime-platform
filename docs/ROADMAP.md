@@ -811,3 +811,6 @@ security/dependency gate, назначения owners и environment evidence.
 - [Project Status](./PROJECT_STATUS.md)
 - [TASK-005](./tasks/TASK-005.md)
 - [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md)
+- TASK-013 repository governance validation adds a controlled first-owner boundary, safe evidence,
+  runbooks and simulated ceremonies. Managed staging execution, notification delivery and manual
+  accessibility review remain a follow-up gate and do not establish product production readiness.

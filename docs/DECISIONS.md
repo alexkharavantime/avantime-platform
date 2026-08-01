@@ -2195,6 +2195,46 @@ permissions, MFA, recent authentication, fingerprint, expiry и resource version
 
 ---
 
+## ADR-0030: First-owner bootstrap и ceremony evidence отделены от CI и production
+
+**Статус:** Accepted
+**Дата:** 2026-08-01
+
+### Контекст
+
+Platform governance требует первого владельца до обычного two-person workflow, но legacy roles,
+browser input и CI не являются доверенными источниками platform authority. Operational evidence
+не должно содержать credentials/tenant content или ошибочно доказывать managed staging readiness.
+
+### Решение
+
+Первый владелец назначается только integration/staging CLI по exact user ID+email, недавнему TOTP
+session event, exact phrase и environment-bound single-use token. PostgreSQL advisory lock,
+singleton/hash-only ledger и одна транзакция охватывают assignment, session revocation, audit и
+notification. После успеха bootstrap навсегда закрыт; subsequent changes идут через distinct
+approver. Последний owner автоматически не удаляется, а потеря всех owner требует отдельно
+утверждённого manual recovery.
+
+Evidence — versioned allowlisted JSON вне production tables: actor IDs хешируются, secret/content
+fields запрещены, artifacts только sanitized references. Repository tests, simulated ceremony,
+managed staging и production ceremony являются разными режимами. CI выполняет первые два и никогда
+не получает staging credentials или не запускает реальный bootstrap.
+
+### Последствия
+
+Managed staging требует explicit operator action и reviewer sign-off. Notification delivery,
+index/cache invalidation и assistive-technology UX остаются manual gates. Production bootstrap не
+появляется автоматически; recovery намеренно медленный и evidence-preserving.
+
+### Связанные документы
+
+- `docs/GOVERNANCE_BOOTSTRAP.md`;
+- `docs/GOVERNANCE_EVIDENCE.md`;
+- `docs/GOVERNANCE_VALIDATION.md`;
+- `docs/tasks/TASK-013.md`.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -2210,7 +2250,7 @@ permissions, MFA, recent authentication, fingerprint, expiry и resource version
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0030`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0031`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

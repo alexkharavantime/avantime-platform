@@ -157,3 +157,59 @@ export async function loadPlatformSupportSession(input: {
     endedAt: row.endedAt,
   };
 }
+
+export async function terminatePlatformSupportSessionByOperator(input: {
+  operatorUserId: string;
+  supportSessionId: string;
+  confirmation: string;
+  now?: Date;
+}) {
+  if (input.confirmation !== 'TERMINATE SUPPORT SESSION') {
+    throw new PlatformSupportError('SUPPORT_TERMINATION_CONFIRMATION_REQUIRED');
+  }
+  if (!SAFE_REFERENCE.test(input.operatorUserId) || !SAFE_REFERENCE.test(input.supportSessionId)) {
+    throw new PlatformSupportError('SUPPORT_REFERENCE_INVALID');
+  }
+  const prisma = await getPrisma();
+  if (!prisma) throw new PlatformSupportError('SUPPORT_DATABASE_UNAVAILABLE');
+  const now = input.now ?? new Date();
+  return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    const operator = await transaction.platformRoleAssignment.findFirst({
+      where: {
+        userId: input.operatorUserId,
+        role: { in: ['PLATFORM_OWNER', 'PLATFORM_ADMIN'] },
+        active: true,
+        disabledAt: null,
+        user: { active: true, disabledAt: null },
+      },
+      select: { id: true },
+    });
+    if (!operator) throw new PlatformSupportError('SUPPORT_TERMINATION_DENIED');
+    const supportSession = await transaction.platformSupportSession.findUnique({
+      where: { id: input.supportSessionId },
+    });
+    if (!supportSession) throw new PlatformSupportError('SUPPORT_SESSION_NOT_FOUND');
+    if (supportSession.endedAt) {
+      return { terminated: false, alreadyEnded: true, endedAt: supportSession.endedAt };
+    }
+    const changed = await transaction.platformSupportSession.updateMany({
+      where: { id: supportSession.id, endedAt: null },
+      data: { endedAt: now, endedById: input.operatorUserId },
+    });
+    if (changed.count !== 1) throw new PlatformSupportError('SUPPORT_SESSION_END_DENIED');
+    await transaction.productionAuditEvent.create({
+      data: {
+        id: crypto.randomUUID(),
+        companyId: supportSession.companyId,
+        actorId: input.operatorUserId,
+        action: 'platform.support.session.terminated',
+        targetType: 'support-session',
+        targetId: supportSession.id,
+        result: 'SUCCEEDED',
+        correlationId: crypto.randomUUID(),
+        safeMetadata: {},
+      },
+    });
+    return { terminated: true, alreadyEnded: false, endedAt: now };
+  });
+}

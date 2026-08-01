@@ -24,6 +24,9 @@ routes select only `PUBLISHED + PUBLIC` and never infer visibility from a slug o
 - Organization publication uses organization permissions and immutable company ownership.
 - Organization → PUBLIC requires `KNOWLEDGE_VISIBILITY_PUBLIC` approval with the article ID,
   company, version and canonical safe parameters in the fingerprint.
+- The article stores the executed approval ID; a database constraint denies organization PUBLIC
+  visibility without it. Returning to PRIVATE/ORGANIZATION clears the current publication link,
+  while immutable approval/audit history remains.
 - Organization content cannot use PLATFORM visibility; platform content cannot masquerade as
   organization content.
 
@@ -50,6 +53,8 @@ the source record, and ownership/visibility version changes must invalidate deri
 ## Связанные документы
 
 - [TASK-012](./tasks/TASK-012.md)
+- [TASK-013](./tasks/TASK-013.md)
+- [Knowledge publication runbook](./runbooks/knowledge-publication.md)
 - [Architecture 2.0](./ARCHITECTURE_2_0.md)
 - [Portal Architecture](./PORTAL_ARCHITECTURE.md)
 - [ADR-0029](./DECISIONS.md#adr-0029)

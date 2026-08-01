@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { authorizePlatformApi } from '../../../../../../lib/platform-authorization';
 import { executePlatformOwnerChange } from '../../../../../../lib/platform-role-governance';
+import { governanceMutationOriginAllowed } from '../../../../../../lib/governance-request-security';
 
 export async function POST(request: Request, { params }: { params: Promise<{ userId: string }> }) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const authorization = await authorizePlatformApi('platform.roles.manage');
   if (authorization.response) return authorization.response;
   const body = (await request.json().catch(() => null)) as {

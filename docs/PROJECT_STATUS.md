@@ -659,3 +659,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 - [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md) — environment-specific go-live gates;
 - [Codex Rules](./CODEX_RULES.md) — правила работы Codex в проекте;
 - [AGENTS.md](../AGENTS.md) — обязательные инструкции для агентов.
+  TASK-013 implements repository-level governance bootstrap/validation and simulated ceremony
+  coverage. Managed staging bootstrap/support/approval/publication, reviewer sign-off, manual
+  assistive-technology review and production ceremony are explicitly `PENDING`; no production
+  readiness claim is made. See [TASK-013](./tasks/TASK-013.md).
