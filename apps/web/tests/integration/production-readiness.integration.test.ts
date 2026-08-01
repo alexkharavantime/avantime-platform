@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  CreateBucketCommand,
+  DeleteBucketCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 
 import { PostgreSQLAiCostController, RedisAiRateLimiter } from '../../lib/ai-control';
 import { PostgreSQLProductionAuditTrail } from '../../lib/production-audit';
@@ -24,7 +32,13 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
   const documentQueue = new RedisDocumentProcessingQueue(firstClient, `document-${suffix}`);
   const embeddingQueue = new RedisEmbeddingJobQueue(firstClient, `embedding-${suffix}`);
   const documentIds = [`document-${suffix}-1`, `document-${suffix}-2`];
-  const sourceObjectKey = `task005-backup-${suffix}`;
+  const runId = process.env.AVANTIME_INTEGRATION_RUN_ID ?? `direct-${process.pid}`;
+  const objectScope = createHash('sha256')
+    .update(`${runId}\0production-readiness-object-backup`)
+    .digest('hex')
+    .slice(0, 24);
+  const sourceBucket = `avantime-readiness-${objectScope}`;
+  const sourceObjectKey = `runs/${objectScope}/production-readiness/source.txt`;
   const destinationObjectKey = `integration/${new Date().toISOString().slice(0, 10)}/${sourceObjectKey}`;
   const objectClient = new S3Client({
     endpoint: process.env.OBJECT_STORAGE_ENDPOINT,
@@ -37,16 +51,23 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
   });
 
   try {
-    await objectClient.send(
+    await objectClient.send(new CreateBucketCommand({ Bucket: sourceBucket }));
+    const upload = await objectClient.send(
       new PutObjectCommand({
-        Bucket: process.env.OBJECT_STORAGE_BUCKET,
+        Bucket: sourceBucket,
         Key: sourceObjectKey,
         Body: Buffer.from('task-005-backup-verification'),
       }),
     );
+    assert.ok(upload.ETag, `S3 upload was not acknowledged for ${sourceBucket}/${sourceObjectKey}`);
+    const uploaded = await objectClient.send(
+      new HeadObjectCommand({ Bucket: sourceBucket, Key: sourceObjectKey }),
+    );
+    assert.equal(uploaded.ContentLength, Buffer.byteLength('task-005-backup-verification'));
     const objectBackup = await backupObjectStorage(
       {
         ...process.env,
+        OBJECT_STORAGE_BUCKET: sourceBucket,
         BACKUP_ENVIRONMENT: 'integration',
         BACKUP_CONFIRMATION: 'BACKUP:integration',
         BACKUP_OBJECT_STORAGE_BUCKET: 'avantime-backups-integration',
@@ -54,7 +75,7 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
       },
       { execute: true, client: objectClient },
     );
-    assert.ok(objectBackup.objectCount >= 1);
+    assert.equal(objectBackup.objectCount, 1);
     assert.ok(objectBackup.manifestChecksum);
     assert.equal(objectBackup.encryption, 'integration-only-disabled');
 
@@ -194,7 +215,7 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
     await Promise.all([
       objectClient.send(
         new DeleteObjectCommand({
-          Bucket: process.env.OBJECT_STORAGE_BUCKET,
+          Bucket: sourceBucket,
           Key: sourceObjectKey,
         }),
       ),
@@ -205,6 +226,7 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
         }),
       ),
     ]);
+    await objectClient.send(new DeleteBucketCommand({ Bucket: sourceBucket }));
     objectClient.destroy();
     for (const table of [
       'ProductionAuditEvent',

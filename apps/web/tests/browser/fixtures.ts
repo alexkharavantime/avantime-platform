@@ -1,8 +1,13 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test as base, type TestInfo } from '@playwright/test';
-import { createHash } from 'node:crypto';
+import { expect, test as base, type Response, type TestInfo } from '@playwright/test';
+import path from 'node:path';
 
 import { browserIdentities } from './environment';
+import {
+  createBrowserTestClientIp,
+  browserTestRun,
+  browserTestShard,
+} from './test-client-ip';
 
 type BrowserIdentity = keyof typeof browserIdentities;
 
@@ -15,6 +20,7 @@ type Diagnostic = {
 };
 
 type BrowserFixtures = {
+  browserTestClientIp: string;
   browserRateLimitIsolation: void;
   diagnostics: Diagnostic[];
   loginAs: (identity: BrowserIdentity) => Promise<void>;
@@ -46,14 +52,56 @@ async function attachDiagnostics(testInfo: TestInfo, diagnostics: Diagnostic[]) 
   });
 }
 
+async function safeLoginError(response: Response) {
+  let code: string | null = null;
+  let message: string | null = null;
+  try {
+    const body = (await response.json()) as unknown;
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+      const record = body as Record<string, unknown>;
+      if (typeof record.code === 'string' && /^[A-Z0-9_.-]{1,100}$/iu.test(record.code)) {
+        code = record.code;
+      }
+      const candidate =
+        typeof record.error === 'string'
+          ? record.error
+          : typeof record.message === 'string'
+            ? record.message
+            : null;
+      if (candidate) message = safeMessage(candidate);
+    }
+  } catch {
+    message = 'Response did not contain a JSON error object.';
+  }
+  const url = new URL(response.url());
+  return {
+    code,
+    message,
+    status: response.status(),
+    url: `${url.origin}${url.pathname}`,
+  };
+}
+
 export const test = base.extend<BrowserFixtures>({
+  browserTestClientIp: async ({}, provide, testInfo) => {
+    await provide(
+      createBrowserTestClientIp({
+        project: testInfo.project.name,
+        file: path.relative(process.cwd(), testInfo.file),
+        titlePath: testInfo.titlePath,
+        retry: testInfo.retry,
+        repeatEachIndex: testInfo.repeatEachIndex,
+        workerIndex: testInfo.workerIndex,
+        parallelIndex: testInfo.parallelIndex,
+        shard: browserTestShard(),
+        run: browserTestRun(),
+      }),
+    );
+  },
+
   browserRateLimitIsolation: [
-    async ({ context }, provide, testInfo) => {
-      const hash = createHash('sha256')
-        .update(`${testInfo.project.name}\0${testInfo.titlePath.join('\0')}\0${testInfo.retry}`)
-        .digest('hex');
-      const clientIp = `2001:db8:${hash.slice(0, 4)}:${hash.slice(4, 8)}:${hash.slice(8, 12)}:${hash.slice(12, 16)}::1`;
-      await context.setExtraHTTPHeaders({ 'x-forwarded-for': clientIp });
+    async ({ context, browserTestClientIp }, provide) => {
+      await context.setExtraHTTPHeaders({ 'x-forwarded-for': browserTestClientIp });
       await provide();
     },
     { auto: true },
@@ -118,7 +166,7 @@ export const test = base.extend<BrowserFixtures>({
     });
   },
 
-  loginAs: async ({ page }, provide) => {
+  loginAs: async ({ page, browserTestClientIp }, provide, testInfo) => {
     await provide(async (identity) => {
       const credentials = browserIdentities[identity];
       const targetPath =
@@ -138,8 +186,25 @@ export const test = base.extend<BrowserFixtures>({
           response.ok(),
         { timeout: 50_000 },
       );
+      void targetPage.catch(() => undefined);
       await page.getByRole('button', { name: 'Войти' }).click();
-      expect((await loginResponse).ok()).toBe(true);
+      const response = await loginResponse;
+      if (!response.ok()) {
+        const failure = {
+          ...(await safeLoginError(response)),
+          assignedTestClientIp: browserTestClientIp,
+          project: testInfo.project.name,
+          testPath: path.relative(process.cwd(), testInfo.file),
+          retry: testInfo.retry,
+          workerIndex: testInfo.workerIndex,
+          parallelIndex: testInfo.parallelIndex,
+        };
+        await testInfo.attach('login-failure', {
+          body: Buffer.from(JSON.stringify(failure, null, 2)),
+          contentType: 'application/json',
+        });
+        throw new Error(`Browser login failed: ${JSON.stringify(failure)}`);
+      }
       await targetPage;
       await expect(page).toHaveURL(new RegExp(`${targetPath.replace('/', '\\/')}$`, 'u'));
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

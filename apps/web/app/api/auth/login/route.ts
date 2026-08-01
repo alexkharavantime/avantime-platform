@@ -8,7 +8,10 @@ import {
   normalizeIdentityEmail,
 } from '../../../../lib/identity-auth';
 import { getIdentityRateLimiter } from '../../../../lib/identity-rate-limit';
-import { requestRateLimitSubject } from '../../../../lib/identity-route';
+import {
+  loginIdentifierRateLimitSubject,
+  requestRateLimitSubject,
+} from '../../../../lib/identity-route';
 import { recordIdentitySecurityEvent } from '../../../../lib/identity-security-events';
 import { safeReturnTo } from '../../../../lib/safe-return-to';
 import { createUserSession, SESSION_COOKIE, sessionCookieOptions } from '../../../../lib/session';
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
     const [identifierAllowed, ipAllowed] = await Promise.all([
       limiter.consume({
         scope: 'login-identifier',
-        subject: email,
+        subject: loginIdentifierRateLimitSubject(request, email),
         limit: 10,
         windowSeconds: 15 * 60,
       }),
