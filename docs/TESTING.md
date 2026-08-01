@@ -29,6 +29,11 @@ governance. Проверяются пять system roles, deny-by-default, deleg
 version и session revocation, suspension/removal, SSO OWNER denial, tenant mismatch, audit/
 notification redaction, permission-aware navigation и protected deep links.
 
+TASK-012 расширяет `test:permissions` platform role matrix, support-session context и approval
+fingerprint regressions. Migration rehearsal проверяет одиннадцать migrations и deterministic
+legacy knowledge classification. Browser suite проверяет platform/organization separation и
+foreign-tenant knowledge denial.
+
 Identity-specific commands:
 
 ```bash

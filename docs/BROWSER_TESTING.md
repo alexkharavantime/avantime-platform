@@ -84,6 +84,11 @@ denial, versioned role change, MANAGER escalation denial, last OWNER protection,
 инвалидацией существующей session, reactivation, document/security control visibility и axe для
 team governance. Fixture mutations serial и восстанавливают изменённый active membership.
 
+TASK-012 fixtures создают explicit `PLATFORM_ADMIN` assignment отдельно от organization ADMIN и
+platform/tenant knowledge articles с разными owners. Browser regression проверяет, что
+organization ADMIN не наследует platform routes, explicit assignment открывает governance UI, а
+tenant knowledge list/detail не раскрывает статью другой организации.
+
 Responsive проекты используют фиксированные viewport: desktop `1440x900`, tablet `834x1112`
 и mobile `390x844`. Проверяются horizontal overflow, desktop/mobile navigation, dialog
 semantics, keyboard focus containment, `Escape` и возврат фокуса.

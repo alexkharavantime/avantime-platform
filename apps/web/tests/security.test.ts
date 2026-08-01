@@ -464,7 +464,8 @@ test('AI usage summary derives tenant server-side and rejects client companyId',
   const route = await import('node:fs/promises').then(({ readFile }) =>
     readFile(path.join(process.cwd(), 'app/api/admin/ai/usage/route.ts'), 'utf8'),
   );
-  assert.match(route, /authorizeApi\(\['ADMIN'\]\)/);
+  assert.match(route, /authorizeOrganizationApi\('organization\.audit\.view'\)/);
+  assert.doesNotMatch(route, /authorizeApi/);
   assert.match(route, /getDocumentTenantContext/);
   assert.match(route, /TENANT_INPUT_REJECTED/);
   assert.doesNotMatch(route, /searchParams\.get\('companyId'\)/);

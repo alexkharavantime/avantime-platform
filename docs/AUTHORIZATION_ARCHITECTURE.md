@@ -1,8 +1,9 @@
 # Organization authorization architecture
 
-TASK-011 separates the global platform role from tenant-bound organization authorization. The
-global `User.role` remains a compatibility and platform-operations boundary. Access to client
-organization data is decided from a fresh, active `OrganizationMembership` and a fixed system
+TASK-011 separates tenant-bound organization authorization from legacy identity projection, and
+TASK-012 moves platform authorization to independent assignments. Global `User.role` remains only
+a bounded compatibility field; it authorizes neither new platform routes nor tenant resources.
+Organization access is decided from a fresh, active `OrganizationMembership` and a fixed system
 role.
 
 ## System roles
@@ -101,15 +102,25 @@ or notification sink failure.
   is tenant-scoped. Creator/participant ACL is not added in this phase.
 - Documents use organization ownership. Read/download, upload/reprocess and destructive delete are
   separate permissions; delete has server-side step-up confirmation.
-- Portal knowledge view/search follows organization permissions and tenant document retrieval.
-  Legacy platform-wide article administration remains a global platform-admin boundary because
-  `KnowledgeArticle` has no organization owner. Converting it requires a separate data-model ADR.
+- Portal knowledge view/search follows organization permissions and tenant document retrieval;
+  article owner scope, visibility and quarantine are now explicit server-side filters.
 - Notifications remain user-owned inside the organization; mark-as-read filters both user and
   tenant.
-- Existing global platform operations such as system events and legacy admin request/article
-  administration retain the legacy platform role adapter during the migration period.
+- A bounded set of legacy pages still uses compatibility redirects/checks, but no API route may
+  import the legacy role adapter; new platform operations use `PlatformRoleAssignment`.
 - Organization deletion, arbitrary custom roles, per-document ACL and two-person approval are not
   implemented.
+
+## TASK-012 platform separation
+
+Active `PlatformRoleAssignment` records use five fixed roles and an independent allowlist;
+organization OWNER does not imply platform access, and a platform assignment never creates
+membership. Cross-tenant access requires a short-lived support session for one server-resolved
+organization.
+
+Knowledge articles now have immutable owner scope, explicit visibility and quarantine. Selected
+critical operations cross a persisted two-person approval executor; confirmation UI alone is not
+execution authorization. See [ADR-0029](./DECISIONS.md#adr-0029).
 
 ## Related documents
 
@@ -118,4 +129,7 @@ or notification sink failure.
 - [Security Hardening](./SECURITY_HARDENING.md)
 - [Testing](./TESTING.md)
 - [TASK-011](./tasks/TASK-011.md)
+- [Platform Governance](./PLATFORM_GOVERNANCE.md)
+- [Knowledge Governance](./KNOWLEDGE_GOVERNANCE.md)
+- [TASK-012](./tasks/TASK-012.md)
 - [ADR-0028](./DECISIONS.md#adr-0028)

@@ -80,6 +80,7 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - rate limit для входа, AI и загрузки файлов;
 - проверка типов и размеров файлов;
 - аудит административных и AI-действий;
+- независимые platform roles, scoped support sessions и controlled approval для особо критических действий;
 - резервное копирование PostgreSQL и объектов.
 
 ### База знаний
@@ -91,6 +92,7 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - `pgvector`, embeddings и гибридный поиск;
 - PDF как первый производственный формат;
 - разграничение доступа на уровне организации и материала.
+- immutable knowledge owner scope, explicit visibility и quarantine legacy-unclassified content.
 
 ### Документация
 

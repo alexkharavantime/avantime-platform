@@ -1,5 +1,6 @@
 import { hasOrganizationPermission } from './organization-permissions';
 import type { AppSession } from './session';
+import { sessionHasPlatformPermission } from './platform-permissions';
 
 export type PortalNavigationItem = {
   href: string;
@@ -38,10 +39,10 @@ export function buildPortalNavigation(session: AppSession | null): PortalNavigat
   ) {
     items.push({ href: '/portal/settings', label: 'Настройки', exact: false });
   }
-  if (session.role === 'ADMIN') {
+  if (sessionHasPlatformPermission(session, 'platform.view')) {
     items.push({
-      href: '/admin',
-      label: 'Администрирование платформы',
+      href: '/portal/platform',
+      label: 'Управление платформой',
       exact: false,
       emphasized: true,
     });

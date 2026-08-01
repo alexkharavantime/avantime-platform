@@ -723,6 +723,11 @@ Telegram-бот предоставляет уведомления и огран�
 
 Каждая серверная операция проверяет роль, организацию, принадлежность ресурса и конкретное разрешение. Проверка только на уровне интерфейса недопустима.
 
+TASK-012 разделяет два независимых scope: organization permissions из active membership и
+platform permissions из active `PlatformRoleAssignment`. Ни один scope не наследует другой.
+Cross-tenant support требует explicit short-lived session, а selected destructive/public/export
+actions — persisted controlled approval и dedicated server executor.
+
 ## RBAC
 
 Базовые роли:

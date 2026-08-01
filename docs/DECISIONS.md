@@ -2097,6 +2097,104 @@ Arbitrary custom roles, permission editor и per-document ACL не реализ�
 
 ---
 
+## ADR-0029
+
+**Название:** Independent platform permissions, explicit knowledge ownership и controlled approvals
+
+**Статус:** `Accepted`
+
+**Дата:** 2026-08-01
+
+### Контекст
+
+ADR-0028 отделил organization authorization, но global `User.role=ADMIN` всё ещё разрешал
+platform operations, `KnowledgeArticle` не имел owner scope, а critical registry проверял только
+MFA/recent authentication/confirmation одного actor. Это оставляло смешение platform/tenant
+authority, неявную public visibility и отсутствие two-person execution boundary.
+
+### Варианты
+
+- расширить `User.role` platform и organization ролями;
+- автоматически считать platform ADMIN владельцем каждой организации;
+- перенести всё knowledge content в один tenant;
+- добавить независимые platform assignments, explicit knowledge ownership и отдельный approval
+  executor.
+
+### Альтернативы, которые были отклонены
+
+- Единая role field отклонена: она повторно связывает identity, platform и tenant authority.
+- Автоматический OWNER отклонён: platform employment не является tenant governance consent.
+- Автоматическая PUBLIC/tenant classification отклонена без детерминированного provenance.
+- UI-only approval отклонён: browser state не является execution authorization.
+
+### Принятое решение
+
+Platform scope использует independent active role assignments и fixed permission allowlist.
+Organization membership не участвует в platform decision. Cross-tenant support требует отдельную
+короткоживущую session для одной server-resolved company и точных scopes.
+
+Knowledge resources получают immutable owner scope, explicit visibility, lifecycle, version,
+classification evidence и quarantine. Public, organization и platform reads имеют разные
+server-side filters. Legacy article status не считается достаточным visibility evidence: rows
+классифицируются как platform-owned, но остаются PRIVATE до explicit review.
+
+Selected critical actions используют policy registry и persisted approval lifecycle. Fingerprint
+содержит только canonical safe fields и SHA-256. Requester не approve собственный request;
+permissions, MFA, recent authentication, fingerprint, expiry и resource version повторно
+проверяются dedicated executor. Execution transactional, single-use и audited.
+
+### Причины выбора
+
+- deny-by-default между scopes;
+- сохранение identity и organization models ADR-0026/0028;
+- migration без удаления content или compatibility columns;
+- возможность постепенно подключать реальные critical actions без fake approval claim.
+
+### Преимущества
+
+- platform role не выдаёт tenant membership;
+- organization ADMIN не получает global operations;
+- knowledge ownership становится queryable source of truth;
+- support access ограничен временем, tenant и действием;
+- approval payload нельзя незаметно изменить или replay.
+
+### Недостатки
+
+- появляются дополнительные tables, policies и operational UI;
+- старые platform pages требуют поэтапной миграции;
+- rollback после новых governance writes требует restore/forward fix;
+- repository tests не заменяют staging governance drills.
+
+### Последствия
+
+- legacy API adapter запрещён для новых routes и удалён из API callers;
+- ambiguous legacy `User.role=ADMIN` не создаёт platform assignment; первый PLATFORM_OWNER
+  назначается отдельной двухоператорной bootstrap ceremony с ticket/audit evidence;
+- PLATFORM_OWNER и organization PUBLIC escalation требуют two-person approval;
+- article ownership immutable at database level;
+- manual owner/support/notification/migration validation остаётся external gate.
+
+### Влияние на архитектуру
+
+Решение сохраняет модульный монолит и добавляет отдельные authorization/policy/executor boundaries,
+не изменяя authentication, OIDC, OCR или RAG ranking.
+
+### Связанные документы
+
+- `docs/PLATFORM_GOVERNANCE.md`;
+- `docs/KNOWLEDGE_GOVERNANCE.md`;
+- `docs/AUTHORIZATION_ARCHITECTURE.md`;
+- `docs/tasks/TASK-012.md`.
+
+### Связанные задачи Product Backlog
+
+- SEC-002;
+- SEC-003;
+- KB-001;
+- KB-005.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -2112,7 +2210,7 @@ Arbitrary custom roles, permission editor и per-document ACL не реализ�
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0029`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0030`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

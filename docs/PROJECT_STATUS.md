@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Провести production-like identity/provider и organization-governance ceremonies поверх
-завершённой repository-level tenant permission model.
+Завершить repository-level TASK-012: отделить platform permissions, knowledge ownership и
+controlled approvals, затем провести production-like governance ceremonies.
 
 ### 📈 Общий процент готовности
 
@@ -19,27 +19,27 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-011 добавляет system roles `OWNER/ADMIN/MANAGER/MEMBER/VIEWER` и central
-   deny-by-default permission service без смешивания global platform role;
-2. OWNER lifecycle, delegation, suspended/removed memberships, critical step-up, tenant audit и
-   permission-aware portal/API защищены server-side;
-3. unit 147/147, permission 9/9, integration 22/22 и browser/accessibility 60/60 подтверждают
-   migration, authorization, navigation и governance scenarios.
+1. TASK-012 добавляет independent platform assignments и deny-by-default platform permission
+   service без автоматического organization membership;
+2. KnowledgeArticle получает immutable owner scope, explicit visibility, quarantine и
+   organization/platform/public audience filters;
+3. Controlled approval foundation использует requester/approver separation, canonical SHA-256
+   fingerprint и dedicated single-use executors; repository gates завершены.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
-3. Legacy platform-wide article/request/system administration остаётся на global `User.role`, а
-   accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12.
+3. Часть legacy platform pages ещё требует миграции с `User.role`; staging ceremonies и accepted
+   dependency risks `AR-DEP-2026-001/002` требуют завершения/review.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
 1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
-2. Спроектировать TASK-012 для отделения platform permissions и tenant ownership knowledge
-   articles без arbitrary custom-role editor.
+2. Провести PLATFORM_OWNER bootstrap, support/approval и knowledge-classification staging drills
+   TASK-012.
 3. Провести ручной screen-reader/assistive-technology review и подтвердить backup/PITR/alerts.
 
 ---
@@ -49,10 +49,10 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.21                                                                                      |
-| Дата последнего обновления       | 2026-07-31                                                                                |
+| Версия документа                 | 1.22                                                                                      |
+| Дата последнего обновления       | 2026-08-01                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-011-organization-permissions`                                               |
+| Текущая ветка Git                | `feature/task-012-platform-governance`                                                    |
 | Последний commit                 | `3ba2760` — TASK-010 production OIDC rollout                                              |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
@@ -181,6 +181,19 @@ permission-aware navigation/API, bounded audit и generic security notifications
 build и static security/documentation gates. Manual governance/assistive review и managed staging
 ceremony не выполнялись; platform-wide non-tenant models остаются compatibility boundary.
 
+[TASK-012](./tasks/TASK-012.md) завершена в repository/application boundary: organization и
+platform authorization разделены independent assignments и deny-by-default services; legacy
+`User.role=ADMIN` не создаёт platform grant. KnowledgeArticle получил immutable owner,
+PRIVATE-by-default legacy classification, explicit visibility/quarantine/version и tenant-safe
+audience filters. Support sessions и selected approval executors используют MFA/recent auth,
+exact tenant/scope, canonical fingerprint, separate approver, expiry и single execution.
+Подтверждены 152/152 unit/security, 14/14 permission, 21/21 identity, 23/23 integration,
+RAG/production integration 1/1, 63/63 Playwright/browser/accessibility tests, 11-migration
+fresh/legacy/repeated rehearsal, seven static scans, documentation check по 20 документам,
+production build на 100 app routes, typecheck и lint. PLATFORM_OWNER bootstrap, support/approval,
+knowledge review и assistive-technology staging ceremonies остаются внешними gates; status задачи
+остаётся `In Progress` до их выполнения.
+
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
@@ -264,14 +277,14 @@ ceremony не выполнялись; platform-wide non-tenant models остаю
 | AI-002            | Адаптер OpenAI                                       | P0        |        65% | Adapter готов; streaming и production validation остаются                                                          |
 | AI-003            | Адаптер Gemini                                       | P1        |        60% | Adapter готов; fallback policy и production validation остаются                                                    |
 | AI-007            | Защищённый RAG                                       | P0        |        75% | Tenant client RAG и citations доступны в portal; единая article/document permission model остаётся                 |
-| KB-001            | Объединение двух баз знаний                          | P0        |        30% | Единый домен статей и документов                                                                                   |
+| KB-001            | Объединение двух баз знаний                          | P0        |        42% | Explicit article ownership/visibility готовы; единый article/document index остаётся                               |
 | DOC-001           | Единое файловое хранилище                            | P0        |        65% | Local/S3 adapters, PostgreSQL metadata и migration готовы; infrastructure, signed URLs, backup и вложения остаются |
 | DOC-002           | Конвейер обработки документов                        | P0        |        88% | Processing/OCR/embedding workers и indexing готовы; external processing queue и production monitoring остаются     |
 | UX-001            | Единая дизайн-система                                | P1        |        45% | Общие tokens и интерфейсные паттерны                                                                               |
 | UX-002            | Библиотека компонентов                               | P1        |        45% | Стабильные exports и повторно используемые компоненты                                                              |
 | DOCS-001–DOCS-004 | Vision, Master Specification, Architecture и Roadmap | P0–P1     |        85% | Утверждённая согласованная документационная основа                                                                 |
 | SEC-001           | Авторизация Dashboard                                | P0        |        75% | Закрытые Dashboard и внутренние API с безопасным возвратом после входа и отрицательными тестами                    |
-| SEC-002           | RBAC                                                 | P0        |        82% | Organization matrix, OWNER governance и central checks готовы; platform permissions/custom roles остаются          |
+| SEC-002           | RBAC                                                 | P0        |        90% | Organization и platform scopes разделены; full TASK-012 gates и custom roles остаются                              |
 
 Проценты в этой таблице являются оценкой текущего фактического объёма, а не изменением статусов Product Backlog.
 

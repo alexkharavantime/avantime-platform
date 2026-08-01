@@ -8,26 +8,26 @@ datasource db {
 }
 
 model User {
-  id                        String                     @id @default(cuid())
+  id                        String                       @id @default(cuid())
   email                     String
   emailNormalized           String
   emailVerifiedAt           DateTime?
   name                      String
-  role                      UserRole                   @default(CLIENT)
-  active                    Boolean                    @default(true)
+  role                      UserRole                     @default(CLIENT)
+  active                    Boolean                      @default(true)
   disabledAt                DateTime?
   // Compatibility-only field. New local passwords are stored in UserCredential.
   passwordHash              String?
   phone                     String?
   jobTitle                  String?
-  company                   Company?                   @relation(fields: [companyId], references: [id])
+  company                   Company?                     @relation(fields: [companyId], references: [id])
   companyId                 String?
   memberships               OrganizationMembership[]
   credentials               UserCredential[]
   externalIdentities        ExternalIdentity[]
   oidcAuthorizationRequests OidcAuthorizationRequest[]
-  invitationsSent           IdentityInvitation[]       @relation("IdentityInvitationInviter")
-  invitationsAccepted       IdentityInvitation[]       @relation("IdentityInvitationAccepter")
+  invitationsSent           IdentityInvitation[]         @relation("IdentityInvitationInviter")
+  invitationsAccepted       IdentityInvitation[]         @relation("IdentityInvitationAccepter")
   sessions                  UserSession[]
   loginChallenges           LoginChallenge[]
   mfaMethods                MfaMethod[]
@@ -37,31 +37,42 @@ model User {
   mfaExemptions             OrganizationMfaExemption[]
   requests                  SupportRequest[]
   messages                  RequestMessage[]
-  createdAt                 DateTime                   @default(now())
-  updatedAt                 DateTime                   @updatedAt
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
   passwordResetTokens       PasswordResetToken[]
   notificationPreference    NotificationPreference?
   emailMessages             EmailMessage[]
   knowledgeArticles         KnowledgeArticle[]
   portalNotifications       PortalNotification[]
+  platformRoleAssignments   PlatformRoleAssignment[]     @relation("PlatformRoleAssignee")
+  platformRolesAssigned     PlatformRoleAssignment[]     @relation("PlatformRoleAssigner")
+  supportSessions           PlatformSupportSession[]     @relation("PlatformSupportActor")
+  supportSessionsEnded      PlatformSupportSession[]     @relation("PlatformSupportEnder")
+  approvalRequests          GovernanceApprovalRequest[]  @relation("ApprovalRequester")
+  approvalDecisions         GovernanceApprovalDecision[] @relation("ApprovalApprover")
+  governanceNotifications   GovernanceNotification[]
 
   @@index([emailNormalized])
 }
 
 model Company {
-  id                  String                      @id @default(cuid())
-  name                String
-  registrationNumber  String?
-  address             String?
-  users               User[]
-  memberships         OrganizationMembership[]
-  identityPolicy      OrganizationIdentityPolicy?
-  identityProviders   IdentityProvider[]
-  identityInvitations IdentityInvitation[]
-  requests            SupportRequest[]
-  portalNotifications PortalNotification[]
-  createdAt           DateTime                    @default(now())
-  updatedAt           DateTime                    @updatedAt
+  id                      String                      @id @default(cuid())
+  name                    String
+  registrationNumber      String?
+  address                 String?
+  users                   User[]
+  memberships             OrganizationMembership[]
+  identityPolicy          OrganizationIdentityPolicy?
+  identityProviders       IdentityProvider[]
+  identityInvitations     IdentityInvitation[]
+  requests                SupportRequest[]
+  portalNotifications     PortalNotification[]
+  knowledgeArticles       KnowledgeArticle[]
+  supportSessions         PlatformSupportSession[]
+  approvalRequests        GovernanceApprovalRequest[]
+  governanceNotifications GovernanceNotification[]
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
 }
 
 model OrganizationMembership {
@@ -94,6 +105,53 @@ enum OrganizationRole {
   MANAGER
   MEMBER
   VIEWER
+}
+
+enum PlatformRole {
+  PLATFORM_OWNER
+  PLATFORM_ADMIN
+  PLATFORM_SUPPORT
+  PLATFORM_AUDITOR
+  PLATFORM_OPERATOR
+}
+
+model PlatformRoleAssignment {
+  id           String       @id @default(cuid())
+  user         User         @relation("PlatformRoleAssignee", fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  role         PlatformRole
+  active       Boolean      @default(true)
+  version      Int          @default(1)
+  assignedBy   User?        @relation("PlatformRoleAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignedById String?
+  disabledAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([userId, role])
+  @@index([userId, active])
+  @@index([role, active])
+}
+
+model PlatformSupportSession {
+  id              String    @id @default(cuid())
+  actor           User      @relation("PlatformSupportActor", fields: [actorId], references: [id], onDelete: Restrict)
+  actorId         String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  companyId       String
+  reasonCode      String    @db.VarChar(100)
+  ticketReference String    @db.VarChar(200)
+  allowedScopes   Json
+  mfaVerifiedAt   DateTime
+  authenticatedAt DateTime
+  expiresAt       DateTime
+  endedAt         DateTime?
+  endedBy         User?     @relation("PlatformSupportEnder", fields: [endedById], references: [id], onDelete: SetNull)
+  endedById       String?
+  createdAt       DateTime  @default(now())
+
+  @@index([actorId, expiresAt, endedAt])
+  @@index([companyId, expiresAt, endedAt])
 }
 
 enum MembershipStatus {
@@ -183,9 +241,9 @@ model IdentityProvider {
   createdAt                DateTime                     @default(now())
   updatedAt                DateTime                     @updatedAt
 
+  @@unique([id, companyId])
   @@index([companyId, enabled])
   @@index([kind, enabled])
-  @@unique([id, companyId])
 }
 
 model ExternalIdentity {
@@ -207,21 +265,21 @@ model ExternalIdentity {
 }
 
 model OidcAuthorizationRequest {
-  id                    String           @id @default(cuid())
-  provider              IdentityProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  id                    String                   @id @default(cuid())
+  provider              IdentityProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
   providerId            String
-  user                  User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                  User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId                String?
   purpose               OidcAuthorizationPurpose @default(LOGIN)
-  stateHash             String           @unique @db.VarChar(64)
-  nonceHash             String           @db.VarChar(64)
+  stateHash             String                   @unique @db.VarChar(64)
+  nonceHash             String                   @db.VarChar(64)
   pkceVerifierEncrypted String
   redirectUri           String
   returnTo              String?
   expiresAt             DateTime
   consumedAt            DateTime?
   validatedAt           DateTime?
-  createdAt             DateTime         @default(now())
+  createdAt             DateTime                 @default(now())
 
   @@index([providerId, expiresAt])
   @@index([userId, expiresAt])
@@ -231,7 +289,7 @@ model OidcTokenReplay {
   id          String           @id @default(cuid())
   provider    IdentityProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
   providerId  String
-  tokenIdHash String          @db.VarChar(64)
+  tokenIdHash String           @db.VarChar(64)
   expiresAt   DateTime
   createdAt   DateTime         @default(now())
 
@@ -354,23 +412,23 @@ model EmailVerificationToken {
 }
 
 model IdentityInvitation {
-  id              String    @id @default(cuid())
-  tokenHash       String    @unique @db.VarChar(64)
-  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  companyId       String
-  emailNormalized String
+  id               String           @id @default(cuid())
+  tokenHash        String           @unique @db.VarChar(64)
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId        String
+  emailNormalized  String
   // Legacy role is retained for backwards-compatible invitation reads.
-  role            UserRole         @default(CLIENT)
+  role             UserRole         @default(CLIENT)
   organizationRole OrganizationRole @default(MEMBER)
-  inviter         User      @relation("IdentityInvitationInviter", fields: [invitedBy], references: [id], onDelete: Restrict)
-  invitedBy       String
-  accepter        User?     @relation("IdentityInvitationAccepter", fields: [acceptedBy], references: [id], onDelete: SetNull)
-  acceptedBy      String?
-  expiresAt       DateTime
-  acceptedAt      DateTime?
-  revokedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  inviter          User             @relation("IdentityInvitationInviter", fields: [invitedBy], references: [id], onDelete: Restrict)
+  invitedBy        String
+  accepter         User?            @relation("IdentityInvitationAccepter", fields: [acceptedBy], references: [id], onDelete: SetNull)
+  acceptedBy       String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@index([companyId, emailNormalized, revokedAt, acceptedAt])
   @@index([invitedBy, createdAt])
@@ -412,22 +470,22 @@ enum OrganizationSsoRequirement {
 }
 
 model OrganizationIdentityPolicy {
-  company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  companyId           String                     @id
-  mfaRequirement      OrganizationMfaRequirement @default(OPTIONAL)
-  gracePeriodDays     Int                        @default(0)
-  enforcementAt       DateTime?
-  ssoRequirement      OrganizationSsoRequirement @default(DISABLED)
-  ssoProvider         IdentityProvider?          @relation("OrganizationSsoProvider", fields: [ssoProviderId, companyId], references: [id, companyId], onDelete: Restrict)
-  ssoProviderId       String?
-  ssoEnforcementAt    DateTime?
-  ssoGracePeriodDays  Int                        @default(0)
-  localLoginAllowed   Boolean                    @default(true)
-  configurationVersion Int                       @default(1)
-  updatedBy           String?
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
-  exemptions          OrganizationMfaExemption[]
+  company              Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId            String                     @id
+  mfaRequirement       OrganizationMfaRequirement @default(OPTIONAL)
+  gracePeriodDays      Int                        @default(0)
+  enforcementAt        DateTime?
+  ssoRequirement       OrganizationSsoRequirement @default(DISABLED)
+  ssoProvider          IdentityProvider?          @relation("OrganizationSsoProvider", fields: [ssoProviderId, companyId], references: [id, companyId], onDelete: Restrict)
+  ssoProviderId        String?
+  ssoEnforcementAt     DateTime?
+  ssoGracePeriodDays   Int                        @default(0)
+  localLoginAllowed    Boolean                    @default(true)
+  configurationVersion Int                        @default(1)
+  updatedBy            String?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  exemptions           OrganizationMfaExemption[]
 }
 
 model OrganizationMfaExemption {
@@ -453,6 +511,7 @@ model SupportRequest {
   category    String
   priority    Priority            @default(NORMAL)
   status      RequestStatus       @default(NEW)
+  version     Int                 @default(1)
   jiraKey     String?
   jiraSyncAt  DateTime?
   dueAt       DateTime?
@@ -593,28 +652,134 @@ enum EmailStatus {
 }
 
 model KnowledgeArticle {
-  id          String        @id @default(cuid())
-  slug        String        @unique
-  title       String
-  summary     String
-  category    String
-  tags        String[]      @default([])
-  readingTime String        @default("5 минут")
-  content     Json
-  status      ArticleStatus @default(DRAFT)
-  author      User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  authorId    String?
-  publishedAt DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                     String              @id @default(cuid())
+  slug                   String              @unique
+  title                  String
+  summary                String
+  category               String
+  tags                   String[]            @default([])
+  readingTime            String              @default("5 минут")
+  content                Json
+  status                 ArticleStatus       @default(DRAFT)
+  author                 User?               @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorId               String?
+  company                Company?            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  companyId              String?
+  ownerScope             KnowledgeOwnerScope
+  visibility             KnowledgeVisibility
+  version                Int                 @default(1)
+  classificationEvidence String              @db.VarChar(200)
+  quarantinedAt          DateTime?
+  publishedAt            DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
-  @@index([status, category])
+  @@index([status, visibility, category])
+  @@index([companyId, status, visibility])
+  @@index([ownerScope, status])
 }
 
 enum ArticleStatus {
   DRAFT
+  REVIEW
   PUBLISHED
   ARCHIVED
+}
+
+enum KnowledgeOwnerScope {
+  PLATFORM
+  ORGANIZATION
+  SYSTEM
+  LEGACY_UNCLASSIFIED
+}
+
+enum KnowledgeVisibility {
+  PRIVATE
+  ORGANIZATION
+  PLATFORM
+  PUBLIC
+}
+
+enum GovernanceApprovalActionType {
+  PLATFORM_OWNER_ASSIGN
+  PLATFORM_OWNER_REMOVE
+  ORGANIZATION_LAST_OWNER_TRANSFER
+  ORGANIZATION_REQUIRED_SSO_EMERGENCY_DISABLE
+  ORGANIZATION_BREAK_GLASS_DISABLE
+  IDENTITY_PROVIDER_DELETE
+  PLATFORM_AUDIT_EXPORT
+  ORGANIZATION_AUDIT_EXPORT
+  BULK_TENANT_EXPORT
+  KNOWLEDGE_VISIBILITY_PUBLIC
+  CROSS_TENANT_SUPPORT_DESTRUCTIVE_ACTION
+}
+
+enum GovernanceApprovalScope {
+  PLATFORM
+  ORGANIZATION
+}
+
+enum GovernanceApprovalStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+  CANCELLED
+}
+
+model GovernanceApprovalRequest {
+  id                 String                       @id @default(cuid())
+  actionType         GovernanceApprovalActionType
+  scope              GovernanceApprovalScope
+  company            Company?                     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  companyId          String?
+  resourceId         String?                      @db.VarChar(200)
+  expectedVersion    Int?
+  safeParameters     Json
+  payloadFingerprint String                       @unique @db.VarChar(64)
+  requester          User                         @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterId        String
+  status             GovernanceApprovalStatus     @default(REQUESTED)
+  expiresAt          DateTime
+  executedAt         DateTime?
+  cancelledAt        DateTime?
+  executionKey       String?                      @unique @db.VarChar(200)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  decisions          GovernanceApprovalDecision[]
+
+  @@index([scope, companyId, status, expiresAt])
+  @@index([requesterId, status, createdAt])
+}
+
+model GovernanceApprovalDecision {
+  id         String                    @id @default(cuid())
+  request    GovernanceApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId  String
+  approver   User                      @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: Restrict)
+  approverId String
+  approved   Boolean
+  createdAt  DateTime                  @default(now())
+
+  @@unique([requestId, approverId])
+  @@index([approverId, createdAt])
+}
+
+model GovernanceNotification {
+  id          String    @id @default(cuid())
+  recipient   User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId String
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String?
+  category    String    @db.VarChar(50)
+  title       String    @db.VarChar(160)
+  href        String    @db.VarChar(250)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([companyId, createdAt])
 }
 
 model DocumentMetadata {
