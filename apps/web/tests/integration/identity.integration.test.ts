@@ -76,7 +76,12 @@ test('production identity persists opaque sessions, MFA, recovery, and reset lif
         active: true,
         companyId: invitedCompanyId,
         memberships: {
-          create: { companyId: invitedCompanyId, role: 'CLIENT', active: true },
+          create: {
+            companyId: invitedCompanyId,
+            role: 'CLIENT',
+            organizationRole: 'MANAGER',
+            active: true,
+          },
         },
       },
     });
@@ -137,6 +142,9 @@ test('production identity persists opaque sessions, MFA, recovery, and reset lif
       email: `inviter.${suffix}@example.test`,
       name: 'Identity Integration Inviter',
       role: 'CLIENT',
+      organizationRole: 'MANAGER',
+      membershipStatus: 'ACTIVE',
+      membershipVersion: 1,
       companyId: invitedCompanyId,
       company: 'Invited Integration Tenant',
       expiresAt: Date.now() + 60_000,

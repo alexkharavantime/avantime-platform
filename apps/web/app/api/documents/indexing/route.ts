@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReprocessApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext, toDocumentApiItem } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
 
@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReprocessApi();
     if (authorization.response) return authorization.response;
     const tenant = getDocumentTenantContext(authorization.session);
     const url = new URL(request.url);

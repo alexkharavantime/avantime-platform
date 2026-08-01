@@ -26,6 +26,7 @@ import {
 } from './oidc-provider-configuration';
 import { safeReturnTo } from './safe-return-to';
 import type { AppSession } from './session';
+import { hasOrganizationPermission } from './organization-permissions';
 
 export const OIDC_MFA_COOKIE = 'avantime_oidc_mfa';
 
@@ -225,7 +226,7 @@ export async function completeOidcCallback(input: {
     const session = input.currentSession;
     if (
       !session ||
-      session.role !== 'ADMIN' ||
+      !hasOrganizationPermission(session, 'identity.providers.manage') ||
       session.userId !== transaction.userId ||
       session.companyId !== provider.companyId ||
       session.mfaSatisfied !== true ||

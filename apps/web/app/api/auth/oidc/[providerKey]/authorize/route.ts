@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { beginOidcAuthorization, OidcValidationError } from '../../../../../../lib/oidc';
 import { safeReturnTo } from '../../../../../../lib/safe-return-to';
 import { getSession } from '../../../../../../lib/session';
+import { hasOrganizationPermission } from '../../../../../../lib/organization-permissions';
 
 function callbackUri(request: Request) {
   const origin = process.env.AUTH_PUBLIC_ORIGIN?.trim() || new URL(request.url).origin;
@@ -18,7 +19,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
   const validationRequested = searchParams.get('mode') === 'validate';
   if (
     (linkRequested && !session) ||
-    (validationRequested && (!session || session.role !== 'ADMIN' || !session.companyId))
+    (validationRequested && !hasOrganizationPermission(session, 'identity.providers.manage'))
   ) {
     return NextResponse.redirect(
       new URL('/portal/login?oidcError=link_session_required', request.url),

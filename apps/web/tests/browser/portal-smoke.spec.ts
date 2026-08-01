@@ -42,6 +42,7 @@ test.describe('portal browser smoke', () => {
 
   test('primary portal navigation changes routes', async ({ page, assertNoBrowserErrors }) => {
     await page.goto('/portal');
+    await page.waitForLoadState('networkidle');
     await page
       .getByRole('navigation', { name: 'Основная навигация' })
       .getByRole('link', { name: 'Обращения' })

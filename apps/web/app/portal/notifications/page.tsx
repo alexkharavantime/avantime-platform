@@ -1,6 +1,12 @@
 import { PortalNotificationCenter } from '../../../components/portal/notification-center';
+import { redirect } from 'next/navigation';
+import { getValidatedPortalSession } from '../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../lib/organization-permissions';
 
-export default function PortalNotificationsPage() {
+export default async function PortalNotificationsPage() {
+  const session = await getValidatedPortalSession();
+  if (!session) redirect('/portal/login?returnTo=/portal/notifications');
+  if (!hasOrganizationPermission(session, 'notifications.view')) redirect('/portal');
   return (
     <div className="mx-auto max-w-5xl px-5 py-10 sm:px-6">
       <p className="eyebrow">События кабинета</p>

@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Завершить repository-level TASK-010 OIDC rollout boundary, затем выполнить production-like
-identity/provider ceremonies без смешивания identity и organization membership.
+Провести production-like identity/provider и organization-governance ceremonies поверх
+завершённой repository-level tenant permission model.
 
 ### 📈 Общий процент готовности
 
@@ -19,24 +19,28 @@ identity/provider ceremonies без смешивания identity и organizatio
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-010 добавляет полный server-side OIDC callback и tenant-bound versioned provider lifecycle;
-2. Entra `tid`, Google Workspace `hd`, no-email-only linking и organization SSO policy закреплены
-   fail-closed controls;
-3. dedicated identity 21/21, unit 138/138, integration 20/20 и browser/accessibility 54/54
-   подтверждают deterministic callback, provider lifecycle, migration quarantine и ADMIN UI.
+1. TASK-011 добавляет system roles `OWNER/ADMIN/MANAGER/MEMBER/VIEWER` и central
+   deny-by-default permission service без смешивания global platform role;
+2. OWNER lifecycle, delegation, suspended/removed memberships, critical step-up, tenant audit и
+   permission-aware portal/API защищены server-side;
+3. unit 147/147, permission 9/9, integration 22/22 и browser/accessibility 60/60 подтверждают
+   migration, authorization, navigation и governance scenarios.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
-2. Production identity и OIDC ceremonies, реальные Entra/Google/generic tenant connections и
-   Security Owner acceptance ещё не выполнены;
-3. accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12, а initial SLO не подтверждены production-like измерениями.
+2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
+   connections, manual governance и assistive-technology review ещё не выполнены;
+3. Legacy platform-wide article/request/system administration остаётся на global `User.role`, а
+   accepted dependency risks `AR-DEP-2026-001/002` требуют review до 2026-08-12.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Validate TASK-010 providers в production-like staging и принять evidence владельцами.
-2. Развернуть reference topology в managed staging и подтвердить backup/PITR/alerts.
-3. Провести ручной screen-reader/assistive-technology review и расширять browser coverage вместе с критическими сценариями.
+1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
+   реальных OWNER и Security Owner.
+2. Спроектировать TASK-012 для отделения platform permissions и tenant ownership knowledge
+   articles без arbitrary custom-role editor.
+3. Провести ручной screen-reader/assistive-technology review и подтвердить backup/PITR/alerts.
 
 ---
 
@@ -45,11 +49,11 @@ identity/provider ceremonies без смешивания identity и organizatio
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.20                                                                                      |
+| Версия документа                 | 1.21                                                                                      |
 | Дата последнего обновления       | 2026-07-31                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-010-oidc-production-rollout`                                                |
-| Последний commit                 | `efda4c4` — TASK-009 integration                                                          |
+| Текущая ветка Git                | `feature/task-011-organization-permissions`                                               |
+| Последний commit                 | `3ba2760` — TASK-010 production OIDC rollout                                              |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
 | Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
@@ -62,10 +66,10 @@ identity/provider ceremonies без смешивания identity и organizatio
 
 Avantime находится на переходе от демонстрационной платформы Version 1.5 к безопасному модульному ядру Version 2.0. Уже существуют публичный сайт, клиентский портал, административные сценарии, обращения, вложения, управляемые статьи, Jira и Email, а также экспериментальные функции AI и обработки PDF.
 
-Главный текущий результат — production identity boundary отделяет credentials и external identity
-от organization membership, а локальный login использует MFA и server-side session lifecycle.
-Следующий архитектурный вызов — подтвердить staging ceremony, завершить организационную RBAC и
-объединить persistence/permission model статей и tenant-документов.
+Главный текущий результат — production identity boundary отделяет credentials/external identity
+от organization membership, а TASK-011 добавляет authoritative organization role/status/version и
+central deny-by-default permission resolution. Следующий архитектурный вызов — подтвердить staging
+ceremonies и отделить platform authorization от tenant-owned knowledge/data operations.
 
 ## Граница PR #1 и TASK-002
 
@@ -166,6 +170,17 @@ accessibility 54/54, пять security scans без findings и documentation ch
 Реальные Entra, Google Workspace и generic tenants не подключались и не считаются validated;
 staging rollout/rollback и Security Owner acceptance остаются внешними gates.
 
+[TASK-011](./tasks/TASK-011.md) завершена в repository/application boundary: реализованы immutable
+organization roles `OWNER/ADMIN/MANAGER/MEMBER/VIEWER`, fixed permission vocabulary, central
+deny-by-default service, explicit first-OWNER bootstrap, last-OWNER transaction lock, versioned
+membership lifecycle/session revocation, safe delegation, critical MFA/recent-auth/confirmation,
+permission-aware navigation/API, bounded audit и generic security notifications. Legacy
+`ADMIN → ADMIN`, `CLIENT → MEMBER` мигрированы без автоматической выдачи OWNER и без удаления legacy
+данных. Подтверждены 147/147 unit/security, 9/9 permission, 21/21 identity, 22/22 integration и
+60/60 Playwright/browser/accessibility tests, empty/legacy/repeated migration rehearsal, production
+build и static security/documentation gates. Manual governance/assistive review и managed staging
+ceremony не выполнялись; platform-wide non-tenant models остаются compatibility boundary.
+
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
@@ -217,10 +232,10 @@ staging rollout/rollback и Security Owner acceptance остаются внеш�
 | 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                             |
 | Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                              |
 | API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует              |
-| Безопасность            | In Progress |        78% | Production identity/MFA/session boundary реализован и локально проверен; staging ceremony и полная организационная RBAC остаются                  |
+| Безопасность            | In Progress |        82% | Central organization RBAC и OWNER governance локально проверены; staging ceremonies и legacy platform-role separation остаются                    |
 | UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                        |
 | Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены   |
-| Тестирование            | In Progress |        76% | Проходят 126 unit/security, 19 integration и 45 Playwright/Chrome tests; ручной assistive-technology review остаётся                              |
+| Тестирование            | In Progress |        80% | Проходят 147 unit/security, 22 integration и 60 Playwright/Chrome tests; manual governance и assistive-technology review остаются                 |
 | Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                   |
 
 ---
@@ -256,7 +271,7 @@ staging rollout/rollback и Security Owner acceptance остаются внеш�
 | UX-002            | Библиотека компонентов                               | P1        |        45% | Стабильные exports и повторно используемые компоненты                                                              |
 | DOCS-001–DOCS-004 | Vision, Master Specification, Architecture и Roadmap | P0–P1     |        85% | Утверждённая согласованная документационная основа                                                                 |
 | SEC-001           | Авторизация Dashboard                                | P0        |        75% | Закрытые Dashboard и внутренние API с безопасным возвратом после входа и отрицательными тестами                    |
-| SEC-002           | RBAC                                                 | P0        |        45% | Tenant-контекст документов добавлен; полная матрица ролей и клиентский доступ остаются                             |
+| SEC-002           | RBAC                                                 | P0        |        82% | Organization matrix, OWNER governance и central checks готовы; platform permissions/custom roles остаются          |
 
 Проценты в этой таблице являются оценкой текущего фактического объёма, а не изменением статусов Product Backlog.
 
@@ -495,7 +510,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 | Порядок | Действие                                                           | Приоритет | Ожидаемый эффект                                     | Ориентировочная сложность |
 | ------: | ------------------------------------------------------------------ | --------- | ---------------------------------------------------- | ------------------------- |
 |       1 | Завершить review и сохранить стратегические документы отдельным PR | P0        | Единый утверждённый источник требований              | Низкая                    |
-|       2 | Утвердить RBAC и правила выбора tenant системным администратором   | P0        | Основа безопасного клиентского доступа к документам  | Высокая                   |
+|       2 | Провести manual role-governance review и назначить первых OWNER    | P0        | Подтверждённое делегирование в реальных организациях | Средняя                   |
 |       3 | Развернуть private S3 bucket и PostgreSQL migration environment    | P0        | Проверяемое production-хранение                      | Высокая                   |
 |       4 | Провести staging provider validation и backup/restore test         | P0        | Безопасный переход без потери tenant-принадлежности  | Средняя                   |
 |       5 | Проверить production AI providers и distributed limits             | P0        | Эксплуатационная готовность AI Gateway               | Высокая                   |
@@ -509,6 +524,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
 | ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-07-31 | 1.21   | Codex, по поручению владельца проекта | TASK-011 central tenant permissions, system roles, OWNER governance, lifecycle, audit/navigation/API и migration; 147 unit, 22 integration и 60 browser tests, build и security gates passed           |
 | 2026-07-31 | 1.20   | Codex, по поручению владельца проекта | TASK-010 repository OIDC callback/lifecycle, tenant mapping, SSO policy, ADMIN UI, rollout/evidence docs; local unit/integration/build/browser/security gates passed, real tenant validation pending   |
 | 2026-07-30 | 1.19   | Codex, по поручению владельца проекта | Полная TASK-009 gap analysis: verification/invitation/OIDC/key rotation/ceremony/CI/browser coverage; 133 unit, 19 integration, 6 identity и 11 accessibility tests passed; final tenant rerun pending |
 | 2026-07-30 | 1.18   | Codex, по поручению владельца проекта | TASK-009 application boundary: source-scoped identity/membership, scrypt migration, MFA/recovery, opaque sessions, security settings; local unit/integration/browser/security gates passed             |

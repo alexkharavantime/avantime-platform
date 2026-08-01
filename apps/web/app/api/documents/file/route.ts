@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentReadApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentDownloadApi } from '../../../../lib/document-authorization';
 import {
   getDocumentTenantContext,
   UNVERIFIED_DOCUMENT_CHECKSUM,
@@ -10,7 +10,7 @@ import { appendPortalAudit } from '../../../../lib/portal-audit';
 
 export async function GET(request: Request) {
   try {
-    const authorization = await authorizeDocumentReadApi();
+    const authorization = await authorizeDocumentDownloadApi();
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);

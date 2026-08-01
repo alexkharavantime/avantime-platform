@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReprocessApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import { reprocessDocument } from '../../../../lib/document-services';
 import { assertSafeDocumentSegment } from '../../../../lib/document-storage';
@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReprocessApi();
     if (authorization.response) return authorization.response;
     const body: unknown = await request.json();
     if (!body || typeof body !== 'object') {

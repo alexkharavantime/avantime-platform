@@ -5,10 +5,12 @@ import {
   parseIdentityMutation,
 } from '../../../../../../../lib/identity-route';
 import { refreshOidcProviderMetadata } from '../../../../../../../lib/oidc-provider-configuration';
-import { authorizePortalApi } from '../../../../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../../../../lib/organization-authorization';
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('identity.providers.manage', {
+    correlationId: identityCorrelationId(request),
+  });
   if (authorization.response) return authorization.response;
   const parsed = await parseIdentityMutation(request);
   if (parsed.response) return parsed.response;

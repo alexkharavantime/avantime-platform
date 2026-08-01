@@ -6,10 +6,12 @@ import {
   updateOidcProvider,
 } from '../../../../../../lib/oidc-provider-configuration';
 import { parseOidcProviderConfiguration } from '../../../../../../lib/oidc-provider-route';
-import { authorizePortalApi } from '../../../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../../../lib/organization-authorization';
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
-  const authorization = await authorizePortalApi();
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  const authorization = await authorizeOrganizationApi('identity.providers.manage', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   try {
     return NextResponse.json(
@@ -22,7 +24,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('identity.providers.manage', {
+    correlationId: identityCorrelationId(request),
+  });
   if (authorization.response) return authorization.response;
   const parsed = await parseIdentityMutation(request);
   if (parsed.response) return parsed.response;

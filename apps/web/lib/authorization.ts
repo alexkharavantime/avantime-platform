@@ -3,13 +3,15 @@ import { NextResponse } from 'next/server';
 import { getSession, type AppSession, type UserRole } from './session';
 
 type ApiAuthorization =
-  | { session: AppSession; response?: never }
-  | { session?: never; response: NextResponse };
+  { session: AppSession; response?: never } | { session?: never; response: NextResponse };
 
 export function authorizeSession(
   session: AppSession | null,
   roles?: readonly UserRole[],
 ): ApiAuthorization {
+  if (roles && process.env.NODE_ENV !== 'production') {
+    console.warn(`Legacy role authorization compatibility used: ${roles.join(',')}.`);
+  }
   if (!session) {
     return {
       response: NextResponse.json({ error: 'Требуется авторизация.' }, { status: 401 }),

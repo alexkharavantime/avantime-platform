@@ -79,12 +79,18 @@ test('protected API authorization distinguishes unauthenticated and forbidden ac
   assert.equal(allowed.session?.role, 'ADMIN');
 });
 
-test('Document API denies access unless the session belongs to an ADMIN', () => {
+test('Document management requires an active privileged organization membership', () => {
   assert.equal(authorizeDocumentSession(null).response?.status, 401);
   assert.equal(authorizeDocumentSession(session()).response?.status, 403);
   assert.equal(
-    authorizeDocumentSession(session({ role: 'ADMIN', companyId: undefined })).session?.role,
+    authorizeDocumentSession(
+      session({ role: 'ADMIN', organizationRole: 'ADMIN', membershipStatus: 'ACTIVE' }),
+    ).session?.organizationRole,
     'ADMIN',
+  );
+  assert.equal(
+    authorizeDocumentSession(session({ role: 'ADMIN', companyId: undefined })).response?.status,
+    403,
   );
 });
 
@@ -96,8 +102,8 @@ test('client document reads require an authenticated company membership', () => 
   );
   assert.equal(authorizeDocumentReadSession(session()).session?.companyId, 'test-company');
   assert.equal(
-    authorizeDocumentReadSession(session({ role: 'ADMIN', companyId: undefined })).session?.role,
-    'ADMIN',
+    authorizeDocumentReadSession(session({ role: 'ADMIN', companyId: undefined })).response?.status,
+    403,
   );
 });
 
@@ -111,13 +117,14 @@ test('portal session validation rejects inactive and cross-tenant identities', a
     disabledAt: null,
     memberships: [{ companyId: current.companyId!, active: true }],
   };
-  assert.equal(
-    await validatePortalSession(current, {
-      databaseConfigured: true,
-      loadIdentity: async () => validIdentity,
-    }),
-    current,
-  );
+  const validated = await validatePortalSession(current, {
+    databaseConfigured: true,
+    loadIdentity: async () => validIdentity,
+  });
+  assert.equal(validated?.userId, current.userId);
+  assert.equal(validated?.organizationRole, 'MEMBER');
+  assert.equal(validated?.membershipStatus, 'ACTIVE');
+  assert.equal(validated?.membershipVersion, 1);
   assert.equal(
     await validatePortalSession(current, {
       databaseConfigured: true,
@@ -299,11 +306,13 @@ test('portal audit supports failure results without exposing audit sink errors',
   assert.deepEqual(warnings, [['Portal audit event could not be persisted.']]);
 });
 
-test('quarantine retry policy remains ADMIN-only', () => {
+test('quarantine retry policy requires document management permission', () => {
   assert.equal(authorizeDocumentSession(null).response?.status, 401);
   assert.equal(authorizeDocumentSession(session({ role: 'CLIENT' })).response?.status, 403);
   assert.equal(
-    authorizeDocumentSession(session({ role: 'ADMIN', companyId: undefined })).response,
+    authorizeDocumentSession(
+      session({ role: 'ADMIN', organizationRole: 'ADMIN', membershipStatus: 'ACTIVE' }),
+    ).response,
     undefined,
   );
 });
@@ -312,7 +321,7 @@ test('document reprocess route derives tenant server-side and rejects client com
   const route = await import('node:fs/promises').then(({ readFile }) =>
     readFile(path.join(process.cwd(), 'app/api/documents/reprocess/route.ts'), 'utf8'),
   );
-  assert.match(route, /authorizeDocumentApi/);
+  assert.match(route, /authorizeDocumentReprocessApi/);
   assert.match(route, /getDocumentTenantContext/);
   assert.doesNotMatch(route, /companyId/);
 });
@@ -326,11 +335,7 @@ test('RAG APIs derive tenant server-side and explicitly reject client companyId'
     ),
   );
   for (const route of routes) {
-    if (route.includes('authorizeDocumentReadApi')) {
-      assert.match(route, /authorizeDocumentReadApi/);
-    } else {
-      assert.match(route, /authorizeDocumentApi/);
-    }
+    assert.match(route, /authorizeDocument(?:Read|Reprocess)Api/);
     assert.match(route, /getDocumentTenantContext/);
     assert.match(route, /TENANT_INPUT_REJECTED/);
   }
@@ -420,10 +425,17 @@ test('team invitation cannot reassign an identity from another tenant', () => {
 });
 
 test('portal shell contains role-aware and mobile navigation controls', async () => {
-  const source = await import('node:fs/promises').then(({ readFile }) =>
-    readFile(path.join(process.cwd(), 'components/portal/portal-shell.tsx'), 'utf8'),
-  );
-  assert.match(source, /role === 'ADMIN'/);
+  const [source, layout] = await Promise.all([
+    import('node:fs/promises').then(({ readFile }) =>
+      readFile(path.join(process.cwd(), 'components/portal/portal-shell.tsx'), 'utf8'),
+    ),
+    import('node:fs/promises').then(({ readFile }) =>
+      readFile(path.join(process.cwd(), 'app/portal/layout.tsx'), 'utf8'),
+    ),
+  ]);
+  assert.match(source, /navigation\.map/);
+  assert.doesNotMatch(source, /role === 'ADMIN'/);
+  assert.match(layout, /buildPortalNavigation/);
   assert.match(source, /aria-expanded=/);
   assert.match(source, /Перейти к содержимому/);
   assert.match(source, /aria-current=/);

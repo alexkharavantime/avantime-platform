@@ -39,8 +39,9 @@ redirect loops or a second navigation model.
   user or tenant data.
 - Tenant identifiers are derived from the validated server session. Client requests containing
   `companyId` are rejected.
-- Client document reads are scoped by the compound `(companyId, id)` identity. Mutating document
-  operations remain `ADMIN`-only.
+- Client document reads are scoped by the compound `(companyId, id)` identity. Upload, reprocess,
+  manage and destructive delete are separate organization permissions; delete additionally uses
+  server-side critical-action confirmation.
 - Cross-tenant resources use the same not-found response as missing resources.
 - Safe redirects accept application-local paths only and preserve query strings.
 - Portal audit accepts only fixed action/target pairs for portal access, document download,
@@ -64,14 +65,27 @@ redirect loops or a second navigation model.
   projections, treats the client-secret reference as write-only and cannot self-declare a real
   tenant validated. Provider and SSO policy mutations derive company from the validated server
   session and reject client tenant identifiers.
-- Team invite creates a tenant-bound pending invitation, not a user or membership. The fixed
-  `CLIENT` grant appears only after an authenticated verified identity atomically accepts the
-  one-time code.
+- Team invite creates a tenant-bound pending invitation, not a user or membership. An allowlisted
+  organization role no higher than the inviter may appear only after an authenticated verified
+  identity atomically accepts the one-time code; invitation never grants OWNER.
 
 ## Compatibility lifecycle
 
 Dashboard compatibility routes are deprecated in TASK-007 but remain supported. Removal requires a
 separate decision, usage evidence, a communicated sunset date, and dedicated migration work.
+
+## Organization permission model
+
+TASK-011 строит desktop/mobile navigation на сервере из validated organization membership, а не
+из client storage или hardcoded role. Every destination repeats its permission check on render or
+API. Team shows role/status and only permitted invitation, delegation, suspension and removal
+controls. Company fields require `organization.update`; personal profile fields remain self-service.
+Requests, documents, notifications, knowledge search, providers, policy and audit map to the fixed
+matrix in [Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md).
+
+Global platform administration remains visually and logically separate. In particular, legacy
+knowledge articles have no tenant owner and are not reclassified as organization content by a UI
+check. That data-model migration requires a separate ADR.
 
 ## Browser verification boundary
 

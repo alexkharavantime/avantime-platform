@@ -5,14 +5,23 @@ import { useEffect, useState } from 'react';
 
 import type { ClientDocumentApiItem } from '../../lib/document-model';
 
-export function PortalDocumentDetail({ id }: { id: string }) {
-  const [document, setDocument] = useState<ClientDocumentApiItem | null>(null);
+export function PortalDocumentDetail({
+  id,
+  initialDocument,
+}: {
+  id: string;
+  initialDocument?: ClientDocumentApiItem | null;
+}) {
+  const [document, setDocument] = useState<ClientDocumentApiItem | null>(initialDocument ?? null);
   const [text, setText] = useState('');
   const [mode, setMode] = useState<'preview' | 'text'>('preview');
-  const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'error'>(
+    initialDocument === undefined ? 'loading' : initialDocument ? 'ready' : 'missing',
+  );
   const [textState, setTextState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   useEffect(() => {
+    if (initialDocument !== undefined) return;
     let active = true;
     async function load() {
       try {
@@ -37,7 +46,7 @@ export function PortalDocumentDetail({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, initialDocument]);
 
   async function showText() {
     setMode('text');
@@ -160,7 +169,7 @@ export function PortalDocumentDetail({ id }: { id: string }) {
             ))}
           </dl>
           <p className="mt-6 text-xs leading-5 text-slate-500">
-            Повторная обработка и переиндексация доступны только администраторам.
+            Повторная обработка и переиндексация доступны уполномоченным участникам компании.
           </p>
         </aside>
       </div>

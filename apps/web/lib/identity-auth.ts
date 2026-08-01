@@ -11,7 +11,7 @@ import {
 import { decryptTotpSecret, hashRecoveryCode, verifyTotp } from './mfa';
 import { hashPassword, verifyPasswordAgainstDummy, verifyPasswordVersioned } from './password';
 import { safeReturnTo } from './safe-return-to';
-import type { SessionIdentity } from './session';
+import type { MembershipStatus, OrganizationRole, SessionIdentity } from './session';
 
 const LOGIN_CHALLENGE_TTL_MS = 5 * 60_000;
 const LOGIN_CHALLENGE_MAX_ATTEMPTS = 5;
@@ -56,6 +56,9 @@ type UserRow = {
   memberships: Array<{
     companyId: string;
     active: boolean;
+    organizationRole: OrganizationRole;
+    status: MembershipStatus;
+    version: number;
     company: { name: string };
   }>;
   mfaMethods: Array<{
@@ -120,7 +123,9 @@ function tokenHash(value: string) {
 }
 
 function chooseMembership(user: UserRow) {
-  const active = user.memberships.filter((membership) => membership.active);
+  const active = user.memberships.filter(
+    (membership) => membership.active && membership.status === 'ACTIVE',
+  );
   const preferred = active.find((membership) => membership.companyId === user.companyId);
   return preferred ?? (active.length === 1 ? active[0] : undefined);
 }
@@ -135,6 +140,9 @@ function toIdentity(user: UserRow, mfaSatisfied: boolean): SessionIdentity | nul
     role: user.role,
     companyId: membership?.companyId,
     company: membership?.company.name ?? user.company?.name ?? 'Avantime',
+    organizationRole: membership?.organizationRole,
+    membershipStatus: membership?.status,
+    membershipVersion: membership?.version,
     mfaSatisfied,
     authenticationAt: Date.now(),
   };
@@ -188,7 +196,7 @@ async function loadAuthenticationUser(prisma: PrismaClient, userId: string) {
       company: { select: { name: true } },
       credentials: { where: { kind: 'PASSWORD' }, take: 1 },
       memberships: {
-        where: { active: true },
+        where: { active: true, status: 'ACTIVE' },
         include: { company: { select: { name: true } } },
       },
       mfaMethods: {
@@ -254,6 +262,7 @@ export async function authenticateExternalIdentity(input: {
     }
     const decision = evaluateMfaPolicy({
       role: user.role,
+      organizationRole: identity.organizationRole,
       hasActiveMfa: user.mfaMethods.length > 0,
       policy,
       exemption,
@@ -316,7 +325,7 @@ export async function authenticatePrimaryCredential(input: {
             company: { select: { name: true } },
             credentials: { where: { kind: 'PASSWORD' }, take: 1 },
             memberships: {
-              where: { active: true },
+              where: { active: true, status: 'ACTIVE' },
               include: { company: { select: { name: true } } },
             },
             mfaMethods: {
@@ -368,6 +377,7 @@ export async function authenticatePrimaryCredential(input: {
     }
     const decision = evaluateMfaPolicy({
       role: user.role,
+      organizationRole: identity.organizationRole,
       hasActiveMfa: user.mfaMethods.length > 0,
       policy,
       exemption,
@@ -405,7 +415,7 @@ async function loadChallenge(prisma: PrismaClient, rawToken: string) {
           company: { select: { name: true } },
           credentials: { where: { kind: 'PASSWORD' }, take: 1 },
           memberships: {
-            where: { active: true },
+            where: { active: true, status: 'ACTIVE' },
             include: { company: { select: { name: true } } },
           },
           mfaMethods: {

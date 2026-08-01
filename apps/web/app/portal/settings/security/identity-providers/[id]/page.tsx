@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { IdentityProviderForm } from '../../../../../../components/portal/identity-provider-form';
 import { getOidcProvider } from '../../../../../../lib/oidc-provider-configuration';
 import { getValidatedPortalSession } from '../../../../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../../../../lib/organization-permissions';
 
 export default async function IdentityProviderPage({
   params,
@@ -13,7 +14,7 @@ export default async function IdentityProviderPage({
   if (!session) {
     redirect('/portal/login?returnTo=/portal/settings/security/identity-providers');
   }
-  if (session.role !== 'ADMIN' || !session.companyId) redirect('/portal');
+  if (!hasOrganizationPermission(session, 'identity.providers.manage')) redirect('/portal');
   try {
     const provider = await getOidcProvider(session, (await params).id);
     const origin = process.env.AUTH_PUBLIC_ORIGIN?.trim() ?? '';

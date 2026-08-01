@@ -37,6 +37,14 @@ export function OrganizationSsoPolicyForm({
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const confirmation =
+      requirement === 'REQUIRED'
+        ? window.prompt('Введите REQUIRE SSO для подтверждения обязательного SSO.')
+        : undefined;
+    if (requirement === 'REQUIRED' && confirmation !== 'REQUIRE SSO') {
+      setMessage('Изменение обязательного SSO отменено.');
+      return;
+    }
     setPending(true);
     setMessage('');
     try {
@@ -50,6 +58,7 @@ export function OrganizationSsoPolicyForm({
           gracePeriodDays,
           localLoginAllowed: requirement === 'REQUIRED' ? false : localLoginAllowed,
           expectedVersion: initial.configurationVersion,
+          confirmation,
         }),
       });
       const result = (await response.json()) as { error?: string };
@@ -68,7 +77,7 @@ export function OrganizationSsoPolicyForm({
       <h2 className="text-xl font-black">Organization SSO policy</h2>
       <p className="mt-2 text-sm text-slate-600">
         Required SSO разрешается только для включённого tenant-validated provider. Tenant выбирается
-        сервером из ADMIN session.
+        сервером из tenant-bound membership.
       </p>
       {message && (
         <p role="status" className="mt-4 rounded-xl bg-blue-50 p-3 text-sm">

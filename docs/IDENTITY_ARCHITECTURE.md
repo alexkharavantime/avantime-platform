@@ -115,6 +115,19 @@ Environment acceptance remains blocked on the production-like ceremony in
 [OIDC Production Rollout](./OIDC_PRODUCTION_ROLLOUT.md), real IdP validation and manual
 assistive-technology review.
 
+## Organization authorization relationship
+
+Identity proves the actor; `OrganizationMembership` authorizes that actor inside one tenant.
+TASK-011 adds role/status/version to this boundary. Every portal session reloads active user and
+membership state; suspension, removal or role change invalidates existing authorization and target
+sessions are revoked on critical membership mutation. Organization `OWNER/ADMIN` participate in
+admin MFA enforcement even when their global platform role is `CLIENT`.
+
+OIDC/provider mapping cannot grant OWNER. An ADMIN mapping requires approved configuration and a
+removed/suspended membership is never recreated by login. The first OWNER is an explicit local
+governance bootstrap, not an identity-provider side effect. See
+[Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md).
+
 ## Related documents
 
 - [Authentication](./authentication.md)
@@ -123,3 +136,4 @@ assistive-technology review.
 - [ADR-0026](./DECISIONS.md#adr-0026)
 - [TASK-009](./tasks/TASK-009.md)
 - [TASK-010](./tasks/TASK-010.md)
+- [TASK-011](./tasks/TASK-011.md)

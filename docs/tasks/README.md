@@ -62,6 +62,8 @@
 | [TASK-007](TASK-007.md) | Unified Client Portal                                    | Done        |
 | [TASK-008](TASK-008.md) | Browser smoke и accessibility automation                 | Done        |
 | [TASK-009](TASK-009.md) | Production identity, MFA and enterprise SSO foundation   | In Progress |
+| [TASK-010](TASK-010.md) | Production OIDC rollout and identity validation          | In Progress |
+| [TASK-011](TASK-011.md) | Organization permission model and governance             | Done        |
 
 ## Связанные документы
 

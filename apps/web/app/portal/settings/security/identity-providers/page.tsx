@@ -7,13 +7,14 @@ import {
   listOidcProviders,
 } from '../../../../../lib/oidc-provider-configuration';
 import { getValidatedPortalSession } from '../../../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../../../lib/organization-permissions';
 
 export default async function IdentityProvidersPage() {
   const session = await getValidatedPortalSession();
   if (!session) {
     redirect('/portal/login?returnTo=/portal/settings/security/identity-providers');
   }
-  if (session.role !== 'ADMIN' || !session.companyId) redirect('/portal');
+  if (!hasOrganizationPermission(session, 'identity.providers.manage')) redirect('/portal');
   const [providers, policy] = await Promise.all([
     listOidcProviders(session),
     getOrganizationSsoPolicy(session),

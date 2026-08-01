@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createRequest, listRequests, type RequestPriority } from '../../../lib/requests-store';
 import { createJiraIssue } from '../../../lib/jira';
-import { authorizePortalApi } from '../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../lib/organization-authorization';
 
-export async function GET() {
-  const authorization = await authorizePortalApi();
+export async function GET(request: Request) {
+  const authorization = await authorizeOrganizationApi('requests.view', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   return NextResponse.json({ requests: await listRequests(authorization.session) });
 }
 
 export async function POST(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('requests.create', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const session = authorization.session;
   if (!session.companyId)

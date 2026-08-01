@@ -4,10 +4,12 @@ import {
   getNotificationPreferences,
   updateNotificationPreferences,
 } from '../../../../lib/notification-preferences';
-import { authorizePortalApi } from '../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../lib/organization-authorization';
 
-export async function GET() {
-  const authorization = await authorizePortalApi();
+export async function GET(request: Request) {
+  const authorization = await authorizeOrganizationApi('notifications.view', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   try {
     return NextResponse.json(await getNotificationPreferences(authorization.session.userId));
@@ -17,7 +19,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('notifications.manage', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const body = await request.json();
   try {

@@ -45,8 +45,11 @@ test.describe('legacy dashboard compatibility', () => {
   }) => {
     await page.context().clearCookies();
     await loginAs('admin');
-    await page.goto('/dashboard/knowledge?source=browser');
-    await expect(page).toHaveURL(/\/admin\/documents\?source=browser$/);
+    const response = await page.request.get('/dashboard/knowledge?source=browser', {
+      maxRedirects: 0,
+    });
+    expect(response.status()).toBe(307);
+    expect(response.headers().location).toBe('/admin/documents?source=browser');
     await assertNoBrowserErrors();
   });
 

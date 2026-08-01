@@ -5,10 +5,15 @@ import {
   getOrganizationSsoPolicy,
   updateOrganizationSsoPolicy,
 } from '../../../../../../lib/oidc-provider-configuration';
-import { authorizePortalApi } from '../../../../../../lib/portal-session';
+import {
+  authorizeCriticalOrganizationAction,
+  authorizeOrganizationApi,
+} from '../../../../../../lib/organization-authorization';
 
-export async function GET() {
-  const authorization = await authorizePortalApi();
+export async function GET(request: Request) {
+  const authorization = await authorizeOrganizationApi('identity.policy.manage', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   try {
     return NextResponse.json(await getOrganizationSsoPolicy(authorization.session), {
@@ -20,7 +25,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('identity.policy.manage', {
+    correlationId: identityCorrelationId(request),
+  });
   if (authorization.response) return authorization.response;
   const parsed = await parseIdentityMutation(request);
   if (parsed.response) return parsed.response;
@@ -38,6 +45,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Некорректная SSO policy.' }, { status: 400 });
   }
   try {
+    if (requirement === 'REQUIRED') {
+      const critical = await authorizeCriticalOrganizationAction(authorization.session, {
+        action: 'organization.sso.require',
+        confirmation:
+          typeof parsed.body.confirmation === 'string' ? parsed.body.confirmation : null,
+        correlationId: identityCorrelationId(request),
+      });
+      if (critical.response) return critical.response;
+    }
     return NextResponse.json(
       await updateOrganizationSsoPolicy({
         session: authorization.session,

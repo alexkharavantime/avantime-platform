@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { addAttachment, listAttachments } from '../../../../../lib/attachments';
-import { authorizePortalApi } from '../../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { getRequest } from '../../../../../lib/requests-store';
 
-export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
-  const authorization = await authorizePortalApi();
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  const authorization = await authorizeOrganizationApi('requests.view', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const { id } = await context.params;
   if (!(await getRequest(id, authorization.session)))
@@ -13,7 +15,9 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('requests.comment', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const { id } = await context.params;
   if (!(await getRequest(id, authorization.session)))

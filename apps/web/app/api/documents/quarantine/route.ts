@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReprocessApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext, toDocumentApiItem } from '../../../../lib/document-model';
 import {
   listQuarantinedDocuments,
@@ -20,7 +20,7 @@ function isQuarantineAction(value: unknown): value is QuarantineAction {
 }
 
 export async function GET() {
-  const authorization = await authorizeDocumentApi();
+  const authorization = await authorizeDocumentReprocessApi();
   if (authorization.response) return authorization.response;
 
   try {
@@ -42,7 +42,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const authorization = await authorizeDocumentApi();
+  const authorization = await authorizeDocumentReprocessApi();
   if (authorization.response) return authorization.response;
 
   try {

@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 
 import { identityCorrelationId, parseIdentityMutation } from '../../../../../lib/identity-route';
 import { recordIdentitySecurityEvent } from '../../../../../lib/identity-security-events';
-import { authorizePortalApi } from '../../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { revokeCompanyInvitation } from '../../../../../lib/team';
 
 export async function POST(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('members.invite', {
+    correlationId: identityCorrelationId(request),
+  });
   if (authorization.response) return authorization.response;
   const parsed = await parseIdentityMutation(request);
   if (parsed.response) return parsed.response;

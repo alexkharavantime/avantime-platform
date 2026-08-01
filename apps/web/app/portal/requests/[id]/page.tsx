@@ -5,6 +5,7 @@ import { AttachmentPanel } from '../../../../components/portal/attachment-panel'
 import { RequestMessageForm } from '../../../../components/portal/request-message-form';
 import { getValidatedPortalSession } from '../../../../lib/portal-session';
 import { getRequest } from '../../../../lib/requests-store';
+import { hasOrganizationPermission } from '../../../../lib/organization-permissions';
 
 export const metadata: Metadata = { title: 'Обращение — Avantime' };
 const statusLabel = {
@@ -23,6 +24,7 @@ const priorityLabel = {
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getValidatedPortalSession();
   if (!session) redirect('/portal/login');
+  if (!hasOrganizationPermission(session, 'requests.view')) redirect('/portal');
   const { id } = await params;
   const item = await getRequest(id, session);
   if (!item) notFound();
@@ -82,10 +84,15 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
             ) : (
               <p className="mt-3 text-slate-500">Сообщений пока нет.</p>
             )}
-            <RequestMessageForm requestId={item.id} />
+            {hasOrganizationPermission(session, 'requests.comment') && (
+              <RequestMessageForm requestId={item.id} />
+            )}
           </div>
           <div className="mt-8">
-            <AttachmentPanel requestId={item.id} />
+            <AttachmentPanel
+              requestId={item.id}
+              canUpload={hasOrganizationPermission(session, 'requests.comment')}
+            />
           </div>
           <div className="mt-8 rounded-2xl border border-blue-100 bg-blue-50 p-5">
             <p className="font-black text-blue-900">Служба поддержки</p>

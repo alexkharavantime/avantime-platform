@@ -2,13 +2,14 @@ import { redirect } from 'next/navigation';
 
 import { IdentityProviderForm } from '../../../../../../components/portal/identity-provider-form';
 import { getValidatedPortalSession } from '../../../../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../../../../lib/organization-permissions';
 
 export default async function NewIdentityProviderPage() {
   const session = await getValidatedPortalSession();
   if (!session) {
     redirect('/portal/login?returnTo=/portal/settings/security/identity-providers/new');
   }
-  if (session.role !== 'ADMIN' || !session.companyId) redirect('/portal');
+  if (!hasOrganizationPermission(session, 'identity.providers.manage')) redirect('/portal');
   const origin = process.env.AUTH_PUBLIC_ORIGIN?.trim() ?? '';
   const callbackUri = origin ? new URL('/api/auth/oidc/callback', origin).toString() : '';
   return (

@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { authorizePortalApi } from '../../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { addRequestMessage } from '../../../../../lib/requests-store';
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('requests.comment', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const { id } = await context.params;
   const body = (await request.json()) as { body?: string };

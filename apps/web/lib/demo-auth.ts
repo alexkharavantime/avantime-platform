@@ -2,9 +2,7 @@ import type { AppSession } from './session';
 
 type DemoIdentity = Omit<AppSession, 'expiresAt'>;
 
-export function isDemoAuthEnabled(
-  environment: Record<string, string | undefined> = process.env,
-) {
+export function isDemoAuthEnabled(environment: Record<string, string | undefined> = process.env) {
   return environment.NODE_ENV !== 'production' && environment.ENABLE_DEMO_AUTH === 'true';
 }
 
@@ -33,6 +31,9 @@ export function getDemoIdentity(
       companyId: 'demo-company',
       email,
       role: 'CLIENT',
+      organizationRole: 'MEMBER',
+      membershipStatus: 'ACTIVE',
+      membershipVersion: 1,
     };
   }
 

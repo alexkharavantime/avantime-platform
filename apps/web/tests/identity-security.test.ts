@@ -187,6 +187,30 @@ test('tenant MFA policy respects enforcement, grace, explicit exemption, and act
   assert.equal(
     evaluateMfaPolicy({
       role: 'CLIENT',
+      organizationRole: 'OWNER',
+      hasActiveMfa: false,
+      now,
+      requireAdminMfa: true,
+    }).enrollmentRequired,
+    true,
+  );
+  assert.equal(
+    evaluateMfaPolicy({
+      role: 'CLIENT',
+      organizationRole: 'ADMIN',
+      hasActiveMfa: false,
+      now,
+      policy: {
+        mfaRequirement: 'ADMINS',
+        gracePeriodDays: 0,
+        enforcementAt: new Date('2026-07-01T12:00:00.000Z'),
+      },
+    }).policyRequired,
+    true,
+  );
+  assert.equal(
+    evaluateMfaPolicy({
+      role: 'CLIENT',
       hasActiveMfa: false,
       now,
       policy: {

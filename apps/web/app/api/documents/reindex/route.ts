@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { planDocumentReindex } from '../../../../lib/document-embedding';
-import { authorizeDocumentApi } from '../../../../lib/document-authorization';
+import { authorizeDocumentReprocessApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
 import { getDocumentServices } from '../../../../lib/document-services';
 import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
@@ -34,7 +34,7 @@ function executionIsAllowed() {
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeDocumentApi();
+    const authorization = await authorizeDocumentReprocessApi();
     if (authorization.response) return authorization.response;
     const tenant = getDocumentTenantContext(authorization.session);
     const body = (await request.json()) as ReindexRequest;

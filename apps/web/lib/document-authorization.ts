@@ -1,23 +1,37 @@
-import { authorizeSession } from './authorization';
 import {
-  authorizePortalApi,
-  authorizePortalSession,
-  getValidatedPortalSession,
-} from './portal-session';
+  authorizeOrganizationApi,
+  authorizeOrganizationSessionSync,
+} from './organization-authorization';
 import type { AppSession } from './session';
 
 export function authorizeDocumentSession(session: AppSession | null) {
-  return authorizeSession(session, ['ADMIN']);
+  return authorizeOrganizationSessionSync(session, 'documents.manage');
 }
 
 export async function authorizeDocumentApi() {
-  return authorizeSession(await getValidatedPortalSession(), ['ADMIN']);
+  return authorizeOrganizationApi('documents.manage');
 }
 
 export function authorizeDocumentReadSession(session: AppSession | null) {
-  return authorizePortalSession(session);
+  return authorizeOrganizationSessionSync(session, 'documents.view');
 }
 
 export function authorizeDocumentReadApi() {
-  return authorizePortalApi();
+  return authorizeOrganizationApi('documents.view');
+}
+
+export function authorizeDocumentDownloadApi() {
+  return authorizeOrganizationApi('documents.download');
+}
+
+export function authorizeDocumentUploadApi() {
+  return authorizeOrganizationApi('documents.upload');
+}
+
+export function authorizeDocumentReprocessApi() {
+  return authorizeOrganizationApi('documents.reprocess');
+}
+
+export function authorizeDocumentDeleteApi() {
+  return authorizeOrganizationApi('documents.delete');
 }

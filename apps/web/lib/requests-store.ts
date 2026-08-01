@@ -151,13 +151,13 @@ function mapDbRequest(item: any): SupportRequest {
 }
 
 export async function listRequests(session?: AppSession): Promise<SupportRequest[]> {
-  if (session?.role === 'CLIENT' && !session.companyId) return [];
+  if (session && !session.companyId) return [];
   if (databaseConfigured()) {
     try {
       const prisma = await getPrisma();
       if (!prisma) throw new Error('Prisma unavailable');
       const items = await prisma.supportRequest.findMany({
-        where: session?.role === 'CLIENT' ? { companyId: session.companyId } : undefined,
+        where: session ? { companyId: session.companyId } : undefined,
         include: {
           requester: true,
           company: true,
@@ -173,12 +173,12 @@ export async function listRequests(session?: AppSession): Promise<SupportRequest
     }
   }
   return requests
-    .filter((item) => !session || session.role === 'ADMIN' || item.companyId === session.companyId)
+    .filter((item) => !session || item.companyId === session.companyId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export async function getRequest(id: string, session?: AppSession): Promise<SupportRequest | null> {
-  if (session?.role === 'CLIENT' && !session.companyId) return null;
+  if (session && !session.companyId) return null;
   if (databaseConfigured()) {
     try {
       const prisma = await getPrisma();
@@ -186,7 +186,7 @@ export async function getRequest(id: string, session?: AppSession): Promise<Supp
       const item = await prisma.supportRequest.findFirst({
         where: {
           publicId: id,
-          ...(session?.role === 'CLIENT' ? { companyId: session.companyId } : {}),
+          ...(session ? { companyId: session.companyId } : {}),
         },
         include: {
           requester: true,
@@ -202,11 +202,8 @@ export async function getRequest(id: string, session?: AppSession): Promise<Supp
     }
   }
   return (
-    requests.find(
-      (item) =>
-        item.id === id &&
-        (!session || session.role === 'ADMIN' || item.companyId === session.companyId),
-    ) ?? null
+    requests.find((item) => item.id === id && (!session || item.companyId === session.companyId)) ??
+    null
   );
 }
 
@@ -219,9 +216,15 @@ export async function createRequest(
       const prisma = await getPrisma();
       if (!prisma) throw new Error('Prisma unavailable');
       if (!session.companyId) throw new Error('У пользователя не указана компания.');
-      const user = await prisma.user.findUnique({ where: { id: session.userId } });
-      if (!user || user.companyId !== session.companyId)
-        throw new Error('Пользователь или компания не найдены.');
+      const user = await prisma.user.findFirst({
+        where: {
+          id: session.userId,
+          memberships: {
+            some: { companyId: session.companyId, active: true, status: 'ACTIVE' },
+          },
+        },
+      });
+      if (!user) throw new Error('Пользователь или компания не найдены.');
       const count = await prisma.supportRequest.count();
       const dueAt = new Date(
         Date.now() +
@@ -304,7 +307,7 @@ export async function addRequestMessage(
       const item = await prisma.supportRequest.findFirst({
         where: {
           publicId: id,
-          ...(session.role === 'CLIENT' ? { companyId: session.companyId } : {}),
+          companyId: session.companyId,
         },
       });
       if (!item) return null;
@@ -330,9 +333,7 @@ export async function addRequestMessage(
       return null;
     }
   }
-  const request = requests.find(
-    (item) => item.id === id && (session.role === 'ADMIN' || item.companyId === session.companyId),
-  );
+  const request = requests.find((item) => item.id === id && item.companyId === session.companyId);
   if (!request) return null;
   const now = new Date().toISOString();
   request.messages.push({ id: `m-${Date.now()}`, body, authorName: session.name, createdAt: now });

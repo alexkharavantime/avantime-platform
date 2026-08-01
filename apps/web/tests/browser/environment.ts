@@ -40,6 +40,21 @@ export const browserIdentities = {
     password: 'browser-identity-admin-password',
     companyId: 'browser-identity-tenant',
   },
+  identityOwner: {
+    email: 'browser.identity.owner@example.test',
+    password: 'browser-identity-owner-password',
+    companyId: 'browser-identity-tenant',
+  },
+  identityManager: {
+    email: 'browser.identity.manager@example.test',
+    password: 'browser-identity-manager-password',
+    companyId: 'browser-identity-tenant',
+  },
+  identityViewer: {
+    email: 'browser.identity.viewer@example.test',
+    password: 'browser-identity-viewer-password',
+    companyId: 'browser-identity-tenant',
+  },
 } as const;
 
 export const browserFixtureIds = {

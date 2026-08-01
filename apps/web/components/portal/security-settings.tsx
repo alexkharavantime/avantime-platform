@@ -16,6 +16,8 @@ type SecurityOverview = {
     required: boolean;
     enrollmentRequired: boolean;
     canManage: boolean;
+    canManageProviders: boolean;
+    canViewAudit: boolean;
   };
   sessions: Array<{
     id: string;
@@ -220,12 +222,20 @@ export function SecuritySettings({ initial }: { initial: SecurityOverview }) {
           {overview.policy.requirement}. Recovery codes осталось:{' '}
           {overview.mfa.recoveryCodesRemaining}.
         </p>
-        {overview.policy.canManage && (
+        {overview.policy.canManageProviders && (
           <Link
             href="/portal/settings/security/identity-providers"
             className="mt-4 inline-flex rounded-xl border border-blue-300 px-4 py-2 text-sm font-bold text-blue-700"
           >
             Управлять identity providers и SSO policy
+          </Link>
+        )}
+        {overview.policy.canViewAudit && (
+          <Link
+            href="/portal/settings/security/audit"
+            className="ml-3 mt-4 inline-flex rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
+          >
+            Открыть журнал аудита
           </Link>
         )}
         {!overview.mfa.enabled && !enrollment && (

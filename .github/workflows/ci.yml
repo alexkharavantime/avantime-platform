@@ -40,10 +40,12 @@ jobs:
       - run: npm ci
       - run: npm run db:generate
       - run: npm run test:identity
+      - run: npm run test:permissions -w @avantime/web
       - run: npm run security:identity-scan -w @avantime/web
       - run: npm run security:forbidden-credential-scan -w @avantime/web
       - run: npm run security:default-secret-scan -w @avantime/web
       - run: npm run security:client-tenant-scan -w @avantime/web
+      - run: npm run security:permission-scan -w @avantime/web
       - run: npm run security:secret-scan -w @avantime/web
       - run: npm run identity:docs-check
 

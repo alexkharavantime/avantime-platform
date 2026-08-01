@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { authorizePortalApi } from '../../../../lib/portal-session';
+import { authorizeOrganizationApi } from '../../../../lib/organization-authorization';
 import { appendPortalAudit } from '../../../../lib/portal-audit';
 import {
   listPortalNotifications,
@@ -8,7 +8,9 @@ import {
 } from '../../../../lib/portal-notifications';
 
 export async function GET(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('notifications.view', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const url = new URL(request.url);
   if (url.searchParams.has('companyId')) {
@@ -26,7 +28,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authorization = await authorizePortalApi();
+  const authorization = await authorizeOrganizationApi('notifications.manage', {
+    correlationId: request.headers.get('x-avantime-correlation-id'),
+  });
   if (authorization.response) return authorization.response;
   const body = (await request.json()) as { id?: unknown; companyId?: unknown };
   if (body.companyId !== undefined) {

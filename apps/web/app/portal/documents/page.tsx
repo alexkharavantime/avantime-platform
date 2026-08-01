@@ -1,6 +1,12 @@
 import { PortalDocumentList } from '../../../components/portal/document-list';
+import { redirect } from 'next/navigation';
+import { getValidatedPortalSession } from '../../../lib/portal-session';
+import { hasOrganizationPermission } from '../../../lib/organization-permissions';
 
-export default function PortalDocumentsPage() {
+export default async function PortalDocumentsPage() {
+  const session = await getValidatedPortalSession();
+  if (!session) redirect('/portal/login?returnTo=/portal/documents');
+  if (!hasOrganizationPermission(session, 'documents.view')) redirect('/portal');
   return (
     <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8">
       <p className="eyebrow">Документы компании</p>

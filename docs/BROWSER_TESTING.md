@@ -11,14 +11,15 @@ Browser suite не использует development `.env.local`, demo auth ил
 `avantime_browser_integration`. Перед каждым запуском база пересоздаётся, к ней применяются
 `prisma migrate deploy` и текущая Prisma schema, после чего загружаются фиксированные fixtures:
 
-- `browser-tenant-a` и `browser-tenant-b`;
-- по одному пользователю роли `CLIENT` для каждого tenant;
-- отдельный пользователь `ADMIN`;
+- `browser-tenant-a`, `browser-tenant-b`, identity tenant и platform-admin tenant;
+- normal `MEMBER` fixtures и отдельные organization `OWNER`, `ADMIN`, `MANAGER`, `VIEWER`;
+- отдельный global platform `ADMIN` для legacy operations;
 - обращения, уведомления, статья и документы обоих tenants.
 
-Термин `USER` в browser-сценариях соответствует существующей роли `CLIENT`. TASK-008 не меняет
-RBAC. Авторизация выполняется через обычную `/portal/login`; cookies или storage state напрямую
-не внедряются. TASK-009 хранит fixture password в `UserCredential`; первый login проверяет
+Legacy platform role `CLIENT` остаётся identity compatibility field; organization access в
+TASK-011 определяется membership role. Авторизация выполняется через обычную `/portal/login`;
+cookies или storage state напрямую не внедряются. TASK-009 хранит fixture password в
+`UserCredential`; первый login проверяет
 совместимый PBKDF2 rehash и создаёт opaque PostgreSQL session.
 
 Значение по умолчанию:
@@ -76,6 +77,12 @@ become URL parameters.
 TASK-010 добавляет ADMIN routes provider lifecycle и organization SSO policy. Их browser smoke
 считается passed только после фактического Playwright запуска; deterministic unit/integration
 callback tests не заменяют UI/accessibility gate и не вызывают реальные IdP.
+
+TASK-011 fixtures добавляют tenant-bound `OWNER`, `ADMIN`, `MANAGER`, `MEMBER` и `VIEWER`.
+`organization-permissions.spec.ts` проверяет server-built desktop/mobile navigation, deep-link
+denial, versioned role change, MANAGER escalation denial, last OWNER protection, suspension с
+инвалидацией существующей session, reactivation, document/security control visibility и axe для
+team governance. Fixture mutations serial и восстанавливают изменённый active membership.
 
 Responsive проекты используют фиксированные viewport: desktop `1440x900`, tablet `834x1112`
 и mobile `390x844`. Проверяются horizontal overflow, desktop/mobile navigation, dialog

@@ -2,6 +2,7 @@ export type MfaPolicyRequirement = 'OPTIONAL' | 'ADMINS' | 'ALL_MEMBERS';
 
 export type MfaPolicyContext = {
   role: 'CLIENT' | 'ADMIN';
+  organizationRole?: 'OWNER' | 'ADMIN' | 'MANAGER' | 'MEMBER' | 'VIEWER';
   hasActiveMfa: boolean;
   policy?: {
     mfaRequirement: MfaPolicyRequirement;
@@ -31,12 +32,16 @@ export function evaluateMfaPolicy(context: MfaPolicyContext): MfaPolicyDecision 
         enforcementAt.getTime() + Math.max(0, context.policy?.gracePeriodDays ?? 0) * 86_400_000,
       )
     : null;
+  const organizationAdministrator =
+    context.organizationRole === 'OWNER' || context.organizationRole === 'ADMIN';
   const organizationEnforced =
     !exemptionActive &&
     Boolean(enforcementAt && enforcementAt <= now && (!graceEndsAt || graceEndsAt <= now)) &&
     (context.policy?.mfaRequirement === 'ALL_MEMBERS' ||
-      (context.policy?.mfaRequirement === 'ADMINS' && context.role === 'ADMIN'));
-  const globalAdminRequired = context.role === 'ADMIN' && context.requireAdminMfa === true;
+      (context.policy?.mfaRequirement === 'ADMINS' &&
+        (context.role === 'ADMIN' || organizationAdministrator)));
+  const globalAdminRequired =
+    (context.role === 'ADMIN' || organizationAdministrator) && context.requireAdminMfa === true;
   const policyRequired = organizationEnforced || globalAdminRequired;
   const reason = globalAdminRequired
     ? 'GLOBAL_ADMIN'
