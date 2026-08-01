@@ -43,6 +43,17 @@ export function requestRateLimitSubject(request: Request) {
   return candidate.length <= 200 ? candidate : 'invalid';
 }
 
+export function loginIdentifierRateLimitSubject(
+  request: Request,
+  identifier: string,
+  environment: Record<string, string | undefined> = process.env,
+) {
+  if (environment.NODE_ENV === 'production' || environment.IDENTITY_TEST_MODE !== 'browser') {
+    return identifier;
+  }
+  return `${identifier}\0${requestRateLimitSubject(request)}`;
+}
+
 export function identityTestResponseEnabled(
   environment: Record<string, string | undefined> = process.env,
 ) {

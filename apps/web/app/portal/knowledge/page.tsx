@@ -11,7 +11,9 @@ export default async function PortalKnowledgePage() {
   const session = await getValidatedPortalSession();
   if (!session) redirect('/portal/login?returnTo=/portal/knowledge');
   if (!hasOrganizationPermission(session, 'knowledge.view')) redirect('/portal');
-  const articles = await listKnowledgeArticles();
+  const articles = await listKnowledgeArticles({
+    audience: { kind: 'ORGANIZATION', companyId: session.companyId! },
+  });
   return (
     <div className="mx-auto max-w-7xl px-5 py-10 sm:px-6 lg:px-8">
       <p className="eyebrow">Знания компании</p>
@@ -32,7 +34,7 @@ export default async function PortalKnowledgePage() {
             {articles.map((article) => (
               <Link
                 key={article.id}
-                href={`/knowledge/${encodeURIComponent(article.slug)}`}
+                href={`/portal/knowledge/${encodeURIComponent(article.slug)}`}
                 className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-blue-300"
               >
                 <p className="text-xs font-black uppercase tracking-widest text-blue-700">

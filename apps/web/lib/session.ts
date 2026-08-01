@@ -7,6 +7,12 @@ import { SESSION_COOKIE } from './session-constants';
 export { SESSION_COOKIE };
 export type PlatformRole = 'CLIENT' | 'ADMIN';
 export type UserRole = PlatformRole;
+export type PlatformSystemRole =
+  | 'PLATFORM_OWNER'
+  | 'PLATFORM_ADMIN'
+  | 'PLATFORM_SUPPORT'
+  | 'PLATFORM_AUDITOR'
+  | 'PLATFORM_OPERATOR';
 export type OrganizationRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'MEMBER' | 'VIEWER';
 export type MembershipStatus = 'ACTIVE' | 'INVITED' | 'SUSPENDED' | 'REMOVED';
 
@@ -24,6 +30,7 @@ export type AppSession = {
   identityProviderId?: string;
   email: string;
   role: PlatformRole;
+  platformRoles?: PlatformSystemRole[];
   organizationRole?: OrganizationRole;
   membershipStatus?: MembershipStatus;
   membershipVersion?: number;
@@ -141,6 +148,7 @@ function toAppSession(
         version: number;
         company: { name: string };
       }>;
+      platformRoleAssignments: Array<{ role: PlatformSystemRole }>;
     };
   },
   mfaSatisfied = true,
@@ -164,6 +172,7 @@ function toAppSession(
     identityProviderId: row.identityProviderId ?? undefined,
     email: row.user.email,
     role: row.user.role,
+    platformRoles: row.user.platformRoleAssignments.map((assignment) => assignment.role),
     organizationRole: membership?.organizationRole,
     membershipStatus: membership?.status,
     membershipVersion: membership?.version,
@@ -308,6 +317,10 @@ async function resolveDatabaseSession(tokenHash: string, now: Date): Promise<App
           memberships: {
             where: { active: true, status: 'ACTIVE' },
             include: { company: { select: { name: true } } },
+          },
+          platformRoleAssignments: {
+            where: { active: true, disabledAt: null },
+            select: { role: true },
           },
         },
       },

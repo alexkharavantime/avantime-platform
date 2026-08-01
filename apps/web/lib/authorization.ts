@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getSession, type AppSession, type UserRole } from './session';
+import { evaluateOrganizationPermission } from './organization-permissions';
 
 type ApiAuthorization =
   { session: AppSession; response?: never } | { session?: never; response: NextResponse };
@@ -32,6 +33,5 @@ export async function authorizeApi(roles?: readonly UserRole[]): Promise<ApiAuth
 }
 
 export function canAccessCompany(session: AppSession, companyId?: string | null) {
-  if (session.role === 'ADMIN') return true;
-  return Boolean(session.companyId && companyId && session.companyId === companyId);
+  return evaluateOrganizationPermission(session, 'requests.view', { companyId }).allowed;
 }

@@ -242,6 +242,17 @@ async function seedDatabase() {
         },
       ],
     });
+    await prisma.platformRoleAssignment.create({
+      data: {
+        id: 'browser-platform-admin-assignment',
+        userId: 'browser-admin',
+        role: 'PLATFORM_ADMIN',
+        active: true,
+        version: 1,
+        createdAt: FIXED_DATE,
+        updatedAt: FIXED_DATE,
+      },
+    });
     await prisma.userCredential.createMany({
       data: [
         {
@@ -405,11 +416,52 @@ async function seedDatabase() {
         tags: ['browser'],
         content: [{ type: 'paragraph', text: 'Safe deterministic browser fixture.' }],
         status: 'PUBLISHED',
+        ownerScope: 'PLATFORM',
+        visibility: 'PUBLIC',
+        classificationEvidence: 'browser-platform-article-v1',
         authorId: 'browser-admin',
         publishedAt: FIXED_DATE,
         createdAt: FIXED_DATE,
         updatedAt: FIXED_DATE,
       },
+    });
+    await prisma.knowledgeArticle.createMany({
+      data: [
+        {
+          id: 'browser-article-tenant-a',
+          slug: 'browser-tenant-a-knowledge',
+          title: 'Alpha organization knowledge',
+          summary: 'Tenant Alpha only.',
+          category: 'Testing',
+          content: [{ title: 'Alpha', paragraphs: ['Alpha organization material.'] }],
+          status: 'PUBLISHED',
+          ownerScope: 'ORGANIZATION',
+          companyId: browserIdentities.tenantA.companyId,
+          visibility: 'ORGANIZATION',
+          classificationEvidence: 'browser-organization-created-v1',
+          authorId: 'browser-user-a',
+          publishedAt: FIXED_DATE,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+        {
+          id: 'browser-article-tenant-b',
+          slug: 'browser-tenant-b-knowledge',
+          title: 'Beta confidential knowledge',
+          summary: 'Tenant Beta only.',
+          category: 'Testing',
+          content: [{ title: 'Beta', paragraphs: ['Beta confidential material.'] }],
+          status: 'PUBLISHED',
+          ownerScope: 'ORGANIZATION',
+          companyId: browserIdentities.tenantB.companyId,
+          visibility: 'ORGANIZATION',
+          classificationEvidence: 'browser-organization-created-v1',
+          authorId: 'browser-user-b',
+          publishedAt: FIXED_DATE,
+          createdAt: FIXED_DATE,
+          updatedAt: FIXED_DATE,
+        },
+      ],
     });
 
     const documents = [

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -96,6 +97,18 @@ async function prepareLegacyAccountBaseline(
 
 async function main() {
   const { repositoryRoot, environment } = await loadDocumentIntegrationEnvironment();
+  const integrationRunSource = process.env.GITHUB_RUN_ID
+    ? [
+        'github',
+        process.env.GITHUB_RUN_ID,
+        process.env.GITHUB_RUN_ATTEMPT ?? '1',
+        process.env.GITHUB_JOB ?? 'integration',
+      ].join(':')
+    : `local:${process.pid}`;
+  environment.AVANTIME_INTEGRATION_RUN_ID = createHash('sha256')
+    .update(integrationRunSource)
+    .digest('hex')
+    .slice(0, 24);
   const schema = path.join(repositoryRoot, 'packages', 'database', 'prisma', 'schema.prisma');
   const integrationTestsDirectory = path.join(
     repositoryRoot,

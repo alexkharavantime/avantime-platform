@@ -2,13 +2,19 @@
 import { getPrisma } from '@avantime/database';
 import { articles as staticArticles, type Article } from './content';
 
-export type KnowledgeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+export type KnowledgeStatus = 'DRAFT' | 'REVIEW' | 'PUBLISHED' | 'ARCHIVED';
+export type KnowledgeOwnerScope = 'PLATFORM' | 'ORGANIZATION' | 'SYSTEM' | 'LEGACY_UNCLASSIFIED';
+export type KnowledgeVisibility = 'PRIVATE' | 'ORGANIZATION' | 'PLATFORM' | 'PUBLIC';
 export type KnowledgeArticle = Article & {
   id: string;
   tags: string[];
   status: KnowledgeStatus;
   publishedAt?: string;
   updatedAt: string;
+  companyId?: string;
+  ownerScope: KnowledgeOwnerScope;
+  visibility: KnowledgeVisibility;
+  version: number;
 };
 
 const demoArticles: KnowledgeArticle[] = staticArticles.map((article, index) => ({
@@ -24,6 +30,9 @@ const demoArticles: KnowledgeArticle[] = staticArticles.map((article, index) => 
   status: 'PUBLISHED',
   publishedAt: new Date(Date.UTC(2026, 6, 10 + index)).toISOString(),
   updatedAt: new Date(Date.UTC(2026, 6, 10 + index)).toISOString(),
+  ownerScope: 'PLATFORM',
+  visibility: 'PUBLIC',
+  version: 1,
 }));
 
 function databaseConfigured() {
@@ -43,13 +52,30 @@ function mapDbArticle(item: any): KnowledgeArticle {
     status: item.status,
     publishedAt: item.publishedAt?.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
+    companyId: item.companyId ?? undefined,
+    ownerScope: item.ownerScope,
+    visibility: item.visibility,
+    version: item.version,
   };
 }
 
+export type KnowledgeAudience =
+  { kind: 'PUBLIC' } | { kind: 'ORGANIZATION'; companyId: string } | { kind: 'PLATFORM' };
+
 export async function listKnowledgeArticles(
-  options: { includeDrafts?: boolean; query?: string; category?: string } = {},
+  options: {
+    includeDrafts?: boolean;
+    query?: string;
+    category?: string;
+    audience?: KnowledgeAudience;
+  } = {},
 ) {
-  const { includeDrafts = false, query = '', category = '' } = options;
+  const {
+    includeDrafts = false,
+    query = '',
+    category = '',
+    audience = { kind: 'PUBLIC' },
+  } = options;
   let items: KnowledgeArticle[];
   if (databaseConfigured()) {
     try {
@@ -57,15 +83,39 @@ export async function listKnowledgeArticles(
       if (!prisma) throw new Error('Prisma unavailable');
       const rows = await prisma.knowledgeArticle.findMany({
         where: {
-          ...(includeDrafts ? {} : { status: 'PUBLISHED' }),
+          quarantinedAt: null,
+          ...(audience.kind === 'PUBLIC'
+            ? { status: 'PUBLISHED', visibility: 'PUBLIC' }
+            : audience.kind === 'PLATFORM'
+              ? {
+                  ownerScope: 'PLATFORM',
+                  ...(includeDrafts ? {} : { status: 'PUBLISHED' }),
+                }
+              : {
+                  OR: [
+                    {
+                      ownerScope: 'ORGANIZATION',
+                      companyId: audience.companyId,
+                      status: 'PUBLISHED',
+                      visibility: { in: ['ORGANIZATION', 'PUBLIC'] },
+                    },
+                    {
+                      ownerScope: 'PLATFORM',
+                      status: 'PUBLISHED',
+                      visibility: { in: ['PLATFORM', 'PUBLIC'] },
+                    },
+                  ],
+                }),
           ...(category ? { category } : {}),
         },
         orderBy: [{ publishedAt: 'desc' }, { updatedAt: 'desc' }],
       });
       items = rows.map(mapDbArticle);
     } catch {
-      console.warn('Knowledge database unavailable, using demo content.');
-      items = [...demoArticles];
+      // A configured database is an authorization boundary. Falling back to bundled public
+      // content here would hide persistence failures and could return the wrong audience.
+      console.warn('Knowledge database unavailable.');
+      throw new Error('KNOWLEDGE_DATABASE_UNAVAILABLE');
     }
   } else items = [...demoArticles];
 
@@ -82,8 +132,12 @@ export async function listKnowledgeArticles(
   });
 }
 
-export async function getKnowledgeArticle(slug: string, includeDrafts = false) {
-  const items = await listKnowledgeArticles({ includeDrafts });
+export async function getKnowledgeArticle(
+  slug: string,
+  includeDrafts = false,
+  audience: KnowledgeAudience = { kind: 'PUBLIC' },
+) {
+  const items = await listKnowledgeArticles({ includeDrafts, audience });
   return items.find((item) => item.slug === slug) ?? null;
 }
 
@@ -96,6 +150,9 @@ export async function createKnowledgeArticle(input: {
   readingTime: string;
   body: string;
   authorId?: string;
+  ownerScope?: Extract<KnowledgeOwnerScope, 'PLATFORM' | 'ORGANIZATION'>;
+  companyId?: string;
+  visibility?: KnowledgeVisibility;
 }) {
   const sections = input.body
     .split(/\n\s*\n/)
@@ -120,6 +177,10 @@ export async function createKnowledgeArticle(input: {
           readingTime: input.readingTime || '5 минут',
           content: sections,
           authorId: input.authorId,
+          ownerScope: input.ownerScope ?? 'PLATFORM',
+          companyId: input.ownerScope === 'ORGANIZATION' ? input.companyId : null,
+          visibility: input.visibility ?? 'PRIVATE',
+          classificationEvidence: 'task-012-server-created-v1',
         },
       });
       return mapDbArticle(row);
@@ -136,19 +197,34 @@ export async function createKnowledgeArticle(input: {
     sections,
     status: 'DRAFT',
     updatedAt: new Date().toISOString(),
+    companyId: input.ownerScope === 'ORGANIZATION' ? input.companyId : undefined,
+    ownerScope: input.ownerScope ?? 'PLATFORM',
+    visibility: input.visibility ?? 'PRIVATE',
+    version: 1,
   };
   demoArticles.unshift(article);
   return article;
 }
 
-export async function setKnowledgeArticleStatus(id: string, status: KnowledgeStatus) {
+export async function setKnowledgeArticleStatus(
+  id: string,
+  status: KnowledgeStatus,
+  expectedVersion: number,
+) {
   if (databaseConfigured()) {
     const prisma = await getPrisma();
     if (prisma) {
-      const row = await prisma.knowledgeArticle.update({
-        where: { id },
-        data: { status, publishedAt: status === 'PUBLISHED' ? new Date() : undefined },
+      const updated = await prisma.knowledgeArticle.updateMany({
+        where: { id, ownerScope: 'PLATFORM', version: expectedVersion, quarantinedAt: null },
+        data: {
+          status,
+          publishedAt: status === 'PUBLISHED' ? new Date() : undefined,
+          version: { increment: 1 },
+        },
       });
+      if (updated.count !== 1) return null;
+      const row = await prisma.knowledgeArticle.findUnique({ where: { id } });
+      if (!row) return null;
       return mapDbArticle(row);
     }
   }
@@ -157,6 +233,7 @@ export async function setKnowledgeArticleStatus(id: string, status: KnowledgeSta
   item.status = status;
   item.publishedAt = status === 'PUBLISHED' ? new Date().toISOString() : item.publishedAt;
   item.updatedAt = new Date().toISOString();
+  item.version += 1;
   return item;
 }
 

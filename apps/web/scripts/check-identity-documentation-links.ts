@@ -21,6 +21,9 @@ const documents = [
   'docs/tasks/TASK-009.md',
   'docs/tasks/TASK-010.md',
   'docs/tasks/TASK-011.md',
+  'docs/tasks/TASK-012.md',
+  'docs/PLATFORM_GOVERNANCE.md',
+  'docs/KNOWLEDGE_GOVERNANCE.md',
 ];
 
 async function main() {

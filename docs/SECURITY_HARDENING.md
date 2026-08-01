@@ -106,6 +106,11 @@ npm run security:client-tenant-scan
 npm run security:permission-scan
 ```
 
+TASK-012 extends the permission scan to reject new API imports of the legacy role adapter and to
+inspect platform permission, approval and knowledge ownership boundaries. Platform/organization
+unknown state denies; support sessions are tenant/scoped/expiring; approval fingerprints exclude
+secrets and content. Knowledge reads require owner scope, visibility and quarantine filters.
+
 Also review client-side `companyId`, direct provider SDK usage outside AI Gateway,
 unsafe logging keys and deployment manifests containing credentials.
 

@@ -83,9 +83,13 @@ controls. Company fields require `organization.update`; personal profile fields 
 Requests, documents, notifications, knowledge search, providers, policy and audit map to the fixed
 matrix in [Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md).
 
-Global platform administration remains visually and logically separate. In particular, legacy
-knowledge articles have no tenant owner and are not reclassified as organization content by a UI
-check. That data-model migration requires a separate ADR.
+Global platform administration remains visually and logically separate. Before TASK-012 legacy
+knowledge articles had no tenant owner and could not be reclassified safely by a UI check.
+
+TASK-012 completes the deferred ownership migration and adds protected `/portal/platform`,
+`/roles`, `/audit`, `/support`, `/approvals` and `/operations` routes. Platform navigation is
+emitted only from a fresh active assignment. Organization knowledge details use
+`/portal/knowledge/[slug]`; public `/knowledge/[slug]` cannot render organization-only material.
 
 ## Browser verification boundary
 

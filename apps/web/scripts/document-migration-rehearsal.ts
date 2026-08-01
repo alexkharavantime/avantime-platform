@@ -7,7 +7,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 10;
+const EXPECTED_MIGRATION_COUNT = 11;
 const PRE_OIDC_ROLLOUT_MIGRATIONS = [
   '20260727190000_document_processing_queue',
   '20260728120000_document_intelligence',
@@ -194,6 +194,18 @@ async function createLegacyAccountBaseline(targetDatabaseUrl: string, withIdenti
           'integration-identity-company'
         )`,
       );
+      await client.$executeRawUnsafe(
+        `INSERT INTO "User" (
+          "id", "email", "name", "role", "active", "companyId"
+        ) VALUES (
+          'integration-legacy-organization-admin',
+          'legacy.organization.admin@example.test',
+          'Legacy Organization Administrator',
+          'ADMIN',
+          true,
+          'integration-identity-company'
+        )`,
+      );
     }
   } finally {
     await client.$disconnect();
@@ -354,6 +366,33 @@ async function rehearseLegacyDatabase(options: {
   const preRollout = await createPrismaClient(options.targetDatabaseUrl);
   try {
     await preRollout.$executeRawUnsafe(
+      `CREATE TYPE "ArticleStatus" AS ENUM ('DRAFT', 'PUBLISHED', 'ARCHIVED')`,
+    );
+    await preRollout.$executeRawUnsafe(
+      `CREATE TABLE "KnowledgeArticle" (
+         "id" TEXT NOT NULL,
+         "slug" TEXT NOT NULL,
+         "title" TEXT NOT NULL,
+         "summary" TEXT NOT NULL,
+         "category" TEXT NOT NULL,
+         "tags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+         "readingTime" TEXT NOT NULL DEFAULT '5 минут',
+         "content" JSONB NOT NULL,
+         "status" "ArticleStatus" NOT NULL DEFAULT 'DRAFT',
+         "authorId" TEXT,
+         "publishedAt" TIMESTAMP(3),
+         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         "updatedAt" TIMESTAMP(3) NOT NULL,
+         CONSTRAINT "KnowledgeArticle_pkey" PRIMARY KEY ("id"),
+         CONSTRAINT "KnowledgeArticle_authorId_fkey"
+           FOREIGN KEY ("authorId") REFERENCES "User"("id")
+           ON DELETE SET NULL ON UPDATE CASCADE
+       )`,
+    );
+    await preRollout.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX "KnowledgeArticle_slug_key" ON "KnowledgeArticle"("slug")`,
+    );
+    await preRollout.$executeRawUnsafe(
       `INSERT INTO "IdentityProvider" (
          "id", "key", "kind", "oidcProfile", "displayName", "issuer", "clientId",
          "enabled", "clientSecretRef", "discoveryUrl", "authorizationEndpoint",
@@ -367,6 +406,16 @@ async function rehearseLegacyDatabase(options: {
          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
        )`,
       LEGACY_OIDC_REFERENCE,
+    );
+    await preRollout.$executeRawUnsafe(
+      `INSERT INTO "KnowledgeArticle" (
+         "id", "slug", "title", "summary", "category", "tags", "readingTime",
+         "content", "status", "publishedAt", "createdAt", "updatedAt"
+       ) VALUES (
+         'integration-legacy-article', 'integration-legacy-article', 'Legacy article',
+         'Existing public article', 'Integration', ARRAY[]::text[], '5 минут', '[]'::jsonb,
+         'PUBLISHED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+       )`,
     );
   } finally {
     await preRollout.$disconnect();
@@ -419,6 +468,36 @@ async function rehearseLegacyDatabase(options: {
       legacyProvider[0]?.jwksUri !== null
     ) {
       throw new Error('Legacy OIDC provider was not preserved and quarantined safely.');
+    }
+
+    const legacyArticle = await verified.$queryRawUnsafe<
+      Array<{
+        ownerScope: string;
+        visibility: string;
+        companyId: string | null;
+        classificationEvidence: string;
+      }>
+    >(
+      `SELECT "ownerScope"::text AS "ownerScope", "visibility"::text AS "visibility",
+              "companyId", "classificationEvidence"
+       FROM "KnowledgeArticle" WHERE "id" = 'integration-legacy-article'`,
+    );
+    if (
+      legacyArticle[0]?.ownerScope !== 'PLATFORM' ||
+      legacyArticle[0]?.visibility !== 'PRIVATE' ||
+      legacyArticle[0]?.companyId !== null ||
+      legacyArticle[0]?.classificationEvidence !== 'task-012-existing-platform-article-v1'
+    ) {
+      throw new Error('Legacy knowledge ownership backfill is not deterministic.');
+    }
+
+    const inferredPlatformAssignments = await verified.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT COUNT(*)::bigint AS count
+       FROM "PlatformRoleAssignment"
+       WHERE "userId" = 'integration-legacy-organization-admin'`,
+    );
+    if (Number(inferredPlatformAssignments[0]?.count ?? 0) !== 0) {
+      throw new Error('Legacy organization ADMIN was incorrectly granted platform access.');
     }
 
     const identity = await verified.$queryRawUnsafe<

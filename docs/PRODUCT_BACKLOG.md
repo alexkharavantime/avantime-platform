@@ -884,8 +884,8 @@ Product Backlog — основной управляемый перечень п�
 - **Описание:** Защитить `/dashboard`, document API и AI API серверной сессией. TASK-009
   заменяет signed profile cookie на opaque PostgreSQL session с revoke, rotation,
   inactivity/absolute expiry и повторной проверкой active membership. TASK-011 добавляет fresh
-  organization role/status/version validation; legacy platform-wide routes остаются migration
-  boundary.
+  organization role/status/version validation. TASK-012 отделяет active platform assignments и
+  запрещает legacy role adapter в новых API routes.
 - **Критерии готовности:** анонимный доступ закрыт; проверяется организация и ресурс; security-тесты; безопасные редиректы.
 - **Зависимости:** PORTAL-001.
 
@@ -899,8 +899,8 @@ Product Backlog — основной управляемый перечень п�
 - **Статус:** In Progress
 - **Описание:** TASK-011 реализует tenant-bound system roles `OWNER/ADMIN/MANAGER/MEMBER/VIEWER`,
   фиксированную permission matrix, deny-by-default service, server-built navigation, безопасное
-  delegation и versioned membership lifecycle. Legacy platform operations и knowledge articles
-  без tenant owner остаются documented compatibility/data-model debt.
+  delegation и versioned membership lifecycle. TASK-012 добавляет independent platform roles,
+  scoped support sessions, explicit knowledge ownership и controlled approval executors.
 - **Критерии готовности:** матрица прав; серверные проверки; tenant-контекст; отрицательные тесты; минимальные права.
 - **Зависимости:** INFRA-001.
 
@@ -915,7 +915,8 @@ Product Backlog — основной управляемый перечень п�
 - **Описание:** Унифицировать аудит входов, прав, документов, администрирования и AI Tools.
   TASK-009 добавляет allowlisted identity security events и generic notifications без
   credentials/codes/provider claims; TASK-011 добавляет bounded authorization denial и
-  organization governance audit/notifications. Retention/immutability operations остаются.
+  organization governance audit/notifications. TASK-012 добавляет platform/support/approval audit
+  и governance notifications. Retention/immutability operations остаются.
 - **Критерии готовности:** неизменяемые записи; actor; organization; action; resource; correlation ID; политика хранения.
 - **Зависимости:** INFRA-001, INFRA-002.
 

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 
 import { getAiCostSummary } from '../../../../../lib/ai-cost-report';
-import { authorizeApi } from '../../../../../lib/authorization';
+import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { getDocumentTenantContext } from '../../../../../lib/document-model';
 
 export async function GET(request: Request) {
-  const authorization = await authorizeApi(['ADMIN']);
+  const authorization = await authorizeOrganizationApi('organization.audit.view');
   if (authorization.response) return authorization.response;
   const url = new URL(request.url);
   if (url.searchParams.has('companyId')) {

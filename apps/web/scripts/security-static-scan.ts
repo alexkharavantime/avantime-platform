@@ -43,6 +43,9 @@ async function main() {
       mode === 'permissions' &&
       !file.startsWith('apps/web/app/api/') &&
       !file.startsWith('apps/web/lib/organization-') &&
+      !file.startsWith('apps/web/lib/platform-') &&
+      !file.startsWith('apps/web/lib/governance-') &&
+      file !== 'apps/web/lib/knowledge-store.ts' &&
       file !== 'apps/web/lib/team.ts' &&
       file !== 'apps/web/lib/portal-navigation.ts' &&
       !file.startsWith('apps/web/lib/oidc') &&
@@ -73,6 +76,17 @@ async function main() {
       /\b(?:DROP\s+(?:TABLE|COLUMN|DATABASE)|TRUNCATE\s+TABLE)\b/i.test(content)
     ) {
       findings.push(`${file}: destructive migration statement`);
+    }
+    if (
+      mode === 'migrations' &&
+      file.endsWith('/20260801120000_platform_governance/migration.sql')
+    ) {
+      if (/INSERT\s+INTO\s+"PlatformRoleAssignment"[\s\S]*FROM\s+"User"/iu.test(content)) {
+        findings.push(`${file}: legacy user role is inferred as a platform assignment`);
+      }
+      if (/WHEN\s+"status"\s*=\s*'PUBLISHED'[\s\S]{0,120}'PUBLIC'/iu.test(content)) {
+        findings.push(`${file}: legacy publication status is inferred as PUBLIC visibility`);
+      }
     }
     if (
       (mode === 'identity' || mode === 'credentials') &&
@@ -115,6 +129,9 @@ async function main() {
       findings.push(`${file}: production credential has a source-code fallback`);
     }
     if (mode === 'permissions' && file.startsWith('apps/web/app/api/')) {
+      if (/from ['"][^'"]*lib\/authorization['"]/u.test(content)) {
+        findings.push(`${file}: API route uses the legacy role adapter`);
+      }
       const inlineRoleChecks = content.match(
         /\b(?:session|authorization\.session|user|identity)\.role\s*(?:===|!==)\s*['"](?:ADMIN|CLIENT)['"]/gu,
       );
@@ -125,6 +142,22 @@ async function main() {
       if (inlineRoleChecks?.length && !callbackProjection) {
         findings.push(`${file}: inline API role authorization check`);
       }
+    }
+    if (
+      mode === 'permissions' &&
+      file === 'apps/web/lib/platform-permissions.ts' &&
+      /(?:allowed|permission)[^\n]{0,80}(?:\?\?\s*true|\|\|\s*true)/u.test(content)
+    ) {
+      findings.push(`${file}: platform permission decision contains a permissive fallback`);
+    }
+    if (
+      mode === 'permissions' &&
+      file === 'apps/web/lib/knowledge-store.ts' &&
+      (!content.includes('ownerScope') ||
+        !content.includes('visibility') ||
+        !content.includes('quarantinedAt'))
+    ) {
+      findings.push(`${file}: knowledge read path lacks ownership or quarantine enforcement`);
     }
     if (
       mode === 'permissions' &&

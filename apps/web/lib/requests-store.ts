@@ -38,6 +38,7 @@ export type SupportRequest = {
   companyName?: string;
   companyId?: string;
   requesterId?: string;
+  version: number;
 };
 
 const seed: SupportRequest[] = [
@@ -54,6 +55,7 @@ const seed: SupportRequest[] = [
     dueAt: '2026-07-20T09:30:00.000Z',
     companyId: 'demo-company',
     requesterId: 'demo-user',
+    version: 1,
     audit: [
       {
         id: 'a1',
@@ -89,6 +91,7 @@ const seed: SupportRequest[] = [
     dueAt: '2026-07-18T11:00:00.000Z',
     companyId: 'demo-company',
     requesterId: 'demo-user',
+    version: 1,
     audit: [],
     messages: [],
   },
@@ -105,6 +108,7 @@ const seed: SupportRequest[] = [
     dueAt: '2026-07-10T07:20:00.000Z',
     companyId: 'demo-company',
     requesterId: 'demo-user',
+    version: 1,
     audit: [],
     messages: [],
   },
@@ -135,6 +139,7 @@ function mapDbRequest(item: any): SupportRequest {
     companyName: item.company?.name ?? undefined,
     companyId: item.companyId,
     requesterId: item.requesterId,
+    version: item.version,
     audit: (item.auditEvents ?? []).map((event: any) => ({
       id: event.id,
       action: event.action,
@@ -271,6 +276,7 @@ export async function createRequest(
     dueAt: new Date(Date.now() + dueHours * 3600 * 1000).toISOString(),
     companyId: session.companyId,
     requesterId: session.userId,
+    version: 1,
     companyName: session.company,
     requesterName: session.name,
     requesterEmail: session.email,
@@ -359,6 +365,7 @@ export async function updateRequestStatus(
         where: { publicId: id },
         data: {
           status,
+          version: { increment: 1 },
           auditEvents: {
             create: { action: `Статус изменен: ${status}`, actorName: 'Администратор Avantime' },
           },
@@ -379,6 +386,7 @@ export async function updateRequestStatus(
   const request = requests.find((item) => item.id === id);
   if (!request) return null;
   request.status = status;
+  request.version += 1;
   request.audit.unshift({
     id: `a-${Date.now()}`,
     action: `Статус изменен: ${status}`,

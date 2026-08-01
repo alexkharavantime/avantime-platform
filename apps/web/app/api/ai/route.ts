@@ -1,10 +1,10 @@
-import { authorizeApi } from '../../../lib/authorization';
+import { authorizeOrganizationApi } from '../../../lib/organization-authorization';
 import { getDocumentTenantContext } from '../../../lib/document-model';
 import { getDocumentServices } from '../../../lib/document-services';
 
 export async function POST(request: Request) {
   try {
-    const authorization = await authorizeApi(['ADMIN']);
+    const authorization = await authorizeOrganizationApi('knowledge.search');
     if (authorization.response) return authorization.response;
     const services = getDocumentServices();
     if (!services.rag) {

@@ -128,6 +128,11 @@ removed/suspended membership is never recreated by login. The first OWNER is an 
 governance bootstrap, not an identity-provider side effect. See
 [Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md).
 
+TASK-012 adds a third independent relation, `PlatformRoleAssignment`. It is authorization
+metadata, not an authentication source and not an organization membership. OIDC mapping cannot
+create a platform assignment. Platform role changes revoke target sessions so a fresh database
+projection applies immediately.
+
 ## Related documents
 
 - [Authentication](./authentication.md)
@@ -137,3 +142,4 @@ governance bootstrap, not an identity-provider side effect. See
 - [TASK-009](./tasks/TASK-009.md)
 - [TASK-010](./tasks/TASK-010.md)
 - [TASK-011](./tasks/TASK-011.md)
+- [TASK-012](./tasks/TASK-012.md)

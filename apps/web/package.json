@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:identity": "tsx --test tests/identity-security.test.ts tests/oidc-security.test.ts",
-    "test:permissions": "tsx --test tests/organization-permissions.test.ts",
+    "test:permissions": "tsx --test tests/organization-permissions.test.ts tests/platform-governance.test.ts",
     "documents:migrate": "tsx scripts/migrate-documents.ts",
     "documents:cleanup": "tsx scripts/cleanup-deleted-documents.ts",
     "documents:worker": "tsx scripts/run-document-worker.ts",

@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server';
 import { listRequests } from '../../../../../lib/requests-store';
-import { authorizeApi } from '../../../../../lib/authorization';
+import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 
 function csvCell(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
 export async function GET() {
-  const authorization = await authorizeApi(['ADMIN']);
+  const authorization = await authorizeOrganizationApi('requests.export');
   if (authorization.response) return authorization.response;
 
-  const requests = await listRequests();
+  const requests = await listRequests(authorization.session);
   const rows = [
-    ['Номер', 'Тема', 'Компания', 'Клиент', 'Email', 'Категория', 'Приоритет', 'Статус', 'SLA', 'Jira'],
+    [
+      'Номер',
+      'Тема',
+      'Компания',
+      'Клиент',
+      'Email',
+      'Категория',
+      'Приоритет',
+      'Статус',
+      'SLA',
+      'Jira',
+    ],
     ...requests.map((item) => [
       item.id,
       item.title,
