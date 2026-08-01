@@ -52,6 +52,15 @@ npm run build
 
 Production startup requires `SESSION_SECRET`; configure PostgreSQL before deployment.
 
+## Governance validation
+
+TASK-013 adds a controlled integration/staging first-owner bootstrap, scoped support and
+two-person approval ceremonies, durable organization-publication evidence, invariant checks and
+sanitized evidence export. CI never runs a real staging bootstrap and no staging credentials are
+stored in the repository. Start with [Governance Bootstrap](./docs/GOVERNANCE_BOOTSTRAP.md) and
+[Governance Validation](./docs/GOVERNANCE_VALIDATION.md); managed staging and manual UX checks are
+explicitly pending.
+
 ## Production identity and MFA
 
 TASK-009 adds source-scoped local/external identities, organization memberships, opaque

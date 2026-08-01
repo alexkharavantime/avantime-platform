@@ -87,3 +87,7 @@ screen-reader и assistive-technology review.
 - Browser/accessibility gate отмечается passed только после фактического запуска браузера.
 - Scoped formatting применяется только к файлам текущей задачи; repository-wide formatting debt
   не исправляется попутно.
+  TASK-013 adds bootstrap request/evidence/origin unit tests, transaction-backed support/approval/
+  publication integration cases, and Playwright support lifecycle, two-actor replay denial,
+  publication/archive, approval states and responsive platform pages. Managed staging and manual
+  screen-reader checks stay separate and pending; CI never executes bootstrap-owner-execute.

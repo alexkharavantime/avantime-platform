@@ -3,9 +3,18 @@ import test from 'node:test';
 
 import {
   approvalStepUpSatisfied,
+  governanceApprovalExecutorConnected,
   getGovernanceApprovalPolicy,
   governanceApprovalFingerprint,
 } from '../lib/governance-approval-policy';
+import {
+  hashBootstrapAuthorization,
+  PlatformOwnerBootstrapError,
+  validatePlatformOwnerBootstrapRequest,
+} from '../lib/platform-owner-bootstrap';
+import { validateGovernanceEvidence } from '../lib/governance-evidence';
+import { validateGovernancePermissionContracts } from '../lib/governance-invariants';
+import { governanceMutationOriginAllowed } from '../lib/governance-request-security';
 import {
   evaluatePlatformPermission,
   permissionsForPlatformRole,
@@ -197,4 +206,115 @@ test('approval step-up requires MFA and authentication within ten minutes', () =
     }),
     false,
   );
+});
+
+test('first platform owner bootstrap requires environment binding, exact phrase and one-use authorization', () => {
+  const now = new Date('2026-08-01T12:00:00.000Z');
+  const token = 'integration-bootstrap-authorization-token-v1';
+  const input = {
+    environment: 'integration',
+    expectedEnvironment: 'integration',
+    targetUserId: 'bootstrap-user',
+    targetEmail: 'OWNER@EXAMPLE.TEST',
+    sessionEvidenceId: 'bootstrap-session',
+    mfaEventEvidenceId: 'bootstrap-mfa-event',
+    authorizationId: 'change-task-013',
+    authorizationExpiresAt: new Date(now.getTime() + 5 * 60_000),
+    authorizationToken: token,
+    expectedAuthorizationHash: hashBootstrapAuthorization(token),
+    confirmation: 'BOOTSTRAP FIRST PLATFORM OWNER',
+    now,
+  };
+  const validated = validatePlatformOwnerBootstrapRequest(input);
+  assert.equal(validated.targetEmailNormalized, 'owner@example.test');
+  assert.match(validated.authorizationHash, /^[a-f0-9]{64}$/u);
+  for (const invalid of [
+    { ...input, environment: 'production', expectedEnvironment: 'production' },
+    { ...input, expectedEnvironment: 'staging' },
+    { ...input, confirmation: 'BOOTSTRAP OWNER' },
+    { ...input, authorizationToken: `${token}-wrong` },
+    { ...input, authorizationExpiresAt: new Date(now.getTime() - 1) },
+  ]) {
+    assert.throws(
+      () => validatePlatformOwnerBootstrapRequest(invalid),
+      (error: unknown) => error instanceof PlatformOwnerBootstrapError,
+    );
+  }
+});
+
+test('governance evidence rejects secret-bearing fields and approval registry is executor-aware', () => {
+  const evidence = {
+    schemaVersion: 1 as const,
+    generatedAt: '2026-08-01T12:00:00.000Z',
+    environment: 'integration' as const,
+    ceremony: 'invariants' as const,
+    status: 'passed' as const,
+    correlationId: 'task-013-integration',
+    commitSha: 'abcdef1234567',
+    migrationVersion: '20260802120000_governance_validation',
+    actorHashes: ['a'.repeat(64)],
+    reviewerSignOff: null,
+    records: [
+      {
+        type: 'active-platform-owner',
+        status: 'passed' as const,
+        timestamp: '2026-08-01T12:00:00.000Z',
+        expectedOutcome: 'At least one active owner',
+        actualOutcome: '1',
+        details: { count: 1 },
+      },
+    ],
+  };
+  assert.equal(validateGovernanceEvidence(evidence), evidence);
+  assert.throws(
+    () =>
+      validateGovernanceEvidence({
+        ...evidence,
+        records: [{ ...evidence.records[0], details: { token: 'must-not-appear' } }],
+      }),
+    /GOVERNANCE_EVIDENCE_SENSITIVE/u,
+  );
+  assert.equal(governanceApprovalExecutorConnected('PLATFORM_OWNER_ASSIGN'), true);
+  assert.equal(governanceApprovalExecutorConnected('IDENTITY_PROVIDER_DELETE'), false);
+});
+
+test('governance invariant contracts reject disabled assignments and expired support sessions', () => {
+  assert.deepEqual(validateGovernancePermissionContracts(new Date('2026-08-01T12:00:00.000Z')), {
+    disabledAssignmentDenied: true,
+    expiredSupportDenied: true,
+  });
+});
+
+test('governance mutations require the configured same origin', () => {
+  const previous = process.env.AUTH_PUBLIC_ORIGIN;
+  process.env.AUTH_PUBLIC_ORIGIN = 'https://staging.example.test';
+  try {
+    assert.equal(
+      governanceMutationOriginAllowed(
+        new Request('https://staging.example.test/api/governance/approvals', {
+          method: 'POST',
+          headers: { origin: 'https://staging.example.test', 'sec-fetch-site': 'same-origin' },
+        }),
+      ),
+      true,
+    );
+    assert.equal(
+      governanceMutationOriginAllowed(
+        new Request('https://staging.example.test/api/governance/approvals', {
+          method: 'POST',
+          headers: { origin: 'https://evil.example.test', 'sec-fetch-site': 'cross-site' },
+        }),
+      ),
+      false,
+    );
+    assert.equal(
+      governanceMutationOriginAllowed(
+        new Request('https://staging.example.test/api/governance/approvals', { method: 'POST' }),
+      ),
+      false,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.AUTH_PUBLIC_ORIGIN;
+    else process.env.AUTH_PUBLIC_ORIGIN = previous;
+  }
 });

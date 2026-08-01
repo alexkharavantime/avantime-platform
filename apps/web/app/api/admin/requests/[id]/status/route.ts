@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeGovernanceApproval } from '../../../../../../lib/governance-approvals';
+import { governanceMutationOriginAllowed } from '../../../../../../lib/governance-request-security';
 import { authorizePlatformSession } from '../../../../../../lib/platform-authorization';
 import { loadPlatformSupportSession } from '../../../../../../lib/platform-support';
 import { getSession } from '../../../../../../lib/session';
@@ -8,6 +9,8 @@ import { getRequest, type RequestStatus } from '../../../../../../lib/requests-s
 const allowed: RequestStatus[] = ['NEW', 'IN_PROGRESS', 'WAITING_CUSTOMER', 'RESOLVED'];
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const body = (await request.json()) as { status?: RequestStatus; approvalId?: unknown };
   if (!body.status || !allowed.includes(body.status) || typeof body.approvalId !== 'string') {
     return NextResponse.json({ error: 'Некорректный статус.' }, { status: 400 });

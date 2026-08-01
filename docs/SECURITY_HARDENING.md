@@ -143,3 +143,7 @@ OIDC OWNER mapping и permissive fallback. Исключение ограниче
 - [TASK-009](./tasks/TASK-009.md)
 - [TASK-010](./tasks/TASK-010.md)
 - [TASK-011](./tasks/TASK-011.md)
+  TASK-013 adds a blocking governance scan for transaction locking, exact bootstrap confirmation,
+  TOTP evidence, hash-only authorization, environment binding, publication approval constraint,
+  safe evidence modes and absence of secret argv. Governance mutation routes require configured
+  same-origin requests. This does not replace managed staging penetration or notification review.

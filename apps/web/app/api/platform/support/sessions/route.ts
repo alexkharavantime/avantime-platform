@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { authorizePlatformApi } from '../../../../../lib/platform-authorization';
 import { startPlatformSupportSession } from '../../../../../lib/platform-support';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const authorization = await authorizePlatformApi('platform.support.session.start');
   if (authorization.response) return authorization.response;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

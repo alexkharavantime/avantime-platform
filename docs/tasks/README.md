@@ -64,6 +64,8 @@
 | [TASK-009](TASK-009.md) | Production identity, MFA and enterprise SSO foundation   | In Progress |
 | [TASK-010](TASK-010.md) | Production OIDC rollout and identity validation          | In Progress |
 | [TASK-011](TASK-011.md) | Organization permission model and governance             | Done        |
+| [TASK-012](TASK-012.md) | Platform permissions, knowledge and approvals            | Done        |
+| [TASK-013](TASK-013.md) | Governance bootstrap and operational validation          | Done        |
 
 ## Связанные документы
 

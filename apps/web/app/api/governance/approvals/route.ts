@@ -4,10 +4,12 @@ import { NextResponse } from 'next/server';
 import { authorizeGovernanceApprovalPolicy } from '../../../../lib/governance-approval-authorization';
 import {
   getGovernanceApprovalPolicy,
+  governanceApprovalExecutorConnected,
   type GovernanceApprovalAction,
   type GovernanceScope,
 } from '../../../../lib/governance-approval-policy';
 import { requestGovernanceApproval } from '../../../../lib/governance-approvals';
+import { governanceMutationOriginAllowed } from '../../../../lib/governance-request-security';
 import { authorizePlatformSession } from '../../../../lib/platform-authorization';
 import { getSession } from '../../../../lib/session';
 import { loadPlatformSupportSession } from '../../../../lib/platform-support';
@@ -154,6 +156,8 @@ async function resolveApprovalTarget(input: {
 }
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const policy =
     body && typeof body.actionType === 'string'
@@ -162,6 +166,7 @@ export async function POST(request: Request) {
   if (
     !body ||
     !policy ||
+    !governanceApprovalExecutorConnected(body.actionType as string) ||
     body.scope !== policy.scope ||
     typeof body.confirmation !== 'string' ||
     !body.safeParameters ||

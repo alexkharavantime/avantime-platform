@@ -10,6 +10,7 @@ import {
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
 
 type IntegrationPrismaClient = {
+  $executeRawUnsafe(query: string): Promise<unknown>;
   $queryRawUnsafe<T>(query: string): Promise<T>;
   $disconnect(): Promise<void>;
 };
@@ -103,6 +104,7 @@ async function main() {
         process.env.GITHUB_RUN_ID,
         process.env.GITHUB_RUN_ATTEMPT ?? '1',
         process.env.GITHUB_JOB ?? 'integration',
+        process.env.RUNNER_NAME ?? 'runner',
       ].join(':')
     : `local:${process.pid}`;
   environment.AVANTIME_INTEGRATION_RUN_ID = createHash('sha256')
@@ -117,15 +119,52 @@ async function main() {
     'tests',
     'integration',
   );
-  const tests = (await readdir(integrationTestsDirectory))
+  const allTests = (await readdir(integrationTestsDirectory))
     .filter(
       (file) =>
         file.endsWith('.integration.test.ts') && file !== 'document-ocr.integration.test.ts',
     )
-    .sort()
+    .sort();
+  const bootstrapTestName = 'platform-owner-bootstrap.integration.test.ts';
+  const bootstrapTest = path.join(integrationTestsDirectory, bootstrapTestName);
+  const tests = allTests
+    .filter((file) => file !== bootstrapTestName)
     .map((file) => path.join(integrationTestsDirectory, file));
   if (tests.length === 0) {
     throw new Error('No document integration tests were found.');
+  }
+
+  const baseDatabaseUrl = new URL(environment.DATABASE_URL!);
+  const bootstrapDatabaseName = `avantime_integration_governance_${environment.AVANTIME_INTEGRATION_RUN_ID}`;
+  if (!/^avantime_integration_governance_[a-f0-9]{24}$/u.test(bootstrapDatabaseName)) {
+    throw new Error('Unsafe governance bootstrap integration database name.');
+  }
+  const adminUrl = new URL(baseDatabaseUrl);
+  adminUrl.pathname = '/postgres';
+  adminUrl.search = '';
+  const bootstrapUrl = new URL(baseDatabaseUrl);
+  bootstrapUrl.pathname = `/${bootstrapDatabaseName}`;
+  const admin = await createPrismaClient(adminUrl.toString());
+  try {
+    await admin.$executeRawUnsafe(
+      `DROP DATABASE IF EXISTS "${bootstrapDatabaseName}" WITH (FORCE)`,
+    );
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${bootstrapDatabaseName}"`);
+    const bootstrapEnvironment = { ...environment, DATABASE_URL: bootstrapUrl.toString() };
+    await prepareLegacyAccountBaseline(repositoryRoot, schema, bootstrapEnvironment);
+    await runIntegrationCommand('npx', ['prisma', 'migrate', 'deploy', '--schema', schema], {
+      cwd: repositoryRoot,
+      environment: bootstrapEnvironment,
+    });
+    await runIntegrationCommand('npx', ['tsx', '--test', bootstrapTest], {
+      cwd: repositoryRoot,
+      environment: bootstrapEnvironment,
+    });
+  } finally {
+    await admin.$executeRawUnsafe(
+      `DROP DATABASE IF EXISTS "${bootstrapDatabaseName}" WITH (FORCE)`,
+    );
+    await admin.$disconnect();
   }
 
   await prepareLegacyAccountBaseline(repositoryRoot, schema, environment);

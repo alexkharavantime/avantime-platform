@@ -129,3 +129,8 @@ Job `browser-accessibility`:
 Никакие внешние AI, Jira, email, object storage или OCR providers browser suite не вызывает.
 Реальный screen-reader/assistive-technology review остаётся manual external gate и не выводится из
 успеха axe.
+TASK-013 browser fixtures are synthetic and add an explicit second platform owner, fixed
+rejected/cancelled/expired approvals and a reviewed organization article. Tests exercise support
+start/indicator/end, second-actor owner approval with replay denial, PUBLIC approval followed by
+archive, axe checks and platform-page overflow on configured viewports. They are simulated
+ceremonies, not managed staging evidence.

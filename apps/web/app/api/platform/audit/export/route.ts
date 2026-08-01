@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { executeGovernanceApproval } from '../../../../../lib/governance-approvals';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 import { authorizePlatformApi } from '../../../../../lib/platform-authorization';
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const authorization = await authorizePlatformApi('platform.audit.export');
   if (authorization.response) return authorization.response;
   const body = (await request.json().catch(() => null)) as { approvalId?: unknown } | null;

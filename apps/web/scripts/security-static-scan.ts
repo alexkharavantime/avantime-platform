@@ -28,8 +28,10 @@ async function main() {
       (mode === 'identity' ||
         mode === 'credentials' ||
         mode === 'client-tenant' ||
-        mode === 'permissions') &&
+        mode === 'permissions' ||
+        mode === 'governance') &&
       mode !== 'permissions' &&
+      mode !== 'governance' &&
       !file.startsWith('apps/web/app/api/auth/') &&
       !file.startsWith('apps/web/app/api/account/security/') &&
       !file.startsWith('apps/web/components/portal/') &&
@@ -50,6 +52,18 @@ async function main() {
       file !== 'apps/web/lib/portal-navigation.ts' &&
       !file.startsWith('apps/web/lib/oidc') &&
       file !== 'apps/web/components/portal/team-management.tsx'
+    ) {
+      continue;
+    }
+    if (
+      mode === 'governance' &&
+      !file.startsWith('apps/web/lib/governance-') &&
+      file !== 'apps/web/lib/platform-owner-bootstrap.ts' &&
+      file !== 'apps/web/lib/platform-support.ts' &&
+      file !== 'apps/web/lib/platform-role-governance.ts' &&
+      file !== 'apps/web/scripts/governance-operations.ts' &&
+      file !== 'apps/web/app/api/admin/knowledge/[id]/visibility/route.ts' &&
+      !file.endsWith('/20260802120000_governance_validation/migration.sql')
     ) {
       continue;
     }
@@ -181,6 +195,45 @@ async function main() {
       /safeMetadata\([^)]*(?:email|documentText|requestContent|token|secret|claims)/iu.test(content)
     ) {
       findings.push(`${file}: organization audit may accept sensitive metadata`);
+    }
+    if (mode === 'governance' && file === 'apps/web/lib/platform-owner-bootstrap.ts') {
+      for (const requiredControl of [
+        'pg_advisory_xact_lock',
+        'BOOTSTRAP FIRST PLATFORM OWNER',
+        "metadata?.method !== 'TOTP'",
+        "role: 'PLATFORM_OWNER'",
+        'authorizationHash',
+        'BOOTSTRAP_ALREADY_COMPLETED',
+      ]) {
+        if (!content.includes(requiredControl)) {
+          findings.push(`${file}: missing bootstrap control ${requiredControl}`);
+        }
+      }
+      if (/\bUserRole\b|\.role\s*===?\s*['"]ADMIN['"]/u.test(content)) {
+        findings.push(`${file}: bootstrap depends on a legacy application role`);
+      }
+    }
+    if (
+      mode === 'governance' &&
+      file.endsWith('/20260802120000_governance_validation/migration.sql') &&
+      (/"(?:authorizationToken|token|password|cookie|secret)"/iu.test(content) ||
+        !content.includes('KnowledgeArticle_organization_public_approval_check'))
+    ) {
+      findings.push(`${file}: governance migration stores a secret or lacks publication evidence`);
+    }
+    if (
+      mode === 'governance' &&
+      file === 'apps/web/scripts/governance-operations.ts' &&
+      (/process\.argv\[[3-9]\]/u.test(content) || !content.includes('DEPLOYMENT_ENVIRONMENT'))
+    ) {
+      findings.push(`${file}: governance mutation accepts argv data or lacks environment binding`);
+    }
+    if (
+      mode === 'governance' &&
+      file === 'apps/web/lib/governance-evidence.ts' &&
+      (!content.includes('SENSITIVE_KEY') || !content.includes('mode: 0o600'))
+    ) {
+      findings.push(`${file}: evidence redaction or file permissions are not enforced`);
     }
   }
 

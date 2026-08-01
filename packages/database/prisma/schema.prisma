@@ -51,6 +51,7 @@ model User {
   approvalRequests          GovernanceApprovalRequest[]  @relation("ApprovalRequester")
   approvalDecisions         GovernanceApprovalDecision[] @relation("ApprovalApprover")
   governanceNotifications   GovernanceNotification[]
+  platformOwnerBootstraps   PlatformOwnerBootstrap[]
 
   @@index([emailNormalized])
 }
@@ -131,6 +132,26 @@ model PlatformRoleAssignment {
   @@unique([userId, role])
   @@index([userId, active])
   @@index([role, active])
+}
+
+model PlatformOwnerBootstrap {
+  id                     String   @id @default(cuid())
+  singletonKey           String   @unique @db.VarChar(50)
+  authorizationId        String   @unique @db.VarChar(200)
+  authorizationHash      String   @unique @db.VarChar(64)
+  environment            String   @db.VarChar(30)
+  targetUser             User     @relation(fields: [targetUserId], references: [id], onDelete: Restrict)
+  targetUserId           String
+  sessionEvidenceHash    String   @db.VarChar(64)
+  mfaEventEvidenceId     String   @db.VarChar(200)
+  authorizationExpiresAt DateTime
+  assignmentId           String   @unique @db.VarChar(200)
+  auditEventId            String   @unique @db.VarChar(200)
+  notificationId         String   @unique @db.VarChar(200)
+  executedAt             DateTime
+  createdAt              DateTime @default(now())
+
+  @@index([targetUserId, executedAt])
 }
 
 model PlatformSupportSession {
@@ -669,6 +690,8 @@ model KnowledgeArticle {
   visibility             KnowledgeVisibility
   version                Int                 @default(1)
   classificationEvidence String              @db.VarChar(200)
+  publicationApproval     GovernanceApprovalRequest? @relation(fields: [publicationApprovalId], references: [id], onDelete: Restrict)
+  publicationApprovalId   String?             @unique
   quarantinedAt          DateTime?
   publishedAt            DateTime?
   createdAt              DateTime            @default(now())
@@ -748,6 +771,7 @@ model GovernanceApprovalRequest {
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
   decisions          GovernanceApprovalDecision[]
+  publishedArticle   KnowledgeArticle?
 
   @@index([scope, companyId, status, expiresAt])
   @@index([requesterId, status, createdAt])

@@ -917,6 +917,12 @@ Product Backlog — основной управляемый перечень п�
   credentials/codes/provider claims; TASK-011 добавляет bounded authorization denial и
   organization governance audit/notifications. TASK-012 добавляет platform/support/approval audit
   и governance notifications. Retention/immutability operations остаются.
+
+TASK-013 supplies repository-level first-owner bootstrap, operational CLI, approval/publication
+evidence, invariants and runbooks. TASK-014 should own managed staging ceremony evidence,
+notification-delivery verification, real cache/index invalidation drill, accessibility sign-off and
+approval of the no-owner emergency authority.
+
 - **Критерии готовности:** неизменяемые записи; actor; organization; action; resource; correlation ID; политика хранения.
 - **Зависимости:** INFRA-001, INFRA-002.
 

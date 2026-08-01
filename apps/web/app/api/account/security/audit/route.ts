@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { executeGovernanceApproval } from '../../../../../lib/governance-approvals';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { listOrganizationAudit } from '../../../../../lib/organization-audit';
 
@@ -17,6 +18,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const authorization = await authorizeOrganizationApi('organization.export', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });

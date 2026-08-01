@@ -327,6 +327,46 @@ export async function cancelGovernanceApproval(input: {
   });
 }
 
+export async function expireStaleGovernanceApprovals(input: {
+  actorId?: string | null;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const prisma = await getPrisma();
+  if (!prisma) throw new GovernanceApprovalError('APPROVAL_DATABASE_UNAVAILABLE');
+  return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    const stale = await transaction.governanceApprovalRequest.findMany({
+      where: { status: { in: ['REQUESTED', 'APPROVED'] }, expiresAt: { lte: now } },
+      select: { id: true, companyId: true, actionType: true },
+    });
+    for (const request of stale) {
+      const changed = await transaction.governanceApprovalRequest.updateMany({
+        where: {
+          id: request.id,
+          status: { in: ['REQUESTED', 'APPROVED'] },
+          expiresAt: { lte: now },
+        },
+        data: { status: 'EXPIRED' },
+      });
+      if (changed.count !== 1) continue;
+      await transaction.productionAuditEvent.create({
+        data: {
+          id: crypto.randomUUID(),
+          companyId: request.companyId,
+          actorId: input.actorId ?? null,
+          action: 'governance.approval.expired',
+          targetType: 'governance-approval',
+          targetId: request.id,
+          result: 'SUCCEEDED',
+          correlationId: crypto.randomUUID(),
+          safeMetadata: { actionType: request.actionType },
+        },
+      });
+    }
+    return { expired: stale.length, expiredAt: now };
+  });
+}
+
 export async function executeGovernanceApproval<T>(input: {
   session: AppSession;
   requestId: string;

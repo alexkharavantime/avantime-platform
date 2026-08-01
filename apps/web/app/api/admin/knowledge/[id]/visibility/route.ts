@@ -2,6 +2,7 @@ import { getPrisma } from '@avantime/database';
 import { NextResponse } from 'next/server';
 
 import { executeGovernanceApproval } from '../../../../../../lib/governance-approvals';
+import { governanceMutationOriginAllowed } from '../../../../../../lib/governance-request-security';
 import { authorizeOrganizationSession } from '../../../../../../lib/organization-authorization';
 import { authorizePlatformSession } from '../../../../../../lib/platform-authorization';
 import { getSession } from '../../../../../../lib/session';
@@ -9,6 +10,8 @@ import { getSession } from '../../../../../../lib/session';
 const VISIBILITIES = new Set(['PRIVATE', 'ORGANIZATION', 'PLATFORM', 'PUBLIC']);
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!governanceMutationOriginAllowed(request))
+    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   const body = (await request.json().catch(() => null)) as {
     visibility?: unknown;
     expectedVersion?: unknown;
@@ -89,7 +92,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             throw new Error('APPROVAL_TARGET_CHANGED');
           await transaction.knowledgeArticle.update({
             where: { id: article.id },
-            data: { visibility: 'PUBLIC', version: { increment: 1 } },
+            data: {
+              visibility: 'PUBLIC',
+              publicationApprovalId: approval.id,
+              version: { increment: 1 },
+            },
           });
         },
       });
@@ -104,7 +111,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       companyId: authorization.session.companyId,
       version: body.expectedVersion as number,
     },
-    data: { visibility: body.visibility as 'PRIVATE' | 'ORGANIZATION', version: { increment: 1 } },
+    data: {
+      visibility: body.visibility as 'PRIVATE' | 'ORGANIZATION',
+      publicationApprovalId: null,
+      version: { increment: 1 },
+    },
   });
   return updated.count === 1
     ? NextResponse.json({ ok: true })

@@ -17,6 +17,23 @@ export const GOVERNANCE_APPROVAL_ACTIONS = [
   'CROSS_TENANT_SUPPORT_DESTRUCTIVE_ACTION',
 ] as const;
 
+// Only these actions have both a target resolver and an atomic executor. Registry-only
+// policies stay documented but cannot be requested until that pair is connected.
+export const CONNECTED_GOVERNANCE_APPROVAL_EXECUTORS = [
+  'PLATFORM_OWNER_ASSIGN',
+  'PLATFORM_OWNER_REMOVE',
+  'PLATFORM_AUDIT_EXPORT',
+  'ORGANIZATION_AUDIT_EXPORT',
+  'KNOWLEDGE_VISIBILITY_PUBLIC',
+  'CROSS_TENANT_SUPPORT_DESTRUCTIVE_ACTION',
+] as const satisfies readonly GovernanceApprovalAction[];
+
+export function governanceApprovalExecutorConnected(actionType: string) {
+  return CONNECTED_GOVERNANCE_APPROVAL_EXECUTORS.includes(
+    actionType as (typeof CONNECTED_GOVERNANCE_APPROVAL_EXECUTORS)[number],
+  );
+}
+
 export type GovernanceApprovalAction = (typeof GOVERNANCE_APPROVAL_ACTIONS)[number];
 export type GovernanceScope = 'PLATFORM' | 'ORGANIZATION';
 
