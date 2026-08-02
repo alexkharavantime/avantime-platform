@@ -86,6 +86,21 @@ Local success does not mean managed staging was deployed. Start with
 [Staging Infrastructure](./docs/STAGING_INFRASTRUCTURE.md) and
 [Staging Deployment](./docs/STAGING_DEPLOYMENT.md).
 
+## Jira ticket creation
+
+TASK-016 stores the customer request and tenant-mapped Jira operation atomically, then processes it
+with a separate lease/retry/DLQ worker. Local and CI validation uses a deterministic no-network
+adapter; real Jira Cloud validation remains pending.
+
+```bash
+npm run staging:jira-operations -- inspect
+npm run staging:jira-operations -- worker-once
+npm run staging:jira-worker
+```
+
+See [Jira Integration](./docs/JIRA_INTEGRATION.md), the
+[Jira worker runbook](./docs/runbooks/jira-worker.md), and [TASK-016](./docs/tasks/TASK-016.md).
+
 ## Production identity and MFA
 
 TASK-009 adds source-scoped local/external identities, organization memberships, opaque

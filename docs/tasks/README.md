@@ -68,6 +68,7 @@
 | [TASK-013](TASK-013.md) | Governance bootstrap and operational validation          | Done        |
 | [TASK-014](TASK-014.md) | Managed staging validation and dependency remediation    | Done        |
 | [TASK-015](TASK-015.md) | Staging infrastructure baseline                          | Done        |
+| [TASK-016](TASK-016.md) | Create Jira ticket from customer portal                  | Done        |
 
 ## Связанные документы
 

@@ -20,6 +20,44 @@ const priorityLabel = {
   HIGH: 'Высокий',
   CRITICAL: 'Критический',
 } as const;
+const jiraStatus = {
+  NOT_CONFIGURED: {
+    label: 'Не настроено',
+    message: 'Обращение сохранено в Avantime. Интеграция Jira для вашей организации не настроена.',
+  },
+  PENDING: {
+    label: 'Ожидает передачи',
+    message: 'Обращение сохранено и ожидает безопасной передачи в Jira.',
+  },
+  PROCESSING: {
+    label: 'Передаётся',
+    message: 'Служба интеграции создаёт задачу Jira.',
+  },
+  CREATED: {
+    label: 'Задача создана',
+    message: 'Задача Jira успешно создана.',
+  },
+  FAILED: {
+    label: 'Повторная попытка',
+    message:
+      'Jira временно недоступна. Обращение сохранено, передача будет повторена автоматически.',
+  },
+  DEAD_LETTER: {
+    label: 'Требуется поддержка',
+    message:
+      'Обращение сохранено, но автоматическая передача не завершена. Команда поддержки уведомлена.',
+  },
+} as const;
+
+function safeJiraIssueUrl(value: string | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getValidatedPortalSession();
@@ -28,6 +66,8 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const item = await getRequest(id, session);
   if (!item) notFound();
+  const jira = jiraStatus[item.jiraIntegrationStatus];
+  const jiraIssueUrl = safeJiraIssueUrl(item.jiraIssueUrl);
 
   return (
     <section className="py-10">
@@ -45,19 +85,38 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
               {statusLabel[item.status]}
             </span>
           </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ['Категория', item.category],
               ['Приоритет', priorityLabel[item.priority]],
-              ['Jira', item.jiraKey ?? 'Ожидает синхронизации'],
+              ['Создано', new Date(item.createdAt).toLocaleString('ru-RU')],
+              ['Jira', item.jiraKey ?? jira.label],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-600">
                   {label}
                 </p>
                 <p className="mt-2 font-bold text-slate-800">{value}</p>
               </div>
             ))}
+          </div>
+          <div
+            className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5"
+            role="status"
+            aria-label="Статус интеграции Jira"
+          >
+            <p className="font-black text-blue-900">{jira.label}</p>
+            <p className="mt-2 text-sm leading-6 text-blue-800">{jira.message}</p>
+            {item.jiraKey && jiraIssueUrl && (
+              <a
+                href={jiraIssueUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block font-bold text-blue-700 underline"
+              >
+                Открыть {item.jiraKey} в Jira
+              </a>
+            )}
           </div>
           <div className="mt-8">
             <h2 className="text-xl font-black">Описание</h2>

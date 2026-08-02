@@ -14,7 +14,10 @@ const documents = [
   'docs/runbooks/staging-rollback.md',
   'docs/runbooks/notification-outbox.md',
   'docs/runbooks/knowledge-reindex.md',
+  'docs/JIRA_INTEGRATION.md',
+  'docs/runbooks/jira-worker.md',
   'docs/tasks/TASK-015.md',
+  'docs/tasks/TASK-016.md',
 ];
 
 async function main() {

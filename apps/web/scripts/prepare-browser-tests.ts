@@ -86,6 +86,17 @@ async function seedDatabase() {
         { id: browserIdentities.admin.companyId, name: 'Avantime' },
       ],
     });
+    await prisma.jiraOrganizationMapping.create({
+      data: {
+        id: 'browser-jira-mapping-a',
+        companyId: browserIdentities.tenantA.companyId,
+        projectKey: 'TEST',
+        issueType: 'Task',
+        enabled: true,
+        createdAt: FIXED_DATE,
+        updatedAt: FIXED_DATE,
+      },
+    });
     await prisma.user.createMany({
       data: [
         {

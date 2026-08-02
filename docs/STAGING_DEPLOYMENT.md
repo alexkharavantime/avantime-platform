@@ -42,7 +42,7 @@ it does not prove managed provider readiness.
 3. Render environment from secret store and run configuration/manifest preflight.
 4. Run encrypted PostgreSQL backup and private object inventory; verify checksums and durable copy.
 5. Run the one-shot migration service. Stop on non-zero exit; never reset the database.
-6. Start/update notification and knowledge workers; require matching-generation heartbeats.
+6. Start/update notification, knowledge and Jira workers; require matching-generation heartbeats.
 7. Update web and wait for `/ready`.
 8. Run the staging smoke suite and targeted browser smoke.
 9. Preserve redacted logs, backup manifest, migration result, readiness report and smoke evidence.
@@ -60,7 +60,7 @@ docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
 docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
   -f docker-compose.staging.yml run --rm migration
 docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
-  -f docker-compose.staging.yml up -d --wait notification-worker knowledge-index-worker web
+  -f docker-compose.staging.yml up -d --wait notification-worker knowledge-index-worker jira-worker web
 ```
 
 ## Failure handling
@@ -77,3 +77,5 @@ a forward-fix decision.
 - [Staging rollback runbook](./runbooks/staging-rollback.md)
 - [Backup and restore](./BACKUP_RESTORE.md)
 - [Production deployment](./PRODUCTION_DEPLOYMENT.md)
+- [Jira worker runbook](./runbooks/jira-worker.md)
+- [TASK-016](./tasks/TASK-016.md)

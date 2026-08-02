@@ -13,6 +13,11 @@ services:
       redis:
         condition: service_healthy
 
+  jira-worker:
+    depends_on:
+      redis:
+        condition: service_healthy
+
   knowledge-index-worker:
     depends_on:
       redis:

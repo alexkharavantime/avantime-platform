@@ -731,7 +731,7 @@ Avantime является клиентским источником обраще
 
 ### Связанные документы
 
-- `docs/jira-integration.md`;
+- `docs/JIRA_INTEGRATION.md`;
 - `docs/ARCHITECTURE_2_0.md`, раздел 6.
 
 ### Связанные задачи Product Backlog

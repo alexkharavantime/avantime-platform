@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Развернуть завершённый TASK-015 repository/local baseline в безопасном внешнем managed staging без
-production deployment или ложного readiness claim.
+Развернуть завершённые TASK-015/TASK-016 repository artifacts в безопасном managed staging и
+проверить Jira Cloud только в разрешённом test tenant без production readiness claim.
 
 ### 📈 Общий процент готовности
 
@@ -19,25 +19,25 @@ production deployment или ложного readiness claim.
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-014 добавила manual-only preflight, canonical evidence и independent reviewer sign-off;
-2. TASK-015 добавила typed staging contract, Compose topology и normalized health/readiness;
-3. Provider-backed outbox и versioned knowledge cache/search/pgvector pipeline закрывают прежние
-   repository blockers TASK-014.
+1. TASK-015 добавила typed staging contract, Compose topology и normalized health/readiness;
+2. TASK-016 заменила синхронный Jira вызов атомарной tenant-aware durable operation;
+3. Jira test adapter, concurrent worker, retry/DLQ, portal status и notification outbox прошли
+   repository gates без real Jira credentials.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
-3. Outbox/index adapters ещё не проверены в managed staging; оставшиеся
+3. Outbox/index/Jira Cloud adapters ещё не проверены в managed staging; оставшиеся
    `AR-DEP-2026-002/003` истекают 2026-08-12.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
 1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
-2. Развернуть TASK-015 artifacts/providers и провести TASK-014 staging ceremonies.
-3. Провести ручной screen-reader/assistive-technology review и подтвердить backup/PITR/alerts.
+2. Развернуть TASK-015/TASK-016 artifacts, провести ceremonies и Jira Cloud test-tenant validation.
+3. Подготовить TASK-017 для разрешённой двусторонней синхронизации статусов/комментариев.
 
 ---
 
@@ -46,10 +46,10 @@ production deployment или ложного readiness claim.
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.25                                                                                      |
+| Версия документа                 | 1.26                                                                                      |
 | Дата последнего обновления       | 2026-08-02                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-015-staging-baseline`                                                       |
+| Текущая ветка Git                | `feature/task-016-jira-ticket-creation`                                                   |
 | Базовый commit рабочей ветки     | `932f745`                                                                                 |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
@@ -214,6 +214,13 @@ restore rehearsal 13 migrations/41 tables/2 TASK-015 tables, production Docker b
 static security и documentation gates — успешно. Live `npm audit` не выполнен: внешняя передача
 dependency metadata в registry не была разрешена.
 
+[TASK-016](./tasks/TASK-016.md) завершена в repository/test-adapter scope: local request и
+tenant-mapped Jira operation создаются атомарно; отдельный worker использует database-time lease,
+bounded retry/DLQ и idempotency marker; portal показывает safe pending/created/failure state, а
+успех создаёт customer notification через существующий outbox. Два полных integration-прогона
+прошли 27/27 каждый, targeted Jira browser — 4/4. Real Jira Cloud call не выполнялся и остаётся
+`PENDING`.
+
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
@@ -261,7 +268,7 @@ dependency metadata в registry не была разрешена.
 | AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются        |
 | База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                           |
 | Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                       |
-| Jira                    | In Progress |        35% | Реализовано создание issue; двусторонняя синхронизация отсутствует                                                                                |
+| Jira                    | In Progress |        50% | TASK-016 завершила durable одностороннее создание на test adapter; real Cloud validation и двусторонняя синхронизация отсутствуют                 |
 | 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                             |
 | Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                              |
 | API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует              |
@@ -337,7 +344,7 @@ dependency metadata в registry не была разрешена.
 - реализован клиентский портал с обращениями, сообщениями, вложениями, профилем, командой и уведомлениями;
 - создана административная часть для обращений, знаний, Email и системных событий;
 - определена Prisma-схема из 11 моделей и PostgreSQL как production-направление;
-- реализовано создание Jira issue из обращения;
+- реализовано атомарное tenant-aware создание Jira issue через durable worker/test adapter;
 - создана Email-очередь с Resend и демонстрационным fallback;
 - реализована управляемая база статей со статусами и поиском;
 - создан прототип загрузки PDF, извлечения текста, поиска и ответов OpenAI;

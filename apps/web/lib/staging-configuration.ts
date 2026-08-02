@@ -1,5 +1,7 @@
 import { isIP } from 'node:net';
 
+import { loadJiraConfiguration, type JiraConfiguration } from './jira-configuration';
+
 export type StagingMode = 'local' | 'managed';
 export type NotificationProviderMode = 'test' | 'resend';
 
@@ -38,6 +40,7 @@ export type StagingConfiguration = {
     batchSize: number;
     leaseMs: number;
   };
+  jira: JiraConfiguration;
   knowledge: {
     cacheDriver: 'redis';
     searchDriver: 'postgresql';
@@ -64,6 +67,7 @@ export type SafeStagingConfigurationSummary = {
   redis: { host: string; namespace: string; tls: boolean; readiness: 'required' | 'degraded' };
   objectStorage: { host: string; region: string; bucket: string; public: false };
   notifications: { provider: NotificationProviderMode; senderConfigured: true };
+  jira: { enabled: boolean; mode: JiraConfiguration['mode'] };
   knowledge: { cache: 'redis'; search: 'postgresql'; vector: 'pgvector' };
   versions: StagingConfiguration['versions'];
   backup: { destinationConfigured: true; retentionDays: number };
@@ -216,11 +220,9 @@ export function loadStagingConfiguration(
     }
   }
 
-  if (environment.JIRA_API_TOKEN || environment.JIRA_EMAIL) {
-    throw new Error('STAGING_CONFIG_JIRA_CREDENTIALS_NOT_ALLOWED');
-  }
-  if (required(environment, 'JIRA_INTEGRATION_ENABLED') !== 'false') {
-    throw new Error('STAGING_CONFIG_JIRA_MUST_REMAIN_DISABLED');
+  const jira = loadJiraConfiguration(environment);
+  if (mode === 'managed' && jira.enabled && jira.mode !== 'cloud') {
+    throw new Error('STAGING_CONFIG_MANAGED_JIRA_CLOUD_REQUIRED');
   }
 
   secret(environment, 'SESSION_SECRET', 32);
@@ -272,6 +274,7 @@ export function loadStagingConfiguration(
       batchSize: integer(environment, 'NOTIFICATION_BATCH_SIZE', 1, 100),
       leaseMs: integer(environment, 'NOTIFICATION_LEASE_MS', 1_000, 600_000),
     },
+    jira,
     knowledge: {
       cacheDriver,
       searchDriver,
@@ -339,6 +342,7 @@ export function summarizeStagingConfiguration(
       provider: configuration.notifications.provider,
       senderConfigured: true,
     },
+    jira: { enabled: configuration.jira.enabled, mode: configuration.jira.mode },
     knowledge: { cache: 'redis', search: 'postgresql', vector: 'pgvector' },
     versions: configuration.versions,
     backup: {

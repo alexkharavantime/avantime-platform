@@ -72,6 +72,8 @@ model Company {
   supportSessions         PlatformSupportSession[]
   approvalRequests        GovernanceApprovalRequest[]
   governanceNotifications GovernanceNotification[]
+  jiraMapping             JiraOrganizationMapping?
+  jiraOperations          JiraOperation[]
   createdAt               DateTime                    @default(now())
   updatedAt               DateTime                    @updatedAt
 }
@@ -525,26 +527,120 @@ model OrganizationMfaExemption {
 }
 
 model SupportRequest {
-  id          String              @id @default(cuid())
-  publicId    String              @unique
-  title       String
-  description String
-  category    String
-  priority    Priority            @default(NORMAL)
-  status      RequestStatus       @default(NEW)
-  version     Int                 @default(1)
-  jiraKey     String?
-  jiraSyncAt  DateTime?
-  dueAt       DateTime?
-  requester   User                @relation(fields: [requesterId], references: [id])
-  requesterId String
-  company     Company             @relation(fields: [companyId], references: [id])
-  companyId   String
-  messages    RequestMessage[]
-  auditEvents AuditEvent[]
-  attachments RequestAttachment[]
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id                    String                @id @default(cuid())
+  publicId              String                @unique
+  title                 String
+  description           String
+  category              String
+  priority              Priority              @default(NORMAL)
+  status                RequestStatus         @default(NEW)
+  jiraIntegrationStatus JiraIntegrationStatus @default(NOT_CONFIGURED)
+  version               Int                   @default(1)
+  jiraIssueId           String?               @unique @db.VarChar(200)
+  jiraKey               String?               @unique @db.VarChar(100)
+  jiraIssueUrl          String?               @db.VarChar(500)
+  jiraSyncAt            DateTime?
+  correlationId         String?               @db.VarChar(200)
+  idempotencyKey        String?               @unique @db.VarChar(200)
+  dueAt                 DateTime?
+  requester             User                  @relation(fields: [requesterId], references: [id])
+  requesterId           String
+  company               Company               @relation(fields: [companyId], references: [id])
+  companyId             String
+  jiraOperation         JiraOperation?
+  messages              RequestMessage[]
+  auditEvents           AuditEvent[]
+  attachments           RequestAttachment[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([companyId, jiraIntegrationStatus, createdAt])
+  @@index([correlationId])
+}
+
+enum JiraIntegrationStatus {
+  NOT_CONFIGURED
+  PENDING
+  PROCESSING
+  CREATED
+  FAILED
+  DEAD_LETTER
+}
+
+model JiraOrganizationMapping {
+  id          String          @id @default(cuid())
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String          @unique
+  projectKey  String          @db.VarChar(50)
+  issueType   String?         @db.VarChar(100)
+  componentId String?         @db.VarChar(100)
+  requestType String?         @db.VarChar(100)
+  enabled     Boolean         @default(false)
+  version     Int             @default(1)
+  operations  JiraOperation[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([enabled, updatedAt])
+}
+
+enum JiraOperationType {
+  CREATE_ISSUE
+}
+
+enum JiraOperationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+}
+
+model JiraOperation {
+  id               String                  @id @default(cuid())
+  request          SupportRequest          @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  requestId        String                  @unique
+  company          Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  companyId        String
+  mapping          JiraOrganizationMapping @relation(fields: [mappingId], references: [id], onDelete: Restrict)
+  mappingId        String
+  mappingVersion   Int
+  operationType    JiraOperationType       @default(CREATE_ISSUE)
+  status           JiraOperationStatus     @default(PENDING)
+  attempts         Int                     @default(0)
+  maxAttempts      Int                     @default(5)
+  nextAttemptAt    DateTime                @default(now())
+  leaseToken       String?                 @db.VarChar(100)
+  leaseUntil       DateTime?
+  idempotencyKey   String                  @unique @db.VarChar(200)
+  correlationId    String                  @db.VarChar(200)
+  projectKey       String                  @db.VarChar(50)
+  issueType        String                  @db.VarChar(100)
+  componentId      String?                 @db.VarChar(100)
+  requestType      String?                 @db.VarChar(100)
+  providerIssueId  String?                 @unique @db.VarChar(200)
+  providerIssueKey String?                 @unique @db.VarChar(100)
+  lastFailureCode  String?                 @db.VarChar(100)
+  completedAt      DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([leaseUntil])
+  @@index([companyId, status, createdAt])
+  @@index([correlationId])
+}
+
+model JiraWorkerHeartbeat {
+  workerId             String   @id @db.VarChar(100)
+  workerVersion        String   @db.VarChar(100)
+  deploymentGeneration String   @db.VarChar(100)
+  status               String   @db.VarChar(30)
+  lastBatchSize        Int      @default(0)
+  lastErrorCode        String?  @db.VarChar(100)
+  heartbeatAt          DateTime @default(now())
+  startedAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model RequestMessage {
