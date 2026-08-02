@@ -10,120 +10,264 @@ import {
 } from '../../lib/knowledge-indexing';
 import { processKnowledgeIndexBatch } from '../../lib/knowledge-index-worker';
 import {
-  claimNotificationBatch,
   enqueueNotification,
   processNotificationBatch,
+  type NotificationDelivery,
+  type NotificationProviderAdapter,
 } from '../../lib/notification-outbox';
 import { TestNotificationProvider } from '../../lib/notification-providers';
 import { createRedisCommandClient } from '../../lib/redis-lease-queue';
 import { integrationDatabase } from './integration-test-environment';
 
+const OUTBOX_POLL_TIMEOUT_MS = 2_000;
+const OUTBOX_POLL_INTERVAL_MS = 25;
+
+async function waitForNotificationStatus(
+  prisma: PrismaClient,
+  idempotencyKey: string,
+  expectedStatus: 'DELIVERED' | 'FAILED' | 'DEAD_LETTER',
+) {
+  const deadline = Date.now() + OUTBOX_POLL_TIMEOUT_MS;
+  let current: {
+    status: string;
+    attempts: number;
+    nextAttemptAt: Date;
+    leaseUntil: Date | null;
+    providerMessageId: string | null;
+    lastFailureCode: string | null;
+  } | null = null;
+
+  do {
+    current = await prisma.notificationOutbox.findUnique({
+      where: { idempotencyKey },
+      select: {
+        status: true,
+        attempts: true,
+        nextAttemptAt: true,
+        leaseUntil: true,
+        providerMessageId: true,
+        lastFailureCode: true,
+      },
+    });
+    if (current?.status === expectedStatus) return current;
+    if (Date.now() >= deadline) break;
+    await new Promise<void>((resolve) => setTimeout(resolve, OUTBOX_POLL_INTERVAL_MS));
+  } while (Date.now() < deadline);
+
+  assert.fail(
+    `Notification ${idempotencyKey} did not reach ${expectedStatus}: ${JSON.stringify({
+      status: current?.status ?? null,
+      attemptCount: current?.attempts ?? null,
+      nextAttemptAt: current?.nextAttemptAt.toISOString() ?? null,
+      leaseUntil: current?.leaseUntil?.toISOString() ?? null,
+      providerMessageId: current?.providerMessageId ?? null,
+      lastErrorCode: current?.lastFailureCode ?? null,
+    })}`,
+  );
+}
+
+function nextEligibleTime(record: { nextAttemptAt: Date }) {
+  return new Date(record.nextAttemptAt.getTime() + 1);
+}
+
 test('notification outbox claims concurrently without double delivery and reaches retry/DLQ states', async () => {
   const prisma = (await integrationDatabase()) as unknown as PrismaClient;
-  const prefix = `staging-outbox-${crypto.randomUUID()}`;
+  const runId = crypto.randomUUID();
+  const deliveryCorrelationId = `staging-outbox-delivery-${runId}`;
+  const retryCorrelationId = `staging-outbox-retry-${runId}`;
+  const deadLetterCorrelationId = `staging-outbox-dead-${runId}`;
+  const correlationIds = [deliveryCorrelationId, retryCorrelationId, deadLetterCorrelationId];
   try {
-    for (let index = 0; index < 6; index += 1) {
-      await enqueueNotification({
-        idempotencyKey: `${prefix}:${index}`,
-        notificationType: 'INTEGRATION_TEST',
-        recipientReference: `synthetic:${index}`,
-        templateReference: 'integration-v1',
-        correlationId: prefix,
-      });
-    }
-    const [first, second] = await Promise.all([
-      claimNotificationBatch({ batchSize: 6, leaseMs: 5_000, correlationId: prefix }),
-      claimNotificationBatch({ batchSize: 6, leaseMs: 5_000, correlationId: prefix }),
-    ]);
-    const claimed = [...first, ...second];
-    assert.equal(claimed.length, 6);
-    assert.equal(new Set(claimed.map((record) => record.id)).size, 6);
-
-    await prisma.notificationOutbox.updateMany({
-      where: { correlationId: prefix },
-      data: { status: 'PENDING', attempts: 0, leaseToken: null, leaseUntil: null },
-    });
-    const provider = new TestNotificationProvider();
-    await processNotificationBatch({
-      provider,
-      batchSize: 10,
-      leaseMs: 5_000,
-      correlationId: prefix,
-    });
-    assert.equal(
-      await prisma.notificationOutbox.count({
-        where: { correlationId: prefix, status: 'DELIVERED' },
-      }),
-      6,
+    const deliveryKeys = Array.from(
+      { length: 6 },
+      (_, index) => `staging-outbox-delivery-${runId}:${index}`,
+    );
+    await Promise.all(
+      deliveryKeys.map((idempotencyKey, index) =>
+        enqueueNotification({
+          idempotencyKey,
+          notificationType: 'INTEGRATION_TEST',
+          recipientReference: `synthetic:${runId}:delivery:${index}`,
+          templateReference: 'integration-v1',
+          correlationId: deliveryCorrelationId,
+        }),
+      ),
     );
 
-    const retryKey = `${prefix}:retry`;
-    await enqueueNotification({
+    const testProvider = new TestNotificationProvider();
+    const deliveryCalls = new Map<string, number>();
+    const providerResults: NotificationDelivery[] = [];
+    const recordingProvider: NotificationProviderAdapter = {
+      kind: 'test',
+      checkReadiness: () => testProvider.checkReadiness(),
+      deliver: async (record) => {
+        deliveryCalls.set(
+          record.idempotencyKey,
+          (deliveryCalls.get(record.idempotencyKey) ?? 0) + 1,
+        );
+        const result = await testProvider.deliver(record);
+        providerResults.push(result);
+        return result;
+      },
+    };
+    const workers = await Promise.all([
+      processNotificationBatch({
+        provider: recordingProvider,
+        batchSize: 3,
+        leaseMs: 5_000,
+        correlationId: deliveryCorrelationId,
+      }),
+      processNotificationBatch({
+        provider: recordingProvider,
+        batchSize: 3,
+        leaseMs: 5_000,
+        correlationId: deliveryCorrelationId,
+      }),
+    ]);
+    assert.equal(
+      workers.reduce((total, worker) => total + worker.claimed, 0),
+      6,
+    );
+    assert.equal(
+      workers.reduce((total, worker) => total + worker.delivered, 0),
+      6,
+    );
+    assert.equal(
+      workers.reduce((total, worker) => total + worker.failed + worker.deadLettered, 0),
+      0,
+    );
+    const deliveredRecords = await Promise.all(
+      deliveryKeys.map((idempotencyKey) =>
+        waitForNotificationStatus(prisma, idempotencyKey, 'DELIVERED'),
+      ),
+    );
+    assert.equal(providerResults.length, 6);
+    assert.equal(
+      providerResults.every((result) => result.terminal === 'delivered'),
+      true,
+    );
+    assert.equal(new Set(providerResults.map((result) => result.providerMessageId)).size, 6);
+    assert.deepEqual(
+      deliveryKeys.map((idempotencyKey) => deliveryCalls.get(idempotencyKey)),
+      Array.from({ length: 6 }, () => 1),
+    );
+    assert.equal(
+      deliveredRecords.every((record) => record.attempts === 1),
+      true,
+    );
+    assert.equal(
+      deliveredRecords.every((record) => record.leaseUntil === null),
+      true,
+    );
+    assert.equal(
+      deliveredRecords.every((record) => record.providerMessageId !== null),
+      true,
+    );
+    assert.equal(
+      deliveredRecords.every((record) => record.lastFailureCode === null),
+      true,
+    );
+
+    const retryKey = `staging-outbox-retry-${runId}`;
+    const retryRecord = await enqueueNotification({
       idempotencyKey: retryKey,
       notificationType: 'INTEGRATION_RETRY',
-      recipientReference: 'synthetic:retry',
+      recipientReference: `synthetic:${runId}:retry`,
       templateReference: 'integration-v1',
-      correlationId: prefix,
+      correlationId: retryCorrelationId,
       maximumAttempts: 3,
     });
     const retryProvider = new TestNotificationProvider(2);
-    const start = new Date('2026-08-02T12:00:00.000Z');
-    await processNotificationBatch({
+    const firstRetryResult = await processNotificationBatch({
       provider: retryProvider,
-      batchSize: 100,
+      batchSize: 1,
       leaseMs: 5_000,
-      now: start,
-      correlationId: prefix,
+      now: nextEligibleTime(retryRecord),
+      correlationId: retryCorrelationId,
     });
-    await processNotificationBatch({
-      provider: retryProvider,
-      batchSize: 100,
-      leaseMs: 5_000,
-      now: new Date(start.getTime() + 1_000),
-      correlationId: prefix,
-    });
-    await processNotificationBatch({
-      provider: retryProvider,
-      batchSize: 100,
-      leaseMs: 5_000,
-      now: new Date(start.getTime() + 3_000),
-      correlationId: prefix,
-    });
-    assert.equal(
-      (await prisma.notificationOutbox.findUnique({ where: { idempotencyKey: retryKey } }))?.status,
-      'DELIVERED',
-    );
+    assert.deepEqual(firstRetryResult, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
+    const firstFailure = await waitForNotificationStatus(prisma, retryKey, 'FAILED');
+    assert.equal(firstFailure.attempts, 1);
+    assert.equal(firstFailure.leaseUntil, null);
+    assert.equal(firstFailure.lastFailureCode, 'TEST_PROVIDER_REJECTED');
 
-    const deadKey = `${prefix}:dead`;
-    await enqueueNotification({
+    const secondRetryResult = await processNotificationBatch({
+      provider: retryProvider,
+      batchSize: 1,
+      leaseMs: 5_000,
+      now: nextEligibleTime(firstFailure),
+      correlationId: retryCorrelationId,
+    });
+    assert.deepEqual(secondRetryResult, { claimed: 1, delivered: 0, failed: 1, deadLettered: 0 });
+    const secondFailure = await waitForNotificationStatus(prisma, retryKey, 'FAILED');
+    assert.equal(secondFailure.attempts, 2);
+    assert.equal(secondFailure.leaseUntil, null);
+    assert.equal(secondFailure.lastFailureCode, 'TEST_PROVIDER_REJECTED');
+
+    const finalRetryResult = await processNotificationBatch({
+      provider: retryProvider,
+      batchSize: 1,
+      leaseMs: 5_000,
+      now: nextEligibleTime(secondFailure),
+      correlationId: retryCorrelationId,
+    });
+    assert.deepEqual(finalRetryResult, { claimed: 1, delivered: 1, failed: 0, deadLettered: 0 });
+    const retriedDelivery = await waitForNotificationStatus(prisma, retryKey, 'DELIVERED');
+    assert.equal(retriedDelivery.attempts, 3);
+    assert.equal(retriedDelivery.leaseUntil, null);
+    assert.match(retriedDelivery.providerMessageId ?? '', /^test:/u);
+    assert.equal(retriedDelivery.lastFailureCode, null);
+
+    const deadKey = `staging-outbox-dead-${runId}`;
+    const deadRecord = await enqueueNotification({
       idempotencyKey: deadKey,
       notificationType: 'INTEGRATION_DLQ',
-      recipientReference: 'synthetic:dead',
+      recipientReference: `synthetic:${runId}:dead`,
       templateReference: 'integration-v1',
-      correlationId: prefix,
+      correlationId: deadLetterCorrelationId,
       maximumAttempts: 2,
     });
     const rejecting = new TestNotificationProvider(20);
-    await processNotificationBatch({
+    const firstDeadLetterResult = await processNotificationBatch({
       provider: rejecting,
-      batchSize: 100,
+      batchSize: 1,
       leaseMs: 5_000,
-      now: start,
-      correlationId: prefix,
+      now: nextEligibleTime(deadRecord),
+      correlationId: deadLetterCorrelationId,
     });
-    await processNotificationBatch({
+    assert.deepEqual(firstDeadLetterResult, {
+      claimed: 1,
+      delivered: 0,
+      failed: 1,
+      deadLettered: 0,
+    });
+    const deadLetterFailure = await waitForNotificationStatus(prisma, deadKey, 'FAILED');
+    assert.equal(deadLetterFailure.attempts, 1);
+    assert.equal(deadLetterFailure.leaseUntil, null);
+    assert.equal(deadLetterFailure.lastFailureCode, 'TEST_PROVIDER_REJECTED');
+
+    const finalDeadLetterResult = await processNotificationBatch({
       provider: rejecting,
-      batchSize: 100,
+      batchSize: 1,
       leaseMs: 5_000,
-      now: new Date(start.getTime() + 1_000),
-      correlationId: prefix,
+      now: nextEligibleTime(deadLetterFailure),
+      correlationId: deadLetterCorrelationId,
     });
-    assert.equal(
-      (await prisma.notificationOutbox.findUnique({ where: { idempotencyKey: deadKey } }))?.status,
-      'DEAD_LETTER',
-    );
+    assert.deepEqual(finalDeadLetterResult, {
+      claimed: 1,
+      delivered: 0,
+      failed: 0,
+      deadLettered: 1,
+    });
+    const deadLettered = await waitForNotificationStatus(prisma, deadKey, 'DEAD_LETTER');
+    assert.equal(deadLettered.attempts, 2);
+    assert.equal(deadLettered.leaseUntil, null);
+    assert.equal(deadLettered.providerMessageId, null);
+    assert.equal(deadLettered.lastFailureCode, 'TEST_PROVIDER_REJECTED');
   } finally {
-    await prisma.notificationOutbox.deleteMany({ where: { correlationId: prefix } });
+    await prisma.notificationOutbox.deleteMany({
+      where: { correlationId: { in: correlationIds } },
+    });
   }
 });
 

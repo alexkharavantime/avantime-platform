@@ -98,6 +98,7 @@ async function prepareLegacyAccountBaseline(
 
 async function main() {
   const { repositoryRoot, environment } = await loadDocumentIntegrationEnvironment();
+  const testRunnerArguments = process.argv.slice(2);
   const integrationRunSource = process.env.GITHUB_RUN_ID
     ? [
         'github',
@@ -156,7 +157,7 @@ async function main() {
       cwd: repositoryRoot,
       environment: bootstrapEnvironment,
     });
-    await runIntegrationCommand('npx', ['tsx', '--test', bootstrapTest], {
+    await runIntegrationCommand('npx', ['tsx', '--test', ...testRunnerArguments, bootstrapTest], {
       cwd: repositoryRoot,
       environment: bootstrapEnvironment,
     });
@@ -172,7 +173,7 @@ async function main() {
     cwd: repositoryRoot,
     environment,
   });
-  await runIntegrationCommand('npx', ['tsx', '--test', ...tests], {
+  await runIntegrationCommand('npx', ['tsx', '--test', ...testRunnerArguments, ...tests], {
     cwd: repositoryRoot,
     environment,
   });
