@@ -96,3 +96,10 @@ TASK-014 adds `test:governance-validation` for production denial, preflight bloc
 separation, evidence hashing/tamper, notification sanitization/completeness, bounded invalidation,
 dependency parser/expiry and recovery denial. The integration runner includes a provider double,
 write-once evidence/sign-off and failure path. These tests validate contracts, not real staging.
+
+TASK-015 adds staging environment/default-secret tests, Redis/S3 namespace/key isolation, bounded
+outbox retry/idempotency, knowledge cache/source-version and audience fencing. Integration covers
+concurrent notification claims, retry/DLQ, PostgreSQL/pgvector article indexing, foreign-tenant
+denial and archive removal. The Compose smoke covers `/health`, `/ready`, login, unauthorized API,
+DB/Redis/S3 probes and both workers; restore rehearsal remains isolated. CI uses only the local
+test adapter and never connects to managed staging or sends real notifications.

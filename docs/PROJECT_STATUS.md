@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Завершить repository boundary TASK-014 и подготовить безопасный внешний managed staging rollout
-без production bootstrap или ложного readiness claim.
+Развернуть завершённый TASK-015 repository/local baseline в безопасном внешнем managed staging без
+production deployment или ложного readiness claim.
 
 ### 📈 Общий процент готовности
 
@@ -19,24 +19,24 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-013 добавила single-use first-owner bootstrap, safe evidence и simulated ceremonies;
-2. TASK-014 добавляет manual-only preflight, canonical evidence и independent reviewer sign-off;
-3. Совместимый dependency lock refresh устраняет brace-expansion advisory без force/downgrade.
+1. TASK-014 добавила manual-only preflight, canonical evidence и independent reviewer sign-off;
+2. TASK-015 добавила typed staging contract, Compose topology и normalized health/readiness;
+3. Provider-backed outbox и versioned knowledge cache/search/pgvector pipeline закрывают прежние
+   repository blockers TASK-014.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
-3. Governance external delivery и article cache/vector invalidation ещё не реализованы; оставшиеся
+3. Outbox/index adapters ещё не проверены в managed staging; оставшиеся
    `AR-DEP-2026-002/003` истекают 2026-08-12.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
 1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
-2. Добавить provider-backed governance outbox и article cache/search/RAG generation adapters,
-   затем провести TASK-014 staging ceremonies.
+2. Развернуть TASK-015 artifacts/providers и провести TASK-014 staging ceremonies.
 3. Провести ручной screen-reader/assistive-technology review и подтвердить backup/PITR/alerts.
 
 ---
@@ -46,10 +46,10 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.23                                                                                      |
+| Версия документа                 | 1.25                                                                                      |
 | Дата последнего обновления       | 2026-08-02                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-014-managed-staging-validation`                                             |
+| Текущая ветка Git                | `feature/task-015-staging-baseline`                                                       |
 | Базовый commit рабочей ветки     | `932f745`                                                                                 |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
@@ -198,8 +198,21 @@ simulated support/approval/knowledge ceremonies. Managed execution не пров
 [TASK-014](./tasks/TASK-014.md) завершена в repository scope: read-only staging preflight,
 manual/recent-MFA boundary, canonical write-once evidence, independent sign-off, provider receipt
 and bounded invalidation validators, recovery policy drill, dependency parser/expiry policy и
-compatible `brace-expansion 1.1.18` lock refresh. Real provider delivery and article cache/vector
-adapters remain `BLOCKED`; staging ceremonies, reviewer and manual accessibility remain `PENDING`.
+compatible `brace-expansion 1.1.18` lock refresh. Provider outbox and article cache/vector adapters
+были его repository blockers и реализуются в TASK-015; managed ceremonies, reviewer и manual
+accessibility остаются `PENDING`.
+
+[TASK-015](./tasks/TASK-015.md) завершена в repository/local scope: единый Compose staging
+manifest/overlay, typed environment, `/health`/`/ready`, provider-backed notification outbox,
+versioned Redis/PostgreSQL/pgvector knowledge pipeline, isolated restore rehearsal, smoke/security
+и CI contracts. Managed deployment, provider terminal delivery, PITR, external observability и
+human/reviewer ceremonies не выполнялись и остаются `PENDING`.
+
+Проверки TASK-015: unit 174/174, integration 26/26, RAG/production integration по 1/1, targeted
+Chromium 3/3, локальный Compose healthy, staging smoke 11/11, миграционная репетиция 13 migrations,
+restore rehearsal 13 migrations/41 tables/2 TASK-015 tables, production Docker build 103 routes,
+static security и documentation gates — успешно. Live `npm audit` не выполнен: внешняя передача
+dependency metadata в registry не была разрешена.
 
 Проверки четвёртой итерации TASK-002:
 

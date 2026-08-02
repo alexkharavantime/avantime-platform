@@ -73,6 +73,29 @@ jobs:
       - if: always()
         run: npm run integration:down
 
+  staging-baseline:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: cp .env.staging.local.example .env.staging
+      - run: npm run security:staging-scan
+      - run: npm run staging:docs-check
+      - run: docker compose --env-file .env.staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml config --quiet
+      - run: npm run staging:up
+      - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml exec -T knowledge-index-worker npm run staging:config-check -w @avantime/web
+      - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml exec -T knowledge-index-worker npm run staging:migration-status -w @avantime/web
+      - run: npm run staging:smoke
+      - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml --profile operations run --rm backup
+      - run: npm run staging:restore-rehearsal
+      - if: always()
+        run: npm run staging:down
+
   browser-accessibility:
     runs-on: ubuntu-latest
     needs: quality
@@ -143,3 +166,5 @@ jobs:
       - run: docker build --target embedding-worker -f docker/production.Dockerfile -t avantime-embedding-worker:ci .
       - run: docker build --target migration -f docker/production.Dockerfile -t avantime-migration:ci .
       - run: docker build --target operations -f docker/production.Dockerfile -t avantime-operations:ci .
+      - run: docker build --target notification-worker -f docker/production.Dockerfile -t avantime-notification-worker:ci .
+      - run: docker build --target knowledge-index-worker -f docker/production.Dockerfile -t avantime-knowledge-worker:ci .

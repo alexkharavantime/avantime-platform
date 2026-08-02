@@ -124,7 +124,9 @@ function loadS3Configuration(
 export function loadDocumentConfiguration(
   environment: Record<string, string | undefined> = process.env,
 ): DocumentConfiguration {
-  const production = environment.NODE_ENV === 'production';
+  const production =
+    environment.NODE_ENV === 'production' &&
+    !(environment.APP_ENV === 'staging' && environment.STAGING_MODE === 'local');
   const storageDriver = parseDriver(
     environment.DOCUMENT_STORAGE_DRIVER,
     production ? 's3' : 'local',
@@ -277,7 +279,9 @@ export type DocumentWorkerConfiguration = {
 export function loadDocumentWorkerConfiguration(
   environment: Record<string, string | undefined> = process.env,
 ): DocumentWorkerConfiguration {
-  const production = environment.NODE_ENV === 'production';
+  const production =
+    environment.NODE_ENV === 'production' &&
+    !(environment.APP_ENV === 'staging' && environment.STAGING_MODE === 'local');
   const tenantId =
     environment.DOCUMENT_WORKER_TENANT_ID?.trim() ||
     (production ? requireEnvironmentValue(environment, 'DOCUMENT_WORKER_TENANT_ID') : 'avantime');

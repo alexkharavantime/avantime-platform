@@ -134,6 +134,8 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - автоматические отрицательные тесты авторизации и изоляции документов;
 - lifecycle, concurrency, restart и production queue fail-fast тесты;
 - базовые интеграции Jira и Resend.
+- TASK-015 repository staging baseline: единый Compose manifest/local overlay, typed environment,
+  provider-backed outbox, versioned knowledge indexing, health/readiness and restore rehearsal.
 
 **Что ещё необходимо сделать:**
 
@@ -144,6 +146,8 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - выполнить подготовленные PostgreSQL/MinIO integration tests и migration rehearsal в Docker-enabled CI;
 - внедрить production observability, backup/restore и disaster recovery rehearsal;
 - синхронизировать документацию.
+- развернуть TASK-015 в managed staging и подтвердить secret store, TLS, provider delivery,
+  backup/PITR, observability и независимый reviewer evidence.
 
 **Приоритет:** критический, первый обязательный этап.
 

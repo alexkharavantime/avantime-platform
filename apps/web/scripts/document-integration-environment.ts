@@ -102,6 +102,8 @@ export async function loadDocumentIntegrationEnvironment() {
     process.env.DOCUMENT_INTEGRATION_ENV_FILE || '.env.integration',
   );
   const fileEnvironment = parseEnvironmentFile(await readFile(environmentFile, 'utf8'));
+  const redisPort = fileEnvironment.REDIS_PORT || '56379';
+  const redisPassword = fileEnvironment.REDIS_PASSWORD || 'avantime_redis_test_only';
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     DOCUMENT_EMBEDDING_DRIVER: 'fake',
@@ -112,6 +114,11 @@ export async function loadDocumentIntegrationEnvironment() {
     DOCUMENT_VECTOR_DRIVER: 'pgvector',
     RAG_ANSWER_DRIVER: 'fake',
     DOCUMENT_RAG_REQUIRED_FOR_READINESS: 'true',
+    REDIS_PORT: redisPort,
+    REDIS_PASSWORD: redisPassword,
+    REDIS_URL:
+      fileEnvironment.REDIS_URL ||
+      `redis://:${encodeURIComponent(redisPassword)}@127.0.0.1:${redisPort}/0`,
     ...fileEnvironment,
   };
   assertSafeDocumentIntegrationEnvironment(environment);

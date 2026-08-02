@@ -23,8 +23,8 @@ const requirements: Record<string, string[]> = {
     './runbooks/managed-staging-governance.md',
   ],
   'docs/GOVERNANCE_SIGNOFF.md': ['write-once', 'reviewer', 'CI', 'SHA'],
-  'docs/NOTIFICATION_VALIDATION.md': ['provider message ID', 'Raw recipient', 'BLOCKED'],
-  'docs/CACHE_INDEX_INVALIDATION.md': ['bounded', 'foreign-tenant', 'BLOCKED'],
+  'docs/NOTIFICATION_VALIDATION.md': ['provider message ID', 'Raw recipient', 'PENDING'],
+  'docs/CACHE_INDEX_INVALIDATION.md': ['bounded', 'foreign-tenant', 'PENDING'],
   'docs/DEPENDENCY_RISK_MANAGEMENT.md': [
     'brace-expansion 1.1.16 -> 1.1.18',
     'AR-DEP-2026-002',

@@ -12,8 +12,8 @@ failed, duplicate or incomplete events make `governance validate notifications` 
 The validation bundle also requires one synthetic failure observation with at least two attempts,
 a safe failure code and visible dead-letter state; it never treats that drill as a delivered event.
 
-Current repository governance operations create durable in-product notification rows but do not
-have a provider-backed governance outbox. Therefore real managed delivery is a documented blocker,
-with status `BLOCKED`, not a simulated pass. The validator is provider-neutral so an outbox/provider adapter can supply
-the same receipt schema without changing evidence policy. Production thresholds and identity email
-security are unchanged.
+TASK-015 adds a durable provider-backed governance outbox, separate worker and test/Resend adapters.
+Repository/local validation can now exercise concurrency, retry and DLQ. Real managed terminal
+delivery remains `PENDING` until a verified sender, synthetic recipient and provider receipt are
+available; provider acceptance alone still cannot pass this validator. Production thresholds and
+identity email security are unchanged.

@@ -7,7 +7,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 12;
+const EXPECTED_MIGRATION_COUNT = 13;
 const PRE_OIDC_ROLLOUT_MIGRATIONS = [
   '20260727190000_document_processing_queue',
   '20260728120000_document_intelligence',
@@ -724,6 +724,36 @@ async function rehearseLegacyDatabase(options: {
        END
        $dimension_check$`,
     );
+    const stagingBaseline = await verified.$queryRawUnsafe<
+      Array<{
+        outbox: boolean;
+        indexing: boolean;
+        notificationTrigger: boolean;
+        knowledgeTrigger: boolean;
+      }>
+    >(
+      `SELECT
+         to_regclass('"NotificationOutbox"') IS NOT NULL AS "outbox",
+         to_regclass('"KnowledgeIndexEvent"') IS NOT NULL
+           AND to_regclass('"KnowledgeSearchIndex"') IS NOT NULL
+           AND to_regclass('"KnowledgeVectorIndex"') IS NOT NULL AS "indexing",
+         EXISTS(
+           SELECT 1 FROM pg_trigger
+           WHERE tgname = 'GovernanceNotification_enqueue_outbox' AND NOT tgisinternal
+         ) AS "notificationTrigger",
+         EXISTS(
+           SELECT 1 FROM pg_trigger
+           WHERE tgname = 'KnowledgeArticle_enqueue_index_event' AND NOT tgisinternal
+         ) AS "knowledgeTrigger"`,
+    );
+    if (
+      !stagingBaseline[0]?.outbox ||
+      !stagingBaseline[0]?.indexing ||
+      !stagingBaseline[0]?.notificationTrigger ||
+      !stagingBaseline[0]?.knowledgeTrigger
+    ) {
+      throw new Error('TASK-015 staging pipeline schema is incomplete after migration.');
+    }
   } finally {
     await verified.$disconnect();
   }

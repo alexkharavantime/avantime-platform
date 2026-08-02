@@ -9,8 +9,8 @@ Polling is bounded to 120 seconds with an explicit interval and attempt/duration
 inject clock/wait functions; managed adapters poll observable backend generations and never add an
 arbitrary sleep.
 
-Knowledge article search currently queries PostgreSQL with audience filters. There is no separate
-article cache/CDN invalidator or article vector/RAG index in the repository. Document RAG remains
-tenant-fenced but is not evidence that knowledge publication was invalidated. Consequently the
-managed knowledge invalidation gate remains `BLOCKED` until those adapters expose measurable
-versions and failure state.
+TASK-015 adds Redis versioned article cache keys, a PostgreSQL full-text index, a pgvector article
+index and a separate durable invalidation worker. Every adapter exposes source/generation versions,
+ownership/visibility metadata and failed/DLQ state. Repository/local validation is therefore
+available; the managed gate remains `PENDING` until those adapters and the configured embedding
+provider are observed in the external staging environment.
