@@ -134,3 +134,8 @@ rejected/cancelled/expired approvals and a reviewed organization article. Tests 
 start/indicator/end, second-actor owner approval with replay denial, PUBLIC approval followed by
 archive, axe checks and platform-page overflow on configured viewports. They are simulated
 ceremonies, not managed staging evidence.
+
+TASK-014 reuses the full blocking browser/accessibility suite for support indicator, approval inbox
+and expiry states, knowledge publish/archive stale-page absence, foreign-tenant denial, responsive
+layouts and axe checks. Human keyboard/screen-reader/mobile review remains an unsigned `PENDING`
+gate until recorded by an independent staging reviewer.

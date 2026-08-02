@@ -17,4 +17,6 @@ change. Organization PUBLIC articles store the executed approval ID; a database 
 PUBLIC without that evidence. Audit and notifications are part of the controlled transaction.
 
 See [approval operations](./runbooks/approval-operations.md) and
-[ADR-0030](./DECISIONS.md#adr-0030).
+[ADR-0030](./DECISIONS.md#adr-0030). Managed ceremonies additionally require the TASK-014
+environment boundary, terminal notification receipts, immutable evidence and independent sign-off;
+see [Managed staging validation](./MANAGED_STAGING_VALIDATION.md).

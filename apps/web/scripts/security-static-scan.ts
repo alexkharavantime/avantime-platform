@@ -22,6 +22,13 @@ async function main() {
     .filter((file) => !file.startsWith('.tmp/tsx/'));
   const findings: string[] = [];
 
+  if (
+    mode === 'governance' &&
+    files.some((file) => /(?:^|\/)\.env\.staging(?:\.|$)/u.test(file) && !file.endsWith('.example'))
+  ) {
+    findings.push('repository: managed staging credential file is tracked');
+  }
+
   for (const file of files) {
     if (mode === 'migrations' && !file.endsWith('/migration.sql')) continue;
     if (
@@ -58,6 +65,8 @@ async function main() {
     if (
       mode === 'governance' &&
       !file.startsWith('apps/web/lib/governance-') &&
+      file !== 'apps/web/lib/managed-staging-validation.ts' &&
+      file !== 'apps/web/lib/managed-staging-probes.ts' &&
       file !== 'apps/web/lib/platform-owner-bootstrap.ts' &&
       file !== 'apps/web/lib/platform-support.ts' &&
       file !== 'apps/web/lib/platform-role-governance.ts' &&
@@ -234,6 +243,62 @@ async function main() {
       (!content.includes('SENSITIVE_KEY') || !content.includes('mode: 0o600'))
     ) {
       findings.push(`${file}: evidence redaction or file permissions are not enforced`);
+    }
+  }
+
+  if (mode === 'governance') {
+    const requiredControls: Record<string, string[]> = {
+      'apps/web/lib/managed-staging-validation.ts': [
+        'MANAGED_STAGING_ENVIRONMENT_DENIED',
+        'MANAGED_STAGING_MANUAL_TRIGGER_REQUIRED',
+        'LAST_OWNER_RECOVERY_DRILL_DENIED',
+        "environment !== 'staging'",
+      ],
+      'apps/web/lib/governance-evidence.ts': [
+        'canonicalGovernanceJson',
+        'GOVERNANCE_EVIDENCE_TAMPERED',
+        "flag: 'wx'",
+      ],
+      'apps/web/lib/governance-signoff.ts': [
+        'operatorHash === signOff.reviewerHash',
+        'GOVERNANCE_SIGN_OFF_TAMPERED',
+        "flag: 'wx'",
+      ],
+      'apps/web/lib/governance-notification-validation.ts': [
+        'SENSITIVE_KEY',
+        'providerMessageId',
+        'GOVERNANCE_NOTIFICATION_NOT_DELIVERED',
+      ],
+      'apps/web/lib/governance-invalidation-validation.ts': [
+        'stalePublicResultAbsent',
+        'foreignTenantDenied',
+        'pollingDurationMs > 120_000',
+      ],
+      'apps/web/lib/governance-dependency-report.ts': [
+        'DEPENDENCY_RISK_ACCEPTANCE_EXPIRED',
+        "finding.severity === 'critical'",
+      ],
+      'apps/web/scripts/governance-operations.ts': [
+        'GOVERNANCE_SIGN_OFF_CI_DENIED',
+        'validateManagedStagingBoundary',
+        "['audit', '--json']",
+      ],
+    };
+    for (const [file, markers] of Object.entries(requiredControls)) {
+      const content = await readFile(new URL(file, repositoryRoot), 'utf8');
+      for (const marker of markers) {
+        if (!content.includes(marker)) findings.push(`${file}: missing managed control ${marker}`);
+      }
+      if (/npm\s+audit\s+fix|audit[^\n]{0,80}--force/iu.test(content)) {
+        findings.push(`${file}: dependency force remediation is forbidden`);
+      }
+    }
+    const workflow = await readFile(new URL('.github/workflows/ci.yml', repositoryRoot), 'utf8');
+    if (
+      /governance:(?:preflight|bootstrap:execute|sign-off-create)/u.test(workflow) ||
+      !workflow.includes('npm audit --omit=optional --audit-level=critical')
+    ) {
+      findings.push('.github/workflows/ci.yml: real managed operation or weakened audit gate');
     }
   }
 

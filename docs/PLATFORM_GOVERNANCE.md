@@ -72,8 +72,10 @@ break-glass drills.
 
 - [TASK-012](./tasks/TASK-012.md)
 - [TASK-013](./tasks/TASK-013.md)
+- [TASK-014](./tasks/TASK-014.md)
 - [Governance Bootstrap](./GOVERNANCE_BOOTSTRAP.md)
 - [Governance Validation](./GOVERNANCE_VALIDATION.md)
+- [Governance Sign-off](./GOVERNANCE_SIGNOFF.md)
 - [Authorization Architecture](./AUTHORIZATION_ARCHITECTURE.md)
 - [Security Hardening](./SECURITY_HARDENING.md)
 - [ADR-0029](./DECISIONS.md#adr-0029)

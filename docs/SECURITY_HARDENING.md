@@ -147,3 +147,9 @@ OIDC OWNER mapping и permissive fallback. Исключение ограниче
   TOTP evidence, hash-only authorization, environment binding, publication approval constraint,
   safe evidence modes and absence of secret argv. Governance mutation routes require configured
   same-origin requests. This does not replace managed staging penetration or notification review.
+
+- TASK-014 keeps managed operations outside CI: exact staging binding, manual trigger, recent MFA,
+  external secret-store reference and correlation/confirmation are mandatory. Canonical evidence
+  and reviewer sign-off are write-once and tamper-evident; production, self-review, raw provider
+  payloads, recovery bypass and expired dependency acceptance fail closed. See
+  [Managed staging validation](./MANAGED_STAGING_VALIDATION.md).

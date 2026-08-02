@@ -1,5 +1,21 @@
 # Dependency Security Review
 
+## TASK-014 refresh — 2026-08-02
+
+The current authoritative full `npm audit --json` report is
+[`security/npm-audit-2026-08-02.json`](./security/npm-audit-2026-08-02.json): 0 critical and 3 high
+records (`next` aggregate, nested `postcss`, optional `sharp`). With optional dependencies omitted,
+the result is 1 high `postcss` and 1 moderate aggregate `next`. A compatible lock refresh moves the remaining lint
+path from `brace-expansion 1.1.16` to `1.1.18`, removing GHSA-mh99-v99m-4gvg without force or a
+major override. The compatible nested `5.x` path also resolves to `5.0.9`.
+
+Next 15.5.21 still pins PostCSS 8.4.31 and optional Sharp 0.34.5. npm proposes an unsafe Next 9.3.3
+downgrade, so the exact build-time path remains under `AR-DEP-2026-002` and the unused optional
+runtime path under `AR-DEP-2026-003` through 2026-08-12. The machine-readable policy and expiry gate
+are documented in [Dependency risk management](./DEPENDENCY_RISK_MANAGEMENT.md). This
+section supersedes the old counts and `AR-DEP-2026-001` state below; the remainder is retained as
+the historical 2026-07-29 review.
+
 ## Review record
 
 - Review date: `2026-07-29`.

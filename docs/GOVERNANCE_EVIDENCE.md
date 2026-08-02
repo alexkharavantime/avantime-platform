@@ -16,5 +16,10 @@ Evidence proves a repository/simulated or explicitly operated staging ceremony o
 convert CI into a staging ceremony and does not establish production readiness. Retention,
 reviewer sign-off and deletion follow the controlled evidence store policy.
 
+TASK-014 envelopes canonicalize keys before SHA-256, verify tampering and use create-once `wx`
+semantics. Reviewer sign-off is a separate envelope that binds the evidence hash and rejects the
+same actor on both sides. A signed record is immutable; corrections create a new correlated bundle.
+See [Governance sign-off](./GOVERNANCE_SIGNOFF.md).
+
 See [Governance validation](./GOVERNANCE_VALIDATION.md) and
 [evidence collection](./runbooks/governance-incident-response.md#evidence-collection).

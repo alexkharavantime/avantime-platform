@@ -26,3 +26,8 @@ must use a second-person approval. Never delete or deactivate the last active ow
 Execution details and failure recovery are in
 [the bootstrap runbook](./runbooks/platform-owner-bootstrap.md) and
 [the owner recovery runbook](./runbooks/platform-owner-recovery.md).
+
+For managed staging, the additional TASK-014 boundary and preflight must pass before either dry-run
+or execute. The independent reviewer verifies the exact target and evidence SHA. Provider delivery
+and new-login observations are external gates; the durable inbox notification ID alone is not proof
+of delivery. See [Managed staging validation](./MANAGED_STAGING_VALIDATION.md).

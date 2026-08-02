@@ -814,3 +814,6 @@ security/dependency gate, назначения owners и environment evidence.
 - TASK-013 repository governance validation adds a controlled first-owner boundary, safe evidence,
   runbooks and simulated ceremonies. Managed staging execution, notification delivery and manual
   accessibility review remain a follow-up gate and do not establish product production readiness.
+- TASK-014 adds manual-only preflight, tamper-evident reviewer sign-off, notification/invalidation
+  evidence contracts and dependency expiry enforcement. Actual staging ceremonies remain pending;
+  provider-backed governance outbox and article cache/vector adapters are explicit blockers.
