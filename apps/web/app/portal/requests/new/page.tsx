@@ -16,7 +16,8 @@ export default async function NewRequestPage() {
           <p className="eyebrow">Поддержка Avantime</p>
           <h1 className="mt-4 text-4xl font-black">Новое обращение</h1>
           <p className="mt-4 text-slate-600">
-            После подключения Jira обращение будет автоматически передаваться в службу поддержки.
+            Обращение сначала сохранится в Avantime, а затем безопасно передастся в службу
+            поддержки.
           </p>
           <NewRequestForm />
         </div>

@@ -103,3 +103,15 @@ concurrent notification claims, retry/DLQ, PostgreSQL/pgvector article indexing,
 denial and archive removal. The Compose smoke covers `/health`, `/ready`, login, unauthorized API,
 DB/Redis/S3 probes and both workers; restore rehearsal remains isolated. CI uses only the local
 test adapter and never connects to managed staging or sends real notifications.
+
+TASK-016 adds exact Jira configuration/payload/provider tests, PostgreSQL atomic enqueue,
+idempotency, concurrent claim, retry/DLQ, expired lease and tenant/mapping isolation coverage. The
+targeted Playwright flow validates submit/replay, pending → created status, safe issue link,
+foreign-tenant denial and desktop/tablet/mobile accessibility. CI and local staging use only the
+deterministic Jira adapter; a passing suite is not evidence of real Jira Cloud connectivity.
+
+## Связанные документы
+
+- [Browser testing](./BROWSER_TESTING.md)
+- [Jira integration](./JIRA_INTEGRATION.md)
+- [TASK-016](./tasks/TASK-016.md)

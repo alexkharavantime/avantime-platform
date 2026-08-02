@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { getPrisma } from '@avantime/database';
 
+import { TestJiraProvider } from '../lib/jira';
+import { processJiraOperationBatch } from '../lib/jira-outbox';
 import {
   PostgreSQLKnowledgeSearchAdapter,
   PostgreSQLKnowledgeVectorAdapter,
@@ -10,6 +12,7 @@ import { processKnowledgeIndexBatch } from '../lib/knowledge-index-worker';
 import { enqueueNotification, processNotificationBatch } from '../lib/notification-outbox';
 import { TestNotificationProvider } from '../lib/notification-providers';
 import { createRedisCommandClient } from '../lib/redis-lease-queue';
+import { createRequest } from '../lib/requests-store';
 import { loadStagingConfiguration } from '../lib/staging-configuration';
 import { probeStagingObjectStorage } from '../lib/staging-object-storage';
 import { probeStagingRedis } from '../lib/staging-redis';
@@ -41,6 +44,7 @@ async function main() {
   );
   const companyId = `smoke-company-${randomUUID()}`;
   const articleId = `smoke-article-${randomUUID()}`;
+  const jiraUserId = `smoke-jira-user-${randomUUID()}`;
   const notificationKey = `smoke:${randomUUID()}`;
   try {
     await expectHttp(baseUrl, '/health', 200);
@@ -73,6 +77,88 @@ async function main() {
     if (notification?.status !== 'DELIVERED') throw new Error('SMOKE_NOTIFICATION_NOT_DELIVERED');
 
     await prisma.company.create({ data: { id: companyId, name: 'TASK-015 staging smoke' } });
+    if (!configuration.jira.enabled || configuration.jira.mode !== 'test') {
+      throw new Error('SMOKE_JIRA_TEST_MODE_REQUIRED');
+    }
+    await prisma.user.create({
+      data: {
+        id: jiraUserId,
+        email: `${jiraUserId}@synthetic.test`,
+        emailNormalized: `${jiraUserId}@synthetic.test`,
+        name: 'Synthetic Jira smoke user',
+        companyId,
+      },
+    });
+    await prisma.organizationMembership.create({
+      data: {
+        id: `smoke-jira-membership-${randomUUID()}`,
+        userId: jiraUserId,
+        companyId,
+        organizationRole: 'MEMBER',
+      },
+    });
+    await prisma.jiraOrganizationMapping.create({
+      data: {
+        companyId,
+        projectKey: configuration.jira.defaultProjectKey!,
+        issueType: configuration.jira.defaultIssueType,
+        enabled: true,
+      },
+    });
+    const jiraRequest = await createRequest(
+      {
+        title: 'Synthetic staging Jira smoke request',
+        description: 'Synthetic content for the isolated Jira test adapter only.',
+        category: 'Интеграция',
+        priority: 'NORMAL',
+      },
+      {
+        userId: jiraUserId,
+        name: 'Synthetic Jira smoke user',
+        company: 'TASK-016 staging smoke',
+        companyId,
+        email: `${jiraUserId}@synthetic.test`,
+        role: 'CLIENT',
+        organizationRole: 'MEMBER',
+        membershipStatus: 'ACTIVE',
+        expiresAt: Date.now() + 60_000,
+      },
+      {
+        correlationId: `${correlationId}:jira`,
+        idempotencyKey: `request:${correlationId}:jira`,
+      },
+    );
+    await processJiraOperationBatch({
+      provider: new TestJiraProvider(configuration.jira),
+      batchSize: 1,
+      leaseMs: configuration.jira.leaseMs,
+      correlationId: `${correlationId}:jira`,
+    });
+    const jiraDeadline = Date.now() + 10_000;
+    let jiraCreated = await prisma.supportRequest.findUnique({
+      where: { publicId: jiraRequest.id },
+      include: { jiraOperation: true },
+    });
+    while (jiraCreated?.jiraIntegrationStatus !== 'CREATED' && Date.now() < jiraDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      jiraCreated = await prisma.supportRequest.findUnique({
+        where: { publicId: jiraRequest.id },
+        include: { jiraOperation: true },
+      });
+    }
+    if (jiraCreated?.jiraIntegrationStatus !== 'CREATED') {
+      throw new Error(
+        `SMOKE_JIRA_ISSUE_NOT_CREATED:${JSON.stringify({
+          requestStatus: jiraCreated?.jiraIntegrationStatus ?? 'MISSING',
+          operationStatus: jiraCreated?.jiraOperation?.status ?? 'MISSING',
+          attemptCount: jiraCreated?.jiraOperation?.attemptCount ?? 0,
+          nextAttemptAt: jiraCreated?.jiraOperation?.nextAttemptAt ?? null,
+          leaseUntil: jiraCreated?.jiraOperation?.leaseUntil ?? null,
+          providerIssueKey: jiraCreated?.jiraOperation?.providerIssueKey ?? null,
+          lastErrorCode: jiraCreated?.jiraOperation?.lastErrorCode ?? null,
+        })}`,
+      );
+    }
     await prisma.knowledgeArticle.create({
       data: {
         id: articleId,
@@ -153,6 +239,7 @@ async function main() {
           'redis',
           'object-storage',
           'notification-outbox',
+          'jira-test-adapter',
           'knowledge-versioning',
           'tenant-isolation',
           'archive-removal',
@@ -160,14 +247,32 @@ async function main() {
       }),
     );
   } finally {
+    const jiraRequests = await prisma.supportRequest
+      .findMany({ where: { companyId }, select: { id: true } })
+      .catch(() => []);
+    await prisma.notificationOutbox
+      .deleteMany({ where: { correlationId: { startsWith: correlationId } } })
+      .catch(() => undefined);
+    await prisma.productionAuditEvent
+      .deleteMany({ where: { correlationId: { startsWith: correlationId } } })
+      .catch(() => undefined);
+    await prisma.portalNotification.deleteMany({ where: { companyId } }).catch(() => undefined);
+    await prisma.jiraOperation
+      .deleteMany({
+        where: { requestId: { in: jiraRequests.map((request: { id: string }) => request.id) } },
+      })
+      .catch(() => undefined);
+    await prisma.supportRequest.deleteMany({ where: { companyId } }).catch(() => undefined);
+    await prisma.jiraOrganizationMapping
+      .deleteMany({ where: { companyId } })
+      .catch(() => undefined);
+    await prisma.organizationMembership.deleteMany({ where: { companyId } }).catch(() => undefined);
+    await prisma.user.deleteMany({ where: { id: jiraUserId } }).catch(() => undefined);
     await prisma.knowledgeIndexEvent.deleteMany({ where: { articleId } }).catch(() => undefined);
     await prisma.knowledgeSearchIndex.deleteMany({ where: { articleId } }).catch(() => undefined);
     await prisma.knowledgeVectorIndex.deleteMany({ where: { articleId } }).catch(() => undefined);
     await prisma.knowledgeArticle.deleteMany({ where: { id: articleId } }).catch(() => undefined);
     await prisma.company.deleteMany({ where: { id: companyId } }).catch(() => undefined);
-    await prisma.notificationOutbox
-      .deleteMany({ where: { idempotencyKey: notificationKey } })
-      .catch(() => undefined);
     await redis.close?.();
   }
 }

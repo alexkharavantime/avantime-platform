@@ -704,10 +704,15 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-007 Интеграция Jira
 - **Приоритет:** P1
 - **Версия:** Version 2.0
-- **Статус:** In Progress
-- **Описание:** Стабилизировать существующее создание Jira issue после сохранения обращения.
+- **Статус:** Done (repository/test-adapter scope; real Jira Cloud validation pending)
+- **Описание:** TASK-016 сохраняет обращение и отдельную Jira operation атомарно, создаёт issue
+  фоновым worker-ом с lease/retry/DLQ/idempotency и показывает клиенту безопасный статус.
 - **Критерии готовности:** идемпотентность; сопоставление ID; retry; сбой Jira не блокирует клиента; аудит.
 - **Зависимости:** PORTAL-002, INFRA-003.
+
+[TASK-016](./tasks/TASK-016.md) завершает repository-сценарий JIRA-001 на deterministic test
+adapter. Реальная Jira Cloud connectivity/issue creation остаётся внешним `PENDING` gate;
+двусторонние статусы и комментарии относятся к JIRA-002/JIRA-003.
 
 ### JIRA-002 — Синхронизация статусов
 

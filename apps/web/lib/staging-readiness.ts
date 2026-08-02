@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getPrisma } from '@avantime/database';
 
 import { validateGovernanceInvariants } from './governance-invariants';
+import { createJiraProvider } from './jira';
 import { createNotificationProvider } from './notification-providers';
 import { createRedisCommandClient } from './redis-lease-queue';
 import {
@@ -21,6 +22,8 @@ export type StagingComponentName =
   | 'objectStorage'
   | 'notificationAdapter'
   | 'notificationWorker'
+  | 'jiraAdapter'
+  | 'jiraWorker'
   | 'knowledgeIndex'
   | 'knowledgeWorker'
   | 'governance';
@@ -118,6 +121,8 @@ export async function checkStagingReadiness(
       'objectStorage',
       'notificationAdapter',
       'notificationWorker',
+      'jiraAdapter',
+      'jiraWorker',
       'knowledgeIndex',
       'knowledgeWorker',
       'governance',
@@ -216,6 +221,54 @@ export async function checkStagingReadiness(
       status: ready ? 'ready' : 'unavailable',
       code: ready ? 'NOTIFICATION_WORKER_READY' : 'NOTIFICATION_WORKER_STALE',
       details: input.includeDetails ? { deadLetters } : undefined,
+    };
+  });
+
+  components.jiraAdapter = await timed(async () => {
+    if (!configuration.jira.enabled) {
+      return { status: 'ready', code: 'JIRA_DISABLED' };
+    }
+    const ready = await createJiraProvider(environment).checkReadiness();
+    return {
+      status: ready ? 'ready' : 'unavailable',
+      code: ready ? 'JIRA_ADAPTER_READY' : 'JIRA_ADAPTER_UNAVAILABLE',
+    };
+  });
+
+  components.jiraWorker = await timed(async () => {
+    if (!configuration.jira.enabled) {
+      return { status: 'ready', code: 'JIRA_DISABLED' };
+    }
+    if (!prisma) throw new Error('DATABASE_UNAVAILABLE');
+    const [heartbeat, enabledMappings, backlog, deadLetters] = await Promise.all([
+      prisma.jiraWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } }),
+      prisma.jiraOrganizationMapping.count({ where: { enabled: true } }),
+      prisma.jiraOperation.count({ where: { status: { in: ['PENDING', 'FAILED'] } } }),
+      prisma.jiraOperation.count({ where: { status: 'DEAD_LETTER' } }),
+    ]);
+    const workerReady =
+      backlog <= 1_000 &&
+      deadLetters === 0 &&
+      heartbeatReady(heartbeat?.heartbeatAt, now) &&
+      heartbeat?.deploymentGeneration === configuration.versions.deploymentGeneration;
+    const ready = enabledMappings > 0 && workerReady;
+    const mappingPending =
+      enabledMappings === 0 && configuration.jira.mode === 'test' && workerReady;
+    return {
+      status: ready ? 'ready' : mappingPending ? 'degraded' : 'unavailable',
+      code:
+        enabledMappings === 0
+          ? mappingPending
+            ? 'JIRA_MAPPING_PENDING'
+            : 'JIRA_MAPPING_MISSING'
+          : deadLetters > 0
+            ? 'JIRA_DEAD_LETTER_THRESHOLD_EXCEEDED'
+            : backlog > 1_000
+              ? 'JIRA_BACKLOG_THRESHOLD_EXCEEDED'
+              : ready
+                ? 'JIRA_WORKER_READY'
+                : 'JIRA_WORKER_STALE',
+      details: input.includeDetails ? { enabledMappings, backlog, deadLetters } : undefined,
     };
   });
 

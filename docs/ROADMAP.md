@@ -136,6 +136,8 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - базовые интеграции Jira и Resend.
 - TASK-015 repository staging baseline: единый Compose manifest/local overlay, typed environment,
   provider-backed outbox, versioned knowledge indexing, health/readiness and restore rehearsal.
+- TASK-016 repository Jira creation: atomic local request/outbox enqueue, tenant mapping,
+  deterministic/cloud adapters, safe projection, concurrent worker, retry/DLQ and portal status.
 
 **Что ещё необходимо сделать:**
 
@@ -148,6 +150,8 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - синхронизировать документацию.
 - развернуть TASK-015 в managed staging и подтвердить secret store, TLS, provider delivery,
   backup/PITR, observability и независимый reviewer evidence.
+- подтвердить TASK-016 в разрешённом Jira Cloud test tenant; до этого cloud validation остаётся
+  `PENDING`, а status/comment synchronization планируется отдельной TASK-017.
 
 **Приоритет:** критический, первый обязательный этап.
 

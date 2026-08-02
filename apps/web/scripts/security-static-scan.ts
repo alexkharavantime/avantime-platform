@@ -32,6 +32,17 @@ async function main() {
   for (const file of files) {
     if (mode === 'migrations' && !file.endsWith('/migration.sql')) continue;
     if (
+      mode === 'jira' &&
+      !file.startsWith('apps/web/lib/jira') &&
+      !file.startsWith('apps/web/scripts/jira') &&
+      !file.startsWith('apps/web/scripts/run-jira') &&
+      file !== 'apps/web/app/api/requests/route.ts' &&
+      file !== 'apps/web/components/portal/new-request-form.tsx' &&
+      !file.endsWith('/20260803120000_jira_ticket_creation/migration.sql')
+    ) {
+      continue;
+    }
+    if (
       (mode === 'identity' ||
         mode === 'credentials' ||
         mode === 'client-tenant' ||
@@ -84,6 +95,38 @@ async function main() {
       content = await readFile(new URL(file, repositoryRoot), 'utf8');
     } catch {
       continue;
+    }
+    if (mode === 'jira') {
+      if (
+        /console\.(?:log|info|warn|error)\([^)]*(?:JIRA_API_TOKEN|\bauthorization\b|\bdescription\b|\braw(?:Body|Response|Error)?\b|\bcredentials?\b)/iu.test(
+          content,
+        )
+      ) {
+        findings.push(`${file}: Jira credential, content or raw provider data may be logged`);
+      }
+      if (
+        file === 'apps/web/app/api/requests/route.ts' &&
+        /(?:JIRA_PROJECT_KEY|JIRA_ISSUE_TYPE|JIRA_API_TOKEN|createIssue\s*\()/u.test(content)
+      ) {
+        findings.push(`${file}: request API accepts Jira configuration or calls provider directly`);
+      }
+      if (
+        file === 'apps/web/components/portal/new-request-form.tsx' &&
+        /(?:companyId|organizationId|JIRA_|projectKey|issueType|apiToken)/u.test(content)
+      ) {
+        findings.push(`${file}: browser request form contains tenant or Jira configuration`);
+      }
+      if (file === 'apps/web/lib/jira-outbox.ts') {
+        for (const marker of [
+          'FOR UPDATE SKIP LOCKED',
+          'idempotencyKey',
+          'DEAD_LETTER',
+          'jiraBackoffMs',
+          'JIRA_LEASE_LOST',
+        ]) {
+          if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
+        }
+      }
     }
     if (
       mode === 'secrets' &&

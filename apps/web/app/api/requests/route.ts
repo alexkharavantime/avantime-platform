@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createRequest, listRequests, type RequestPriority } from '../../../lib/requests-store';
-import { createJiraIssue } from '../../../lib/jira';
+import { governanceMutationOriginAllowed } from '../../../lib/governance-request-security';
 import { authorizeOrganizationApi } from '../../../lib/organization-authorization';
+import {
+  validateRequestCreationPayload,
+  validateRequestIdempotencyKey,
+} from '../../../lib/request-creation';
+import { createRequest, listRequests } from '../../../lib/requests-store';
 
 export async function GET(request: Request) {
   const authorization = await authorizeOrganizationApi('requests.view', {
@@ -12,38 +16,42 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
+  const requestedCorrelationId = request.headers.get('x-avantime-correlation-id');
+  const correlationId =
+    requestedCorrelationId && /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/u.test(requestedCorrelationId)
+      ? requestedCorrelationId
+      : crypto.randomUUID();
   const authorization = await authorizeOrganizationApi('requests.create', {
-    correlationId: request.headers.get('x-avantime-correlation-id'),
+    correlationId,
   });
   if (authorization.response) return authorization.response;
   const session = authorization.session;
   if (!session.companyId)
     return NextResponse.json({ error: 'Для пользователя не указана компания.' }, { status: 403 });
-  const body = (await request.json()) as {
-    title?: string;
-    description?: string;
-    category?: string;
-    priority?: RequestPriority;
-  };
-  if (!body.title?.trim() || !body.description?.trim() || !body.category?.trim())
-    return NextResponse.json({ error: 'Заполните тему, категорию и описание.' }, { status: 400 });
-  const input = {
-    title: body.title.trim(),
-    description: body.description.trim(),
-    category: body.category.trim(),
-    priority: body.priority ?? ('NORMAL' as RequestPriority),
-  };
-  let created;
+  let input;
+  let idempotencyKey;
   try {
-    created = await createRequest(input, session);
+    input = validateRequestCreationPayload(await request.json());
+    idempotencyKey = validateRequestIdempotencyKey(request.headers.get('idempotency-key'));
+  } catch {
+    return NextResponse.json({ error: 'Проверьте заполнение формы.' }, { status: 400 });
+  }
+  try {
+    const created = await createRequest(input, session, {
+      correlationId,
+      idempotencyKey,
+    });
+    return NextResponse.json(
+      {
+        request: created,
+        integrationStatus: created.jiraIntegrationStatus,
+      },
+      { status: 201 },
+    );
   } catch {
     return NextResponse.json({ error: 'Не удалось создать обращение.' }, { status: 503 });
   }
-  let jira = null;
-  try {
-    jira = await createJiraIssue(input);
-  } catch (error) {
-    console.error('Jira synchronization failed.', error);
-  }
-  return NextResponse.json({ request: created, jira }, { status: 201 });
 }

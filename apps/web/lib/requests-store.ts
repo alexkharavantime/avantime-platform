@@ -1,10 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { getPrisma } from '@avantime/database';
+import type { Prisma } from '@prisma/client';
+import { loadJiraConfiguration } from './jira-configuration';
 import { createPortalNotification } from './portal-notifications';
 import type { AppSession } from './session';
 
 export type RequestStatus = 'NEW' | 'IN_PROGRESS' | 'WAITING_CUSTOMER' | 'RESOLVED';
 export type RequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+export type JiraIntegrationStatus =
+  'NOT_CONFIGURED' | 'PENDING' | 'PROCESSING' | 'CREATED' | 'FAILED' | 'DEAD_LETTER';
 
 export type AuditEvent = {
   id: string;
@@ -30,6 +34,11 @@ export type SupportRequest = {
   createdAt: string;
   updatedAt: string;
   jiraKey?: string;
+  jiraIssueId?: string;
+  jiraIssueUrl?: string;
+  jiraIntegrationStatus: JiraIntegrationStatus;
+  correlationId?: string;
+  idempotencyKey?: string;
   messages: RequestMessage[];
   audit: AuditEvent[];
   dueAt: string;
@@ -52,6 +61,7 @@ const seed: SupportRequest[] = [
     createdAt: '2026-07-18T09:30:00.000Z',
     updatedAt: '2026-07-21T08:15:00.000Z',
     jiraKey: 'SUP-1042',
+    jiraIntegrationStatus: 'CREATED',
     dueAt: '2026-07-20T09:30:00.000Z',
     companyId: 'demo-company',
     requesterId: 'demo-user',
@@ -88,6 +98,7 @@ const seed: SupportRequest[] = [
     category: '1С',
     createdAt: '2026-07-16T11:00:00.000Z',
     updatedAt: '2026-07-20T15:40:00.000Z',
+    jiraIntegrationStatus: 'NOT_CONFIGURED',
     dueAt: '2026-07-18T11:00:00.000Z',
     companyId: 'demo-company',
     requesterId: 'demo-user',
@@ -105,6 +116,7 @@ const seed: SupportRequest[] = [
     createdAt: '2026-07-08T07:20:00.000Z',
     updatedAt: '2026-07-12T13:10:00.000Z',
     jiraKey: 'SUP-1018',
+    jiraIntegrationStatus: 'CREATED',
     dueAt: '2026-07-10T07:20:00.000Z',
     companyId: 'demo-company',
     requesterId: 'demo-user',
@@ -131,6 +143,12 @@ function mapDbRequest(item: any): SupportRequest {
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     jiraKey: item.jiraKey ?? undefined,
+    jiraIssueId: item.jiraIssueId ?? undefined,
+    jiraIssueUrl: item.jiraIssueUrl ?? undefined,
+    jiraIntegrationStatus:
+      item.jiraIntegrationStatus ?? (item.jiraKey ? 'CREATED' : 'NOT_CONFIGURED'),
+    correlationId: item.correlationId ?? undefined,
+    idempotencyKey: item.idempotencyKey ?? undefined,
     dueAt:
       item.dueAt?.toISOString() ??
       new Date(item.createdAt.getTime() + 48 * 3600 * 1000).toISOString(),
@@ -215,43 +233,128 @@ export async function getRequest(id: string, session?: AppSession): Promise<Supp
 export async function createRequest(
   input: Pick<SupportRequest, 'title' | 'description' | 'priority' | 'category'>,
   session: AppSession,
+  options: {
+    correlationId?: string;
+    idempotencyKey?: string;
+    environment?: Record<string, string | undefined>;
+  } = {},
 ): Promise<SupportRequest> {
+  const correlationId = options.correlationId ?? crypto.randomUUID();
+  const idempotencyKey = options.idempotencyKey ?? `request:${crypto.randomUUID()}`;
   if (databaseConfigured()) {
     try {
       const prisma = await getPrisma();
       if (!prisma) throw new Error('Prisma unavailable');
-      if (!session.companyId) throw new Error('У пользователя не указана компания.');
-      const user = await prisma.user.findFirst({
-        where: {
-          id: session.userId,
-          memberships: {
-            some: { companyId: session.companyId, active: true, status: 'ACTIVE' },
-          },
-        },
-      });
-      if (!user) throw new Error('Пользователь или компания не найдены.');
-      const count = await prisma.supportRequest.count();
+      const companyId = session.companyId;
+      if (!companyId) throw new Error('У пользователя не указана компания.');
+      const configuration = loadJiraConfiguration(options.environment ?? process.env);
       const dueAt = new Date(
         Date.now() +
           (input.priority === 'CRITICAL' ? 4 : input.priority === 'HIGH' ? 8 : 48) * 3600 * 1000,
       );
-      const item = await prisma.supportRequest.create({
-        data: {
-          publicId: `AV-${1043 + count}`,
-          ...input,
-          dueAt,
-          requesterId: user.id,
-          companyId: session.companyId,
-          auditEvents: { create: { action: 'Обращение создано', actorName: session.name } },
-        },
-        include: {
-          requester: true,
-          company: true,
-          messages: { include: { author: true } },
-          auditEvents: true,
-        },
+      const result = await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+        const duplicate = await transaction.supportRequest.findUnique({
+          where: { idempotencyKey },
+          include: {
+            requester: true,
+            company: true,
+            messages: { include: { author: true } },
+            auditEvents: true,
+          },
+        });
+        if (duplicate) {
+          if (duplicate.companyId !== companyId || duplicate.requesterId !== session.userId) {
+            throw new Error('REQUEST_IDEMPOTENCY_SCOPE_MISMATCH');
+          }
+          return { item: duplicate, duplicate: true };
+        }
+        const user = await transaction.user.findFirst({
+          where: {
+            id: session.userId,
+            memberships: {
+              some: { companyId, active: true, status: 'ACTIVE' },
+            },
+          },
+        });
+        if (!user) throw new Error('Пользователь или компания не найдены.');
+        const mapping = configuration.enabled
+          ? await transaction.jiraOrganizationMapping.findUnique({
+              where: { companyId },
+            })
+          : null;
+        const enqueue = Boolean(configuration.enabled && mapping?.enabled);
+        const item = await transaction.supportRequest.create({
+          data: {
+            publicId: `AV-${crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
+            ...input,
+            dueAt,
+            requesterId: user.id,
+            companyId,
+            correlationId,
+            idempotencyKey,
+            jiraIntegrationStatus: enqueue ? 'PENDING' : 'NOT_CONFIGURED',
+            auditEvents: { create: { action: 'Обращение создано', actorName: session.name } },
+            ...(enqueue && mapping
+              ? {
+                  jiraOperation: {
+                    create: {
+                      companyId,
+                      mappingId: mapping.id,
+                      mappingVersion: mapping.version,
+                      maxAttempts: configuration.maximumAttempts,
+                      idempotencyKey: `jira:create:${idempotencyKey}`,
+                      correlationId,
+                      projectKey: mapping.projectKey,
+                      issueType: mapping.issueType ?? configuration.defaultIssueType,
+                      componentId: mapping.componentId,
+                      requestType: mapping.requestType,
+                    },
+                  },
+                }
+              : {}),
+          },
+          include: {
+            requester: true,
+            company: true,
+            messages: { include: { author: true } },
+            auditEvents: true,
+          },
+        });
+        await transaction.productionAuditEvent.create({
+          data: {
+            companyId,
+            actorId: session.userId,
+            action: 'request.created',
+            targetType: 'support_request',
+            targetId: item.publicId,
+            result: 'SUCCEEDED',
+            correlationId,
+            safeMetadata: {
+              requestId: item.publicId,
+              priority: item.priority,
+              category: item.category,
+              jiraIntegrationStatus: item.jiraIntegrationStatus,
+            },
+          },
+        });
+        if (enqueue) {
+          await transaction.productionAuditEvent.create({
+            data: {
+              companyId,
+              actorId: session.userId,
+              action: 'jira.operation.enqueued',
+              targetType: 'support_request',
+              targetId: item.publicId,
+              result: 'SUCCEEDED',
+              correlationId,
+              safeMetadata: { requestId: item.publicId },
+            },
+          });
+        }
+        return { item, duplicate: false };
       });
-      const created = mapDbRequest(item);
+      const created = mapDbRequest(result.item);
+      if (result.duplicate) return created;
       await createPortalNotification({
         session,
         category: 'REQUEST',
@@ -260,9 +363,35 @@ export async function createRequest(
       });
       return created;
     } catch (error) {
+      if ((error as { code?: unknown })?.code === 'P2002') {
+        const prisma = await getPrisma();
+        const duplicate = await prisma?.supportRequest.findUnique({
+          where: { idempotencyKey },
+          include: {
+            requester: true,
+            company: true,
+            messages: { include: { author: true } },
+            auditEvents: true,
+          },
+        });
+        if (
+          duplicate &&
+          duplicate.companyId === session.companyId &&
+          duplicate.requesterId === session.userId
+        ) {
+          return mapDbRequest(duplicate);
+        }
+      }
       console.warn('Request creation is unavailable.');
       throw error;
     }
+  }
+  const duplicate = requests.find((item) => item.idempotencyKey === idempotencyKey);
+  if (duplicate) {
+    if (duplicate.companyId !== session.companyId || duplicate.requesterId !== session.userId) {
+      throw new Error('REQUEST_IDEMPOTENCY_SCOPE_MISMATCH');
+    }
+    return duplicate;
   }
   const number =
     1043 + requests.filter((item) => Number(item.id.replace('AV-', '')) >= 1043).length;
@@ -271,6 +400,7 @@ export async function createRequest(
   const request: SupportRequest = {
     id: `AV-${number}`,
     status: 'NEW',
+    jiraIntegrationStatus: 'NOT_CONFIGURED',
     createdAt: now,
     updatedAt: now,
     dueAt: new Date(Date.now() + dueHours * 3600 * 1000).toISOString(),
@@ -280,6 +410,8 @@ export async function createRequest(
     companyName: session.company,
     requesterName: session.name,
     requesterEmail: session.email,
+    correlationId,
+    idempotencyKey,
     audit: [
       {
         id: `a-${Date.now()}`,

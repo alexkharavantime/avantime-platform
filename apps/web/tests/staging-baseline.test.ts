@@ -54,7 +54,17 @@ function validEnvironment(): Record<string, string> {
     SESSION_SECRET: 'staging-session-secret-with-at-least-32-chars',
     MFA_ENCRYPTION_KEY: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
     AUDIT_INTEGRITY_KEY: 'staging-audit-secret-with-at-least-32-chars',
-    JIRA_INTEGRATION_ENABLED: 'false',
+    JIRA_INTEGRATION_ENABLED: 'true',
+    JIRA_MODE: 'test',
+    JIRA_BASE_URL: 'https://jira.test.invalid',
+    JIRA_PROJECT_KEY: 'TEST',
+    JIRA_ISSUE_TYPE: 'Task',
+    JIRA_REQUEST_TIMEOUT_MS: '5000',
+    JIRA_MAX_ATTEMPTS: '3',
+    JIRA_BATCH_SIZE: '10',
+    JIRA_LEASE_MS: '5000',
+    JIRA_POLL_INTERVAL_MS: '250',
+    JIRA_WORKER_ID: 'jira-staging-test',
     APP_VERSION: 'task-015-test',
     COMMIT_SHA: 'abcdef1234567',
     MIGRATION_VERSION: '20260802180000_staging_baseline',
@@ -95,7 +105,7 @@ test('staging configuration has no development fallback and rejects defaults or 
 
   const jiraCredentials = validEnvironment();
   jiraCredentials.JIRA_API_TOKEN = 'must-not-be-present';
-  assert.throws(() => loadStagingConfiguration(jiraCredentials), /JIRA_CREDENTIALS/u);
+  assert.throws(() => loadStagingConfiguration(jiraCredentials), /TEST_CREDENTIALS_DENIED/u);
 });
 
 test('managed staging rejects local endpoints and test notification provider', () => {

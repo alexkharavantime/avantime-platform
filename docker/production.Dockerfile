@@ -6,7 +6,7 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/ui/package.json packages/ui/package.json
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 
 FROM dependencies AS migration
 ENV NODE_ENV=production
@@ -62,6 +62,9 @@ CMD ["node", "--import", "tsx", "apps/web/scripts/run-document-embedding-worker.
 
 FROM worker-base AS notification-worker
 CMD ["node", "--import", "tsx", "apps/web/scripts/run-notification-worker.ts"]
+
+FROM worker-base AS jira-worker
+CMD ["node", "--import", "tsx", "apps/web/scripts/run-jira-worker.ts"]
 
 FROM worker-base AS knowledge-index-worker
 CMD ["node", "--import", "tsx", "apps/web/scripts/run-knowledge-index-worker.ts"]

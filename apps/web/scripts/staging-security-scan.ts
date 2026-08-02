@@ -22,6 +22,8 @@ async function main() {
     'docker-compose.staging.local.yml',
     'apps/web/lib/staging-configuration.ts',
     'apps/web/lib/notification-outbox.ts',
+    'apps/web/lib/jira-configuration.ts',
+    'apps/web/lib/jira-outbox.ts',
     'apps/web/lib/knowledge-index-worker.ts',
   ];
   for (const file of requiredFiles) {
@@ -66,6 +68,16 @@ async function main() {
   ]) {
     if (!outbox.includes(marker)) findings.push(`notification-outbox: missing ${marker}`);
   }
+  const jiraOutbox = await readFile(new URL('apps/web/lib/jira-outbox.ts', repositoryRoot), 'utf8');
+  for (const marker of [
+    'FOR UPDATE SKIP LOCKED',
+    'idempotencyKey',
+    'DEAD_LETTER',
+    'jiraBackoffMs',
+    'JIRA_LEASE_LOST',
+  ]) {
+    if (!jiraOutbox.includes(marker)) findings.push(`jira-outbox: missing ${marker}`);
+  }
   const indexing = await readFile(
     new URL('apps/web/lib/knowledge-index-worker.ts', repositoryRoot),
     'utf8',
@@ -86,7 +98,7 @@ async function main() {
     "environment.APP_ENV !== 'staging'",
     'DATABASE_NAME_NOT_STAGING',
     'REDIS_NAMESPACE_NOT_STAGING',
-    'JIRA_CREDENTIALS_NOT_ALLOWED',
+    'loadJiraConfiguration',
   ]) {
     if (!configuration.includes(marker)) findings.push(`staging-configuration: missing ${marker}`);
   }
