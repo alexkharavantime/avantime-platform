@@ -2235,6 +2235,52 @@ index/cache invalidation и assistive-technology UX остаются manual gate
 
 ---
 
+## ADR-0031: Managed governance validation является ручной staging ceremony с внешней подписью
+
+**Статус:** Accepted
+**Дата:** 2026-08-02
+
+### Контекст
+
+Repository/CI simulations TASK-012/013 не доказывают доступность managed providers, доставку
+security notification, отсутствие stale cache/index/RAG или human accessibility. Одновременно
+staging tooling не должно становиться production bootstrap, scheduled backdoor или хранилищем
+credentials. Dependency advisory нельзя устранять force/downgrade либо бессрочно подавлять.
+
+### Решение
+
+Managed validation запускается только оператором при exact staging binding, recent MFA, external
+secret-store reference, explicit phrase и общей correlation ID. Production fallback отсутствует.
+Preflight read-only и fail-closed. Ceremony evidence canonical, hashed, write-once и после
+проверки связывается отдельной подписью независимого reviewer; CI не может подписывать.
+
+Provider delivery подтверждается terminal provider ID/status без raw payload. Invalidation требует
+bounded polling и before/after versions для cache/search/vector плюс negative tenant/stale checks;
+не существующий adapter фиксируется blocker, а не simulated success. Last-owner recovery остаётся
+двухоператорным staging policy drill без универсального grant executor. Dependency report сохраняет
+critical gate, допускает только классифицированный риск с owner/controls/expiry/trigger и блокирует
+истёкшее acceptance.
+
+### Последствия
+
+- repository completion и managed acceptance имеют разные статусы;
+- реальная доставка и article cache/RAG остаются blockers, пока нет соответствующих adapters;
+- evidence нельзя исправлять после подписи, только перевыпустить;
+- production bootstrap/recovery не добавлены;
+- совместимый `brace-expansion` исправлен, а nested PostCSS/optional Sharp остаются краткосрочными
+  `AR-DEP-2026-002/003`, не причиной ослабить CI.
+
+### Связанные документы
+
+- `docs/MANAGED_STAGING_VALIDATION.md`;
+- `docs/GOVERNANCE_SIGNOFF.md`;
+- `docs/NOTIFICATION_VALIDATION.md`;
+- `docs/CACHE_INDEX_INVALIDATION.md`;
+- `docs/DEPENDENCY_RISK_MANAGEMENT.md`;
+- `docs/tasks/TASK-014.md`.
+
+---
+
 # Планируемые архитектурные решения
 
 Ниже зарезервированы темы будущих ADR. Номер назначается только при создании полноценного решения.
@@ -2250,7 +2296,7 @@ index/cache invalidation и assistive-technology UX остаются manual gate
 | Стратегия локальных LLM                                      | Version 3.0              | Требуются изолированные и гибридные развёртывания                                             |
 | Переход от `develop` к классическому GitHub Flow             | После стабилизации CI/CD | Требуется упростить ветвление без нарушения текущего процесса                                 |
 
-Следующий свободный номер: `ADR-0031`. Новое решение оформляется по шаблону из раздела «Формат ADR».
+Следующий свободный номер: `ADR-0032`. Новое решение оформляется по шаблону из раздела «Формат ADR».
 
 ---
 

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "acceptances": [
+    {
+      "id": "AR-DEP-2026-002",
+      "packages": ["next", "postcss"],
+      "exposure": "build-time",
+      "compensatingControls": [
+        "repository-controlled-css-input-only",
+        "no-runtime-postcss-entrypoint",
+        "critical-audit-gate-unchanged"
+      ],
+      "owner": "platform-security",
+      "expiresAt": "2026-08-12T23:59:59.000Z",
+      "remediationTrigger": "upstream-next-pins-postcss-8.5.18-or-newer"
+    },
+    {
+      "id": "AR-DEP-2026-003",
+      "packages": ["sharp"],
+      "exposure": "runtime-unreachable",
+      "compensatingControls": [
+        "no-next-image-or-image-response-entrypoint",
+        "private-documents-use-tesseract-poppler",
+        "critical-audit-gate-unchanged"
+      ],
+      "owner": "platform-security",
+      "expiresAt": "2026-08-12T23:59:59.000Z",
+      "remediationTrigger": "upstream-next-supports-sharp-0.35-or-newer"
+    }
+  ]
+}

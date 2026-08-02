@@ -61,6 +61,12 @@ stored in the repository. Start with [Governance Bootstrap](./docs/GOVERNANCE_BO
 [Governance Validation](./docs/GOVERNANCE_VALIDATION.md); managed staging and manual UX checks are
 explicitly pending.
 
+TASK-014 adds the manual-only managed staging preflight, canonical evidence/sign-off validation,
+sanitized provider receipts, bounded invalidation observations and expiring dependency risk policy.
+No managed environment was operated; real notification delivery, article cache/search/RAG
+invalidation and human accessibility sign-off remain blocked/pending. See
+[Managed Staging Validation](./docs/MANAGED_STAGING_VALIDATION.md).
+
 ## Production identity and MFA
 
 TASK-009 adds source-scoped local/external identities, organization memberships, opaque

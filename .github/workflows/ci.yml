@@ -41,6 +41,7 @@ jobs:
       - run: npm run db:generate
       - run: npm run test:identity
       - run: npm run test:permissions -w @avantime/web
+      - run: npm run test:governance-validation -w @avantime/web
       - run: npm run security:identity-scan -w @avantime/web
       - run: npm run security:forbidden-credential-scan -w @avantime/web
       - run: npm run security:default-secret-scan -w @avantime/web
@@ -128,6 +129,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --omit=optional --audit-level=critical
+      - run: npm run governance:dependency-report
       - run: npm run security:secret-scan -w @avantime/web
       - run: npm run security:migration-scan -w @avantime/web
       - run: npm run backup:dry-run

@@ -54,6 +54,8 @@ the source record, and ownership/visibility version changes must invalidate deri
 
 - [TASK-012](./tasks/TASK-012.md)
 - [TASK-013](./tasks/TASK-013.md)
+- [TASK-014](./tasks/TASK-014.md)
+- [Cache/index invalidation](./CACHE_INDEX_INVALIDATION.md)
 - [Knowledge publication runbook](./runbooks/knowledge-publication.md)
 - [Architecture 2.0](./ARCHITECTURE_2_0.md)
 - [Portal Architecture](./PORTAL_ARCHITECTURE.md)

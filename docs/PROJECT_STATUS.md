@@ -10,8 +10,8 @@
 
 ### 🎯 Текущая цель проекта
 
-Завершить repository-level TASK-012: отделить platform permissions, knowledge ownership и
-controlled approvals, затем провести production-like governance ceremonies.
+Завершить repository boundary TASK-014 и подготовить безопасный внешний managed staging rollout
+без production bootstrap или ложного readiness claim.
 
 ### 📈 Общий процент готовности
 
@@ -19,27 +19,24 @@ controlled approvals, затем провести production-like governance cer
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-012 добавляет independent platform assignments и deny-by-default platform permission
-   service без автоматического organization membership;
-2. KnowledgeArticle получает immutable owner scope, explicit visibility, quarantine и
-   organization/platform/public audience filters;
-3. Controlled approval foundation использует requester/approver separation, canonical SHA-256
-   fingerprint и dedicated single-use executors; repository gates завершены.
+1. TASK-013 добавила single-use first-owner bootstrap, safe evidence и simulated ceremonies;
+2. TASK-014 добавляет manual-only preflight, canonical evidence и independent reviewer sign-off;
+3. Совместимый dependency lock refresh устраняет brace-expansion advisory без force/downgrade.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
-3. Часть legacy platform pages ещё требует миграции с `User.role`; staging ceremonies и accepted
-   dependency risks `AR-DEP-2026-001/002` требуют завершения/review.
+3. Governance external delivery и article cache/vector invalidation ещё не реализованы; оставшиеся
+   `AR-DEP-2026-002/003` истекают 2026-08-12.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
 1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
-2. Провести PLATFORM_OWNER bootstrap, support/approval и knowledge-classification staging drills
-   TASK-012.
+2. Добавить provider-backed governance outbox и article cache/search/RAG generation adapters,
+   затем провести TASK-014 staging ceremonies.
 3. Провести ручной screen-reader/assistive-technology review и подтвердить backup/PITR/alerts.
 
 ---
@@ -49,11 +46,11 @@ controlled approvals, затем провести production-like governance cer
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.22                                                                                      |
-| Дата последнего обновления       | 2026-08-01                                                                                |
+| Версия документа                 | 1.23                                                                                      |
+| Дата последнего обновления       | 2026-08-02                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-012-platform-governance`                                                    |
-| Последний commit                 | `3ba2760` — TASK-010 production OIDC rollout                                              |
+| Текущая ветка Git                | `feature/task-014-managed-staging-validation`                                             |
+| Базовый commit рабочей ветки     | `932f745`                                                                                 |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
 | Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
@@ -191,8 +188,18 @@ exact tenant/scope, canonical fingerprint, separate approver, expiry и single e
 RAG/production integration 1/1, 63/63 Playwright/browser/accessibility tests, 11-migration
 fresh/legacy/repeated rehearsal, seven static scans, documentation check по 20 документам,
 production build на 100 app routes, typecheck и lint. PLATFORM_OWNER bootstrap, support/approval,
-knowledge review и assistive-technology staging ceremonies остаются внешними gates; status задачи
-остаётся `In Progress` до их выполнения.
+knowledge review и assistive-technology staging ceremonies остаются внешними gates. TASK-012
+завершена в явно ограниченном repository scope; внешние gates перенесены в TASK-013/014.
+
+[TASK-013](./tasks/TASK-013.md) завершена в repository scope: single-use first-owner bootstrap,
+transaction lock, session revoke, audit/inbox notification, safe evidence, invariants, runbooks и
+simulated support/approval/knowledge ceremonies. Managed execution не проводилось.
+
+[TASK-014](./tasks/TASK-014.md) завершена в repository scope: read-only staging preflight,
+manual/recent-MFA boundary, canonical write-once evidence, independent sign-off, provider receipt
+and bounded invalidation validators, recovery policy drill, dependency parser/expiry policy и
+compatible `brace-expansion 1.1.18` lock refresh. Real provider delivery and article cache/vector
+adapters remain `BLOCKED`; staging ceremonies, reviewer and manual accessibility remain `PENDING`.
 
 Проверки четвёртой итерации TASK-002:
 
@@ -663,3 +670,6 @@ Version 2.0 не готова к production-релизу. Процент отр�
   coverage. Managed staging bootstrap/support/approval/publication, reviewer sign-off, manual
   assistive-technology review and production ceremony are explicitly `PENDING`; no production
   readiness claim is made. See [TASK-013](./tasks/TASK-013.md).
+  TASK-014 adds the guarded command/evidence boundary but does not change those external statuses.
+  See [TASK-014](./tasks/TASK-014.md) and
+  [Managed staging validation](./MANAGED_STAGING_VALIDATION.md).

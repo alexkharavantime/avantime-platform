@@ -9,6 +9,27 @@ const requirements: Record<string, string[]> = {
     '../GOVERNANCE_VALIDATION.md',
     '../GOVERNANCE_EVIDENCE.md',
   ],
+  'docs/tasks/TASK-014.md': [
+    '../MANAGED_STAGING_VALIDATION.md',
+    '../GOVERNANCE_SIGNOFF.md',
+    '../NOTIFICATION_VALIDATION.md',
+    '../CACHE_INDEX_INVALIDATION.md',
+    '../DEPENDENCY_RISK_MANAGEMENT.md',
+  ],
+  'docs/MANAGED_STAGING_VALIDATION.md': [
+    'PENDING',
+    'BLOCKED',
+    'production',
+    './runbooks/managed-staging-governance.md',
+  ],
+  'docs/GOVERNANCE_SIGNOFF.md': ['write-once', 'reviewer', 'CI', 'SHA'],
+  'docs/NOTIFICATION_VALIDATION.md': ['provider message ID', 'Raw recipient', 'BLOCKED'],
+  'docs/CACHE_INDEX_INVALIDATION.md': ['bounded', 'foreign-tenant', 'BLOCKED'],
+  'docs/DEPENDENCY_RISK_MANAGEMENT.md': [
+    'brace-expansion 1.1.16 -> 1.1.18',
+    'AR-DEP-2026-002',
+    'npm audit fix --force',
+  ],
   'docs/GOVERNANCE_BOOTSTRAP.md': [
     './runbooks/platform-owner-bootstrap.md',
     './runbooks/platform-owner-recovery.md',
@@ -22,6 +43,12 @@ const requirements: Record<string, string[]> = {
   'docs/runbooks/approval-operations.md': ['Prerequisites', 'Failure', 'Evidence'],
   'docs/runbooks/knowledge-publication.md': ['Prerequisites', 'Failure', 'Evidence'],
   'docs/runbooks/governance-incident-response.md': ['Prerequisites', 'Rollback', 'Evidence'],
+  'docs/runbooks/managed-staging-governance.md': [
+    'Prerequisites',
+    'Failure and rollback',
+    'Recovery drill',
+    'Evidence',
+  ],
 };
 
 async function main() {

@@ -919,9 +919,11 @@ Product Backlog — основной управляемый перечень п�
   и governance notifications. Retention/immutability operations остаются.
 
 TASK-013 supplies repository-level first-owner bootstrap, operational CLI, approval/publication
-evidence, invariants and runbooks. TASK-014 should own managed staging ceremony evidence,
-notification-delivery verification, real cache/index invalidation drill, accessibility sign-off and
-approval of the no-owner emergency authority.
+evidence, invariants and runbooks. TASK-014 supplies fail-closed managed staging preflight,
+tamper-evident evidence/reviewer contracts, notification/invalidation validators, recovery policy
+drill and dependency expiry enforcement. Actual staging ceremonies, provider-backed governance
+outbox, article cache/vector invalidation and human accessibility sign-off remain open external
+work; no production readiness is inferred.
 
 - **Критерии готовности:** неизменяемые записи; actor; organization; action; resource; correlation ID; политика хранения.
 - **Зависимости:** INFRA-001, INFRA-002.

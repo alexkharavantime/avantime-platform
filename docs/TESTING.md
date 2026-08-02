@@ -91,3 +91,8 @@ screen-reader и assistive-technology review.
   publication integration cases, and Playwright support lifecycle, two-actor replay denial,
   publication/archive, approval states and responsive platform pages. Managed staging and manual
   screen-reader checks stay separate and pending; CI never executes bootstrap-owner-execute.
+
+TASK-014 adds `test:governance-validation` for production denial, preflight blockers, reviewer
+separation, evidence hashing/tamper, notification sanitization/completeness, bounded invalidation,
+dependency parser/expiry and recovery denial. The integration runner includes a provider double,
+write-once evidence/sign-off and failure path. These tests validate contracts, not real staging.

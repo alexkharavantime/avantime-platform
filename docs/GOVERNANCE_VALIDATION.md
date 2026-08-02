@@ -1,5 +1,10 @@
 # Governance operational validation
 
+TASK-014 adds the executable managed boundary described in
+[Managed staging validation](./MANAGED_STAGING_VALIDATION.md). Repository and CI simulations pass
+independently of managed staging; real delivery, article cache/search/RAG invalidation, human UX and
+reviewer sign-off remain external `PENDING/BLOCKED` gates and cannot be inferred from automation.
+
 ## Gap matrix
 
 | Ceremony              | Prerequisites / environment                                                   | Actors and permission                    | Expected audit / notification                              | Rollback                                                | Evidence                                           | Current gap                                    |
@@ -16,6 +21,8 @@
 - Simulated ceremony runs integration/browser tests against synthetic local data.
 - Managed staging requires explicit operator invocation and secrets supplied outside GitHub/repo.
 - Production ceremony is not implemented or authorized by TASK-013.
+- TASK-014 managed commands require manual staging binding, recent MFA, external secrets and an
+  exact phrase; production and CI sign-off are denied.
 
 CI runs unit/integration/browser, migration rehearsal, build, documentation and static scans. It
 must not run `governance:bootstrap:execute` or claim managed staging evidence.
@@ -43,3 +50,8 @@ disabled-user ownership grants, malformed reusable executions, self approval, or
 without executed approval, and persisted registry-only actions. Support expiry is reported and is
 denied by the permission evaluator. Tenant RAG isolation, replay denial and last-owner protection
 are additionally exercised by integration/browser and static policy tests.
+
+Evidence integrity, notification and invalidation validation are specified in
+[Governance evidence](./GOVERNANCE_EVIDENCE.md),
+[Notification validation](./NOTIFICATION_VALIDATION.md) and
+[Cache/index invalidation](./CACHE_INDEX_INVALIDATION.md).

@@ -66,6 +66,7 @@
 | [TASK-011](TASK-011.md) | Organization permission model and governance             | Done        |
 | [TASK-012](TASK-012.md) | Platform permissions, knowledge and approvals            | Done        |
 | [TASK-013](TASK-013.md) | Governance bootstrap and operational validation          | Done        |
+| [TASK-014](TASK-014.md) | Managed staging validation and dependency remediation    | Done        |
 
 ## Связанные документы
 
