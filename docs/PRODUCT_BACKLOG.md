@@ -1070,7 +1070,7 @@ work; no production readiness is inferred.
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** TASK-005 добавляет production images, reference Compose, fail-fast validation и deployment runbook. Managed infrastructure ещё не развёрнута.
+- **Описание:** TASK-005 добавляет production images/reference Compose; TASK-015 — единый staging Compose overlay, typed environment, health/readiness, smoke и restore rehearsal. Managed infrastructure ещё не развёрнута.
 - **Критерии готовности:** среды разделены; инфраструктура воспроизводима; TLS; backup; масштабирование; документация.
 - **Зависимости:** DOCS-006, SEC-005.
 
@@ -1094,7 +1094,7 @@ work; no production readiness is inferred.
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Redis adapters, document/embedding heartbeat, lease fencing, crash recovery и integration tests добавлены в TASK-005. Email/integration queues и managed Redis rollout остаются.
+- **Описание:** Redis document/embedding adapters добавлены в TASK-005. TASK-015 добавляет отдельные durable notification/knowledge pipelines, heartbeat, bounded retry/DLQ and concurrency tests. Managed Redis/provider rollout остаётся.
 - **Критерии готовности:** retries; dead-letter queue; идемпотентность; мониторинг; graceful shutdown; тесты.
 - **Зависимости:** INFRA-001, INFRA-002.
 
@@ -1267,7 +1267,7 @@ work; no production readiness is inferred.
 - `/dashboard` и внутренние document/AI API защищены, но полная матрица ролей ещё отсутствует;
 - `/dashboard/**` остаётся deprecated compatibility layer; его удаление требует usage evidence и отдельного sunset-решения;
 - публичная и документная базы знаний остаются раздельными реализациями;
-- production adapters PostgreSQL/S3 и document worker contracts реализованы; local PostgreSQL/MinIO и OCR Docker gates выполнены, но обязательный CI gate, production infrastructure, external queue и backup ещё не завершены;
+- production adapters PostgreSQL/S3 и worker contracts реализованы; TASK-015 добавляет local staging/CI, notification and knowledge queues, backup/restore baseline, но managed infrastructure/PITR ещё не подтверждены;
 - document/RAG/OpenAI/Gemini calls объединены AI Gateway; streaming, fallback policy и production provider validation ещё не завершены;
 - версии README, корневого приложения, web workspace и архитектурной документации расходятся;
 - production и demo fallback могут скрывать ошибки PostgreSQL;
@@ -1289,11 +1289,11 @@ work; no production readiness is inferred.
 - UI-компоненты требуют дальнейшей стабилизации API и тестовых состояний;
 - distributed rate limit, durable cost ledger и production metrics sink для AI Gateway отсутствуют;
 - generated-файлы ранее отображались в Git;
-- конфигурация среды не валидируется централизованно;
+- production и staging configuration валидируются fail-fast; общий cross-environment registry ещё не унифицирован;
 - есть security, contract и Document integration suites, но нет достаточного покрытия остальных доменов и Docker-enabled CI gate;
-- local document queue и quarantine реализованы; общей production queue, provider-level dead-letter queue и monitoring нет;
+- local document queue и quarantine реализованы; notification/knowledge DLQ добавлены, но managed provider monitoring ещё не развёрнут;
 - отсутствуют единые схемы валидации и формат ошибок;
-- документация deployment и backup неполна.
+- staging deployment/backup documented; production provider-specific runbook evidence остаётся неполным.
 - 97 ранее существовавших файлов не проходят repository-wide Prettier check; исправление вынесено в INFRA-004 и не входит в TASK-002.
 
 ## Что необходимо переработать

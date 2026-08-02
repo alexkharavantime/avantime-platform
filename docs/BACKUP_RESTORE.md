@@ -27,6 +27,8 @@ writes a mode-`0600` manifest with encrypted/source SHA-256 checksums. Restore
 requires the runtime-injected encryption key and decrypts only inside a temporary
 directory. Backup storage must additionally encrypt at rest and in transit.
 PostgreSQL PITR requires continuous WAL archiving managed by the selected provider.
+Staging manifests additionally record application version, commit SHA and migration/schema
+version so restore evidence can be correlated with the deployed artifact.
 
 The reference Compose mounts `/var/lib/avantime-backups` as a dedicated persistent
 volume so the encrypted archive does not disappear with the operations container.
@@ -51,11 +53,25 @@ Enable provider versioning/object lock/replication according to data policy.
 
 ```bash
 npm run restore:rehearsal:integration
+npm run staging:restore-rehearsal
 ```
 
 The automated rehearsal creates/restores only the validated isolated database
 `avantime_restore_rehearsal`, verifies migrations/tables and never targets the
 current development or production database.
+The staging command uses the separate `avantime_staging_restore_rehearsal` Compose service and
+also verifies `NotificationOutbox` and `KnowledgeIndexEvent`. It never restores in place.
+
+## Staging baseline
+
+Before migration, run the one-shot backup job and verify a non-zero encrypted archive, mode-0600
+manifest, both SHA-256 values and version metadata. The local named volume is only rehearsal
+storage. Managed staging must copy archive/manifest to the externally referenced private backup
+destination, verify the copied checksum and apply retention before treating it as durable.
+
+Object storage uses a separate private backup bucket or provider versioning/inventory contract.
+Read/write probes are not backups. Encryption-at-rest, lifecycle, immutability and cross-account
+access remain provider responsibilities that require managed evidence.
 
 A manual restore requires:
 
@@ -94,3 +110,5 @@ rolled back; application rollback must remain schema-compatible.
 - [Production Readiness Checklist](./PRODUCTION_READINESS_CHECKLIST.md)
 - [Security Hardening](./SECURITY_HARDENING.md)
 - [TASK-005](./tasks/TASK-005.md)
+- [Staging infrastructure](./STAGING_INFRASTRUCTURE.md)
+- [TASK-015](./tasks/TASK-015.md)

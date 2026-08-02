@@ -110,9 +110,12 @@ export function createDocumentServices(
   dependencies: DocumentServiceDependencies = {},
 ): DocumentServices {
   const persistence = createDocumentPersistenceServices(configuration, dependencies);
+  const baseRagConfiguration = dependencies.ragConfiguration ?? loadRagConfiguration();
   const redisClient =
     dependencies.redisClient ??
-    ((configuration.queueDriver === 'external' || dependencies.ragConfiguration?.production) &&
+    ((configuration.queueDriver === 'external' ||
+      baseRagConfiguration.embeddingQueue.driver === 'redis' ||
+      baseRagConfiguration.production) &&
     (configuration.redisUrl || process.env.REDIS_URL)
       ? createLazyRedisCommandClient(configuration.redisUrl || process.env.REDIS_URL || '')
       : undefined);
@@ -162,31 +165,36 @@ export function createDocumentServices(
     ocr,
     intelligence,
   } as Omit<DocumentServices, 'rag'>;
-  const baseRagConfiguration = dependencies.ragConfiguration ?? loadRagConfiguration();
   const ragConfiguration = {
     ...baseRagConfiguration,
     dataDirectory: configuration.dataDirectory,
   };
-  const productionRagDependencies: RagServiceDependencies = ragConfiguration.production
-    ? {
-        embeddingQueue:
-          dependencies.rag?.embeddingQueue ??
-          (redisClient ? new RedisEmbeddingJobQueue(redisClient) : undefined),
-        rateLimiter:
-          dependencies.rag?.rateLimiter ??
-          (redisClient ? new RedisAiRateLimiter(redisClient) : undefined),
-        costController:
-          dependencies.rag?.costController ??
-          new PostgreSQLAiCostController(
-            dependencies.rag?.loadDatabase ?? (async () => await getPrisma()),
-            ragConfiguration.limits.dailyBudgetEur,
-            ragConfiguration.limits.monthlyBudgetEur,
-          ),
-      }
-    : {};
+  const configuredRagDependencies: RagServiceDependencies = {
+    ...(ragConfiguration.embeddingQueue.driver === 'redis'
+      ? {
+          embeddingQueue:
+            dependencies.rag?.embeddingQueue ??
+            (redisClient ? new RedisEmbeddingJobQueue(redisClient) : undefined),
+        }
+      : {}),
+    ...(ragConfiguration.production
+      ? {
+          rateLimiter:
+            dependencies.rag?.rateLimiter ??
+            (redisClient ? new RedisAiRateLimiter(redisClient) : undefined),
+          costController:
+            dependencies.rag?.costController ??
+            new PostgreSQLAiCostController(
+              dependencies.rag?.loadDatabase ?? (async () => await getPrisma()),
+              ragConfiguration.limits.dailyBudgetEur,
+              ragConfiguration.limits.monthlyBudgetEur,
+            ),
+        }
+      : {}),
+  };
   const rag = createRagServices(ragConfiguration, documentServices, {
     ...dependencies.rag,
-    ...productionRagDependencies,
+    ...configuredRagDependencies,
   });
   return {
     ...documentServices,

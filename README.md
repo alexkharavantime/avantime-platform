@@ -67,6 +67,25 @@ No managed environment was operated; real notification delivery, article cache/s
 invalidation and human accessibility sign-off remain blocked/pending. See
 [Managed Staging Validation](./docs/MANAGED_STAGING_VALIDATION.md).
 
+## Staging baseline
+
+TASK-015 adds one Docker Compose staging topology with an isolated local PostgreSQL/pgvector,
+Redis and MinIO overlay, typed fail-fast configuration, `/health`/`/ready`, provider-backed
+notification outbox and versioned knowledge indexing workers. Local adapters never use real
+notifications or staging credentials.
+
+```bash
+cp .env.staging.local.example .env.staging
+npm run staging:up
+npm run staging:smoke
+npm run staging:restore-rehearsal
+npm run staging:down
+```
+
+Local success does not mean managed staging was deployed. Start with
+[Staging Infrastructure](./docs/STAGING_INFRASTRUCTURE.md) and
+[Staging Deployment](./docs/STAGING_DEPLOYMENT.md).
+
 ## Production identity and MFA
 
 TASK-009 adds source-scoped local/external identities, organization memberships, opaque

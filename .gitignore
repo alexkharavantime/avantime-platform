@@ -19,6 +19,8 @@ coverage
 .env.*
 !.env.example
 !.env.integration.example
+!.env.staging.example
+!.env.staging.local.example
 
 # Generated browser reports, traces, screenshots and isolated fixture data
 .artifacts/

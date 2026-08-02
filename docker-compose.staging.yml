@@ -1,0 +1,154 @@
+name: avantime-staging
+
+x-staging-runtime: &staging-runtime
+  restart: unless-stopped
+  read_only: true
+  init: true
+  stop_grace_period: 30s
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  env_file:
+    - ${STAGING_ENV_FILE:-.env.staging}
+  environment:
+    HOSTNAME: 0.0.0.0
+  networks:
+    - application
+    - egress
+  labels:
+    com.avantime.environment: staging
+    com.avantime.version: ${APP_VERSION:?APP_VERSION is required}
+    com.avantime.commit: ${COMMIT_SHA:?COMMIT_SHA is required}
+  deploy:
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+      reservations:
+        cpus: '0.25'
+        memory: 256M
+
+services:
+  migration:
+    <<: *staging-runtime
+    image: ${STAGING_MIGRATION_IMAGE:-avantime-platform-migration}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: migration
+    command: ['run-staging-migrations']
+    restart: 'no'
+
+  notification-worker:
+    <<: *staging-runtime
+    image: ${STAGING_NOTIFICATION_WORKER_IMAGE:-avantime-platform-notification-worker}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: notification-worker
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '--import',
+          'tsx',
+          'apps/web/scripts/check-staging-worker.ts',
+          'notification',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  knowledge-index-worker:
+    <<: *staging-runtime
+    image: ${STAGING_KNOWLEDGE_WORKER_IMAGE:-avantime-platform-knowledge-worker}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: knowledge-index-worker
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        ['CMD', 'node', '--import', 'tsx', 'apps/web/scripts/check-staging-worker.ts', 'knowledge']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  web:
+    <<: *staging-runtime
+    image: ${STAGING_WEB_IMAGE:-avantime-platform-web}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: web
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      notification-worker:
+        condition: service_healthy
+      knowledge-index-worker:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${STAGING_WEB_PORT:-3300}:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/ready']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+
+  backup:
+    <<: *staging-runtime
+    image: ${STAGING_OPERATIONS_IMAGE:-avantime-platform-operations}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: operations
+    command: ['npm', 'run', 'backup:create', '--', '--execute']
+    depends_on:
+      backup-volume-init:
+        condition: service_completed_successfully
+    restart: 'no'
+    profiles: ['operations']
+    volumes:
+      - staging-backups:/var/lib/avantime-backups
+
+  backup-volume-init:
+    image: alpine:3.22.1
+    command: ['chown', '10001:10001', '/var/lib/avantime-backups']
+    user: '0:0'
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    network_mode: none
+    restart: 'no'
+    profiles: ['operations']
+    volumes:
+      - staging-backups:/var/lib/avantime-backups
+    labels:
+      com.avantime.environment: staging
+      com.avantime.version: ${APP_VERSION:?APP_VERSION is required}
+      com.avantime.commit: ${COMMIT_SHA:?COMMIT_SHA is required}
+
+networks:
+  application:
+    internal: true
+  egress:
+
+volumes:
+  staging-backups:

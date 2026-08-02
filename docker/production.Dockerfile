@@ -11,8 +11,9 @@ RUN npm ci
 FROM dependencies AS migration
 ENV NODE_ENV=production
 COPY --chown=node:node packages/database/prisma ./packages/database/prisma
+COPY --chmod=0555 docker/run-staging-migrations.sh /usr/local/bin/run-staging-migrations
 USER node
-CMD ["npx", "prisma", "migrate", "deploy", "--schema", "packages/database/prisma/schema.prisma"]
+CMD ["run-staging-migrations"]
 
 FROM dependencies AS builder
 ARG SESSION_SECRET=build-only-placeholder-with-at-least-32-characters
@@ -58,6 +59,12 @@ CMD ["node", "--import", "tsx", "apps/web/scripts/run-document-worker.ts"]
 
 FROM worker-base AS embedding-worker
 CMD ["node", "--import", "tsx", "apps/web/scripts/run-document-embedding-worker.ts"]
+
+FROM worker-base AS notification-worker
+CMD ["node", "--import", "tsx", "apps/web/scripts/run-notification-worker.ts"]
+
+FROM worker-base AS knowledge-index-worker
+CMD ["node", "--import", "tsx", "apps/web/scripts/run-knowledge-index-worker.ts"]
 
 FROM worker-base AS operations
 USER root

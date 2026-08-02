@@ -146,7 +146,9 @@ function assertProviderConfiguration(
 export function loadRagConfiguration(
   environment: Record<string, string | undefined> = process.env,
 ): RagConfiguration {
-  const production = environment.NODE_ENV === 'production';
+  const production =
+    environment.NODE_ENV === 'production' &&
+    !(environment.APP_ENV === 'staging' && environment.STAGING_MODE === 'local');
   const embeddingDriver = parseEnum(
     environment,
     'DOCUMENT_EMBEDDING_DRIVER',

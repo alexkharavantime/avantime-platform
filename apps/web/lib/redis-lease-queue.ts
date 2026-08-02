@@ -14,11 +14,14 @@ export type RedisCommandClient = {
   close?(): Promise<void>;
 };
 
-export async function createRedisCommandClient(url: string): Promise<RedisCommandClient> {
+export async function createRedisCommandClient(
+  url: string,
+  options: { connectTimeoutMs?: number } = {},
+): Promise<RedisCommandClient> {
   const client = createClient({
     url,
     socket: {
-      connectTimeout: 5_000,
+      connectTimeout: options.connectTimeoutMs ?? 5_000,
       reconnectStrategy: false,
     },
   });

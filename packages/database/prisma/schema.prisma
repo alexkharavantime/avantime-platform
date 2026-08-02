@@ -806,6 +806,136 @@ model GovernanceNotification {
   @@index([companyId, createdAt])
 }
 
+enum NotificationOutboxStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  DEAD_LETTER
+}
+
+model NotificationOutbox {
+  id                   String                   @id @default(cuid())
+  idempotencyKey       String                   @unique @db.VarChar(200)
+  notificationType     String                   @db.VarChar(100)
+  recipientReference   String                   @db.VarChar(200)
+  recipientUserId      String?                  @db.VarChar(200)
+  templateReference    String                   @db.VarChar(100)
+  correlationId        String                   @db.VarChar(200)
+  status               NotificationOutboxStatus @default(PENDING)
+  attempts             Int                      @default(0)
+  maxAttempts          Int                      @default(5)
+  nextAttemptAt        DateTime                 @default(now())
+  leaseToken           String?                  @db.VarChar(100)
+  leaseUntil           DateTime?
+  providerMessageId    String?                  @db.VarChar(200)
+  lastFailureCode      String?                  @db.VarChar(100)
+  deliveredAt          DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([leaseUntil])
+  @@index([correlationId])
+}
+
+model NotificationWorkerHeartbeat {
+  workerId             String   @id @db.VarChar(100)
+  workerVersion        String   @db.VarChar(100)
+  deploymentGeneration String   @db.VarChar(100)
+  status               String   @db.VarChar(30)
+  lastBatchSize        Int      @default(0)
+  lastErrorCode        String?  @db.VarChar(100)
+  heartbeatAt          DateTime @default(now())
+  startedAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+enum KnowledgeIndexEventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+}
+
+model KnowledgeIndexEvent {
+  id                   String                    @id @default(cuid())
+  idempotencyKey       String                    @unique @db.VarChar(200)
+  articleId            String                    @db.VarChar(200)
+  sourceVersion        Int
+  ownerScope           KnowledgeOwnerScope
+  companyId            String?                   @db.VarChar(200)
+  visibility           KnowledgeVisibility
+  lifecycleStatus      ArticleStatus
+  status               KnowledgeIndexEventStatus @default(PENDING)
+  attempts             Int                       @default(0)
+  maxAttempts          Int                       @default(5)
+  nextAttemptAt        DateTime                  @default(now())
+  leaseToken           String?                   @db.VarChar(100)
+  leaseUntil           DateTime?
+  lastFailureCode      String?                   @db.VarChar(100)
+  completedAt          DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([articleId, sourceVersion])
+  @@index([leaseUntil])
+}
+
+model KnowledgeSearchIndex {
+  articleId            String              @id @db.VarChar(200)
+  sourceVersion        Int
+  generation           Int
+  ownerScope           KnowledgeOwnerScope
+  companyId            String?             @db.VarChar(200)
+  visibility           KnowledgeVisibility
+  lifecycleStatus      ArticleStatus
+  title                String
+  summary              String
+  tags                 String[]             @default([])
+  searchText           String
+  operationalStatus    String               @db.VarChar(30)
+  indexedAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([companyId, visibility, lifecycleStatus])
+  @@index([sourceVersion, generation])
+}
+
+model KnowledgeVectorIndex {
+  articleId            String              @id @db.VarChar(200)
+  sourceVersion        Int
+  generation           Int
+  ownerScope           KnowledgeOwnerScope
+  companyId            String?             @db.VarChar(200)
+  visibility           KnowledgeVisibility
+  lifecycleStatus      ArticleStatus
+  contentHash          String               @db.VarChar(64)
+  embeddingModel       String               @db.VarChar(100)
+  embeddingVersion     String               @db.VarChar(100)
+  embedding            Unsupported("vector")?
+  operationalStatus    String               @db.VarChar(30)
+  indexedAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([companyId, visibility, lifecycleStatus])
+  @@index([sourceVersion, generation])
+}
+
+model KnowledgeIndexWorkerHeartbeat {
+  workerId             String   @id @db.VarChar(100)
+  workerVersion        String   @db.VarChar(100)
+  deploymentGeneration String   @db.VarChar(100)
+  status               String   @db.VarChar(30)
+  lastBatchSize        Int      @default(0)
+  lastErrorCode        String?  @db.VarChar(100)
+  heartbeatAt          DateTime @default(now())
+  startedAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
 model DocumentMetadata {
   id                            String                       @db.VarChar(200)
   companyId                     String                       @db.VarChar(200)

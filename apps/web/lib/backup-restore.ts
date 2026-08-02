@@ -20,6 +20,9 @@ export type CompletedBackup = BackupPlan & {
   bytes: number;
   sha256: string;
   sourceSha256: string;
+  applicationVersion: string;
+  commitSha: string;
+  schemaVersion: string;
 };
 
 const SAFE_ENVIRONMENT = /^[a-z0-9][a-z0-9-]{1,49}$/;
@@ -41,6 +44,30 @@ function parsePostgresUrl(environment: Record<string, string | undefined>, name:
   const databaseName = url.pathname.replace(/^\/+/, '');
   if (!databaseName) throw new Error(`${name} must include a database name.`);
   return { raw, url, databaseName };
+}
+
+function postgresProcessEnvironment(database: ReturnType<typeof parsePostgresUrl>) {
+  const sslMode = database.url.searchParams.get('sslmode');
+  const allowedSslModes = new Set([
+    'disable',
+    'allow',
+    'prefer',
+    'require',
+    'verify-ca',
+    'verify-full',
+  ]);
+  if (sslMode && !allowedSslModes.has(sslMode)) {
+    throw new Error('PostgreSQL sslmode is invalid.');
+  }
+  return {
+    ...process.env,
+    PGHOST: database.url.hostname,
+    PGPORT: database.url.port || '5432',
+    PGUSER: decodeURIComponent(database.url.username),
+    PGPASSWORD: decodeURIComponent(database.url.password),
+    PGDATABASE: database.databaseName,
+    ...(sslMode ? { PGSSLMODE: sslMode } : {}),
+  };
 }
 
 function assertSafeOutputDirectory(directory: string) {
@@ -136,7 +163,7 @@ export async function createPostgreSQLBackup(
     await runCommand(
       environment.PG_DUMP_BIN?.trim() || 'pg_dump',
       ['--format=custom', '--no-owner', '--no-acl', '--file', plaintextArchive],
-      { ...process.env, PGDATABASE: database.raw },
+      postgresProcessEnvironment(database),
     );
     const plaintext = await readFile(plaintextArchive);
     const encrypted = encryptBackupPayload(
@@ -150,6 +177,17 @@ export async function createPostgreSQLBackup(
       bytes: encrypted.length,
       sha256: createHash('sha256').update(encrypted).digest('hex'),
       sourceSha256: createHash('sha256').update(plaintext).digest('hex'),
+      applicationVersion:
+        environment.APP_VERSION?.trim() ||
+        (plan.environment === 'staging' ? requireValue(environment, 'APP_VERSION') : 'unknown'),
+      commitSha:
+        environment.COMMIT_SHA?.trim() ||
+        (plan.environment === 'staging' ? requireValue(environment, 'COMMIT_SHA') : 'unknown'),
+      schemaVersion:
+        environment.MIGRATION_VERSION?.trim() ||
+        (plan.environment === 'staging'
+          ? requireValue(environment, 'MIGRATION_VERSION')
+          : 'unknown'),
     };
     await writeFile(
       plan.manifestFile,
@@ -163,6 +201,9 @@ export async function createPostgreSQLBackup(
           bytes: result.bytes,
           sha256: result.sha256,
           sourceSha256: result.sourceSha256,
+          applicationVersion: result.applicationVersion,
+          commitSha: result.commitSha,
+          schemaVersion: result.schemaVersion,
           encrypted: true,
           createdAt: new Date().toISOString(),
         },
@@ -225,7 +266,7 @@ export async function restorePostgreSQLRehearsal(
     await runCommand(
       environment.PG_RESTORE_BIN?.trim() || 'pg_restore',
       ['--clean', '--if-exists', '--no-owner', '--no-acl', '--exit-on-error', plaintextArchive],
-      { ...process.env, PGDATABASE: target.raw },
+      postgresProcessEnvironment(target),
     );
     return {
       dryRun: false,

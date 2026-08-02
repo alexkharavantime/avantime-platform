@@ -104,6 +104,7 @@ npm run security:forbidden-credential-scan
 npm run security:default-secret-scan
 npm run security:client-tenant-scan
 npm run security:permission-scan
+npm run security:staging-scan
 ```
 
 TASK-012 extends the permission scan to reject new API imports of the legacy role adapter and to
@@ -113,6 +114,11 @@ secrets and content. Knowledge reads require owner scope, visibility and quarant
 
 Also review client-side `companyId`, direct provider SDK usage outside AI Gateway,
 unsafe logging keys and deployment manifests containing credentials.
+
+TASK-015 staging scan blocks tracked rendered environment files, public staging port bindings,
+destructive reset commands, missing outbox/index fencing markers and possible recipient/secret
+logging. Staging validation rejects development fallback, production database/bucket/Redis
+namespace, Jira credentials, default secrets and local/test providers in managed mode.
 
 TASK-011 permission scan блокирует новые inline `ADMIN/CLIENT` authorization checks в API,
 OIDC OWNER mapping и permissive fallback. Исключение ограничено единственной callback projection,
