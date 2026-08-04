@@ -5,7 +5,8 @@ import { loadJiraConfiguration } from './jira-configuration';
 import { createPortalNotification } from './portal-notifications';
 import type { AppSession } from './session';
 
-export type RequestStatus = 'NEW' | 'IN_PROGRESS' | 'WAITING_CUSTOMER' | 'RESOLVED';
+export type RequestStatus =
+  'NEW' | 'OPEN' | 'IN_PROGRESS' | 'WAITING_CUSTOMER' | 'RESOLVED' | 'CLOSED';
 export type RequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
 export type JiraIntegrationStatus =
   'NOT_CONFIGURED' | 'PENDING' | 'PROCESSING' | 'CREATED' | 'FAILED' | 'DEAD_LETTER';
@@ -21,6 +22,8 @@ export type RequestMessage = {
   id: string;
   body: string;
   authorName: string;
+  authorType: 'CUSTOMER' | 'AVANTIME' | 'JIRA' | 'SYSTEM';
+  deliveryStatus: 'NOT_REQUIRED' | 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED' | 'DEAD_LETTER';
   createdAt: string;
 };
 
@@ -37,6 +40,8 @@ export type SupportRequest = {
   jiraIssueId?: string;
   jiraIssueUrl?: string;
   jiraIntegrationStatus: JiraIntegrationStatus;
+  jiraStatusName?: string;
+  jiraSynchronizedAt?: string;
   correlationId?: string;
   idempotencyKey?: string;
   messages: RequestMessage[];
@@ -79,12 +84,16 @@ const seed: SupportRequest[] = [
         id: 'm1',
         body: 'Обращение принято в работу.',
         authorName: 'Avantime',
+        authorType: 'AVANTIME',
+        deliveryStatus: 'NOT_REQUIRED',
         createdAt: '2026-07-18T10:00:00.000Z',
       },
       {
         id: 'm2',
         body: 'Подготовлены журналы обмена за последние сутки.',
         authorName: 'Demo Client',
+        authorType: 'CUSTOMER',
+        deliveryStatus: 'SENT',
         createdAt: '2026-07-21T08:15:00.000Z',
       },
     ],
@@ -147,6 +156,8 @@ function mapDbRequest(item: any): SupportRequest {
     jiraIssueUrl: item.jiraIssueUrl ?? undefined,
     jiraIntegrationStatus:
       item.jiraIntegrationStatus ?? (item.jiraKey ? 'CREATED' : 'NOT_CONFIGURED'),
+    jiraStatusName: item.jiraStatusName ?? undefined,
+    jiraSynchronizedAt: item.jiraSyncAt?.toISOString() ?? undefined,
     correlationId: item.correlationId ?? undefined,
     idempotencyKey: item.idempotencyKey ?? undefined,
     dueAt:
@@ -167,7 +178,10 @@ function mapDbRequest(item: any): SupportRequest {
     messages: (item.messages ?? []).map((message: any) => ({
       id: message.id,
       body: message.body,
-      authorName: message.author?.name ?? 'Avantime',
+      authorName: message.authorDisplayName ?? message.author?.name ?? 'Avantime',
+      authorType:
+        message.authorType ?? (message.author?.role === 'ADMIN' ? 'AVANTIME' : 'CUSTOMER'),
+      deliveryStatus: message.deliveryStatus ?? 'NOT_REQUIRED',
       createdAt: message.createdAt.toISOString(),
     })),
   };
@@ -296,7 +310,7 @@ export async function createRequest(
             auditEvents: { create: { action: 'Обращение создано', actorName: session.name } },
             ...(enqueue && mapping
               ? {
-                  jiraOperation: {
+                  jiraOperations: {
                     create: {
                       companyId,
                       mappingId: mapping.id,
@@ -437,27 +451,114 @@ export async function addRequestMessage(
   id: string,
   body: string,
   session: AppSession,
+  options: {
+    idempotencyKey?: string;
+    correlationId?: string;
+    environment?: Record<string, string | undefined>;
+  } = {},
 ): Promise<SupportRequest | null> {
   if (databaseConfigured()) {
     try {
       const prisma = await getPrisma();
       if (!prisma) throw new Error('Prisma unavailable');
-      const item = await prisma.supportRequest.findFirst({
-        where: {
-          publicId: id,
-          companyId: session.companyId,
-        },
+      const idempotencyKey = options.idempotencyKey ?? `jira:comment:${crypto.randomUUID()}`;
+      const correlationId = options.correlationId ?? crypto.randomUUID();
+      const configuration = loadJiraConfiguration(options.environment ?? process.env);
+      const created = await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+        const duplicate = await transaction.requestMessage.findUnique({
+          where: { idempotencyKey },
+        });
+        if (duplicate) {
+          const duplicateRequest = await transaction.supportRequest.findUnique({
+            where: { id: duplicate.requestId },
+          });
+          if (
+            !duplicateRequest ||
+            duplicateRequest.publicId !== id ||
+            duplicateRequest.companyId !== session.companyId ||
+            duplicate.authorId !== session.userId
+          ) {
+            throw new Error('JIRA_COMMENT_IDEMPOTENCY_SCOPE_MISMATCH');
+          }
+          return false;
+        }
+        const item = await transaction.supportRequest.findFirst({
+          where: { publicId: id, companyId: session.companyId },
+        });
+        if (!item) return null;
+        const user = await transaction.user.findFirst({
+          where: {
+            id: session.userId,
+            memberships: {
+              some: { companyId: item.companyId, active: true, status: 'ACTIVE' },
+            },
+          },
+        });
+        if (!user) return null;
+        const mapping = configuration.enabled
+          ? await transaction.jiraOrganizationMapping.findUnique({
+              where: { companyId: item.companyId },
+            })
+          : null;
+        const enqueue = Boolean(
+          configuration.enabled &&
+          mapping?.enabled &&
+          item.jiraIntegrationStatus === 'CREATED' &&
+          item.jiraIssueId &&
+          item.jiraKey,
+        );
+        const message = await transaction.requestMessage.create({
+          data: {
+            body,
+            authorId: user.id,
+            authorType: 'CUSTOMER',
+            authorDisplayName: user.name,
+            deliveryStatus: enqueue ? 'PENDING' : 'NOT_REQUIRED',
+            requestId: item.id,
+            idempotencyKey,
+            correlationId,
+          },
+        });
+        if (enqueue && mapping) {
+          await transaction.jiraOperation.create({
+            data: {
+              requestId: item.id,
+              companyId: item.companyId,
+              mappingId: mapping.id,
+              mappingVersion: mapping.version,
+              operationType: 'ADD_COMMENT',
+              maxAttempts: configuration.maximumAttempts,
+              idempotencyKey: `jira:add-comment:${idempotencyKey}`,
+              correlationId,
+              projectKey: mapping.projectKey,
+              issueType: mapping.issueType ?? configuration.defaultIssueType,
+              componentId: mapping.componentId,
+              requestType: mapping.requestType,
+              localCommentId: message.id,
+            },
+          });
+          await transaction.productionAuditEvent.create({
+            data: {
+              companyId: item.companyId,
+              actorId: user.id,
+              action: 'jira.comment.enqueued',
+              targetType: 'support_request',
+              targetId: item.publicId,
+              result: 'SUCCEEDED',
+              correlationId,
+              safeMetadata: { requestId: item.publicId, safeCommentId: message.id },
+            },
+          });
+        }
+        await transaction.supportRequest.update({
+          where: { id: item.id },
+          data: { updatedAt: new Date() },
+        });
+        return true;
       });
-      if (!item) return null;
-      const user = await prisma.user.findUnique({ where: { id: session.userId } });
-      if (!user) return null;
-      await prisma.requestMessage.create({ data: { body, authorId: user.id, requestId: item.id } });
-      await prisma.supportRequest.update({
-        where: { id: item.id },
-        data: { updatedAt: new Date() },
-      });
+      if (created === null) return null;
       const updated = await getRequest(id, session);
-      if (updated) {
+      if (updated && created) {
         await createPortalNotification({
           session,
           category: 'MESSAGE',
@@ -466,15 +567,23 @@ export async function addRequestMessage(
         });
       }
       return updated;
-    } catch {
+    } catch (error) {
       console.warn('Request message creation is unavailable.');
+      if (error instanceof Error && error.message.startsWith('JIRA_COMMENT_')) throw error;
       return null;
     }
   }
   const request = requests.find((item) => item.id === id && item.companyId === session.companyId);
   if (!request) return null;
   const now = new Date().toISOString();
-  request.messages.push({ id: `m-${Date.now()}`, body, authorName: session.name, createdAt: now });
+  request.messages.push({
+    id: `m-${Date.now()}`,
+    body,
+    authorName: session.name,
+    authorType: 'CUSTOMER',
+    deliveryStatus: 'NOT_REQUIRED',
+    createdAt: now,
+  });
   request.updatedAt = now;
   await createPortalNotification({
     session,

@@ -4,6 +4,8 @@ import { getPrisma } from '@avantime/database';
 
 import { TestJiraProvider } from '../lib/jira';
 import { processJiraOperationBatch } from '../lib/jira-outbox';
+import { processJiraInboundBatch } from '../lib/jira-inbound';
+import { createJiraWebhookSignature, ingestJiraWebhook } from '../lib/jira-webhook';
 import {
   PostgreSQLKnowledgeSearchAdapter,
   PostgreSQLKnowledgeVectorAdapter,
@@ -12,7 +14,7 @@ import { processKnowledgeIndexBatch } from '../lib/knowledge-index-worker';
 import { enqueueNotification, processNotificationBatch } from '../lib/notification-outbox';
 import { TestNotificationProvider } from '../lib/notification-providers';
 import { createRedisCommandClient } from '../lib/redis-lease-queue';
-import { createRequest } from '../lib/requests-store';
+import { addRequestMessage, createRequest } from '../lib/requests-store';
 import { loadStagingConfiguration } from '../lib/staging-configuration';
 import { probeStagingObjectStorage } from '../lib/staging-object-storage';
 import { probeStagingRedis } from '../lib/staging-redis';
@@ -77,7 +79,13 @@ async function main() {
     if (notification?.status !== 'DELIVERED') throw new Error('SMOKE_NOTIFICATION_NOT_DELIVERED');
 
     await prisma.company.create({ data: { id: companyId, name: 'TASK-015 staging smoke' } });
-    if (!configuration.jira.enabled || configuration.jira.mode !== 'test') {
+    if (
+      !configuration.jira.enabled ||
+      configuration.jira.mode !== 'test' ||
+      configuration.jiraWebhook.mode !== 'test' ||
+      !configuration.jiraWebhook.secret ||
+      !configuration.jiraWebhook.allowedOrigin
+    ) {
       throw new Error('SMOKE_JIRA_TEST_MODE_REQUIRED');
     }
     await prisma.user.create({
@@ -134,30 +142,87 @@ async function main() {
       leaseMs: configuration.jira.leaseMs,
       correlationId: `${correlationId}:jira`,
     });
-    const jiraDeadline = Date.now() + 10_000;
-    let jiraCreated = await prisma.supportRequest.findUnique({
+    const jiraCreated = await prisma.supportRequest.findUnique({
       where: { publicId: jiraRequest.id },
-      include: { jiraOperation: true },
+      include: { jiraOperations: true },
     });
-    while (jiraCreated?.jiraIntegrationStatus !== 'CREATED' && Date.now() < jiraDeadline) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      jiraCreated = await prisma.supportRequest.findUnique({
-        where: { publicId: jiraRequest.id },
-        include: { jiraOperation: true },
-      });
-    }
-    if (jiraCreated?.jiraIntegrationStatus !== 'CREATED') {
+    if (
+      jiraCreated?.jiraIntegrationStatus !== 'CREATED' ||
+      !jiraCreated.jiraIssueId ||
+      !jiraCreated.jiraKey
+    ) {
+      const operation = jiraCreated?.jiraOperations[0];
       throw new Error(
         `SMOKE_JIRA_ISSUE_NOT_CREATED:${JSON.stringify({
           requestStatus: jiraCreated?.jiraIntegrationStatus ?? 'MISSING',
-          operationStatus: jiraCreated?.jiraOperation?.status ?? 'MISSING',
-          attemptCount: jiraCreated?.jiraOperation?.attemptCount ?? 0,
-          nextAttemptAt: jiraCreated?.jiraOperation?.nextAttemptAt ?? null,
-          leaseUntil: jiraCreated?.jiraOperation?.leaseUntil ?? null,
-          providerIssueKey: jiraCreated?.jiraOperation?.providerIssueKey ?? null,
-          lastErrorCode: jiraCreated?.jiraOperation?.lastErrorCode ?? null,
+          operationStatus: operation?.status ?? 'MISSING',
+          attemptCount: operation?.attempts ?? 0,
+          nextAttemptAt: operation?.nextAttemptAt ?? null,
+          leaseUntil: operation?.leaseUntil ?? null,
+          providerIssueKey: operation?.providerIssueKey ?? null,
+          lastErrorCode: operation?.lastFailureCode ?? null,
         })}`,
       );
+    }
+    const timestamp = Date.now();
+    const webhookBody = JSON.stringify({
+      timestamp,
+      webhookEvent: 'jira:issue_updated',
+      issue: {
+        id: jiraCreated.jiraIssueId,
+        key: jiraCreated.jiraKey,
+        self: `${configuration.jiraWebhook.allowedOrigin}/rest/api/3/issue/${jiraCreated.jiraIssueId}`,
+        fields: {
+          status: { id: 'smoke-progress', name: 'In Progress' },
+          updated: new Date(timestamp).toISOString(),
+        },
+      },
+      changelog: { id: `smoke-${timestamp}` },
+    });
+    await ingestJiraWebhook({
+      rawBody: webhookBody,
+      signature: createJiraWebhookSignature(configuration.jiraWebhook.secret, webhookBody),
+    });
+    await processJiraInboundBatch({
+      batchSize: configuration.jiraWebhook.batchSize,
+      leaseMs: configuration.jiraWebhook.leaseMs,
+    });
+    await addRequestMessage(
+      jiraRequest.id,
+      'Synthetic customer Jira comment.',
+      {
+        userId: jiraUserId,
+        name: 'Synthetic Jira smoke user',
+        company: 'TASK-017 staging smoke',
+        companyId,
+        email: `${jiraUserId}@synthetic.test`,
+        role: 'CLIENT',
+        organizationRole: 'MEMBER',
+        membershipStatus: 'ACTIVE',
+        expiresAt: Date.now() + 60_000,
+      },
+      {
+        correlationId: `${correlationId}:jira-comment`,
+        idempotencyKey: `jira:comment:${correlationId}`,
+      },
+    );
+    await processJiraOperationBatch({
+      provider: new TestJiraProvider(configuration.jira),
+      batchSize: 1,
+      leaseMs: configuration.jira.leaseMs,
+      correlationId: `${correlationId}:jira-comment`,
+    });
+    const synchronized = await prisma.supportRequest.findUniqueOrThrow({
+      where: { id: jiraCreated.id },
+      include: { messages: true },
+    });
+    if (
+      synchronized.status !== 'IN_PROGRESS' ||
+      !synchronized.messages.some(
+        (message: { deliveryStatus: string }) => message.deliveryStatus === 'SENT',
+      )
+    ) {
+      throw new Error('SMOKE_JIRA_SYNC_NOT_COMPLETED');
     }
     await prisma.knowledgeArticle.create({
       data: {
@@ -240,6 +305,8 @@ async function main() {
           'object-storage',
           'notification-outbox',
           'jira-test-adapter',
+          'jira-webhook-status-sync',
+          'jira-customer-comment',
           'knowledge-versioning',
           'tenant-isolation',
           'archive-removal',
@@ -257,6 +324,7 @@ async function main() {
       .deleteMany({ where: { correlationId: { startsWith: correlationId } } })
       .catch(() => undefined);
     await prisma.portalNotification.deleteMany({ where: { companyId } }).catch(() => undefined);
+    await prisma.jiraInboundEvent.deleteMany({ where: { companyId } }).catch(() => undefined);
     await prisma.jiraOperation
       .deleteMany({
         where: { requestId: { in: jiraRequests.map((request: { id: string }) => request.id) } },

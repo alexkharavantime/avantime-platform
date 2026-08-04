@@ -16,9 +16,11 @@ export const metadata: Metadata = {
 
 const requestStatus = {
   NEW: 'Новое',
+  OPEN: 'Открыто',
   IN_PROGRESS: 'В работе',
   WAITING_CUSTOMER: 'Нужно уточнение',
   RESOLVED: 'Решено',
+  CLOSED: 'Закрыто',
 } as const;
 
 export default async function PortalPage() {

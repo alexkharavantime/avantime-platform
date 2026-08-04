@@ -49,6 +49,8 @@ jobs:
       - run: npm run security:permission-scan -w @avantime/web
       - run: npm run security:governance-scan -w @avantime/web
       - run: npm run security:secret-scan -w @avantime/web
+      - run: npm run security:jira-scan
+      - run: npm run security:jira-sync-scan
       - run: npm run identity:docs-check
       - run: npm run governance:docs-check
 
@@ -65,6 +67,7 @@ jobs:
       - run: npm run integration:up
       - run: npm run db:generate
       - run: npm run documents:migration-rehearsal
+      - run: npm run test:integration -- --test-name-pattern="Jira sync"
       - run: npm run test:integration
       - run: npm run test:rag-integration
       - run: npm run test:production-integration
@@ -155,6 +158,8 @@ jobs:
       - run: npm run governance:dependency-report
       - run: npm run security:secret-scan -w @avantime/web
       - run: npm run security:migration-scan -w @avantime/web
+      - run: npm run security:jira-scan
+      - run: npm run security:jira-sync-scan
       - run: npm run backup:dry-run
         env:
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/avantime_integration
@@ -167,4 +172,6 @@ jobs:
       - run: docker build --target migration -f docker/production.Dockerfile -t avantime-migration:ci .
       - run: docker build --target operations -f docker/production.Dockerfile -t avantime-operations:ci .
       - run: docker build --target notification-worker -f docker/production.Dockerfile -t avantime-notification-worker:ci .
+      - run: docker build --target jira-worker -f docker/production.Dockerfile -t avantime-jira-worker:ci .
+      - run: docker build --target jira-inbound-worker -f docker/production.Dockerfile -t avantime-jira-inbound-worker:ci .
       - run: docker build --target knowledge-index-worker -f docker/production.Dockerfile -t avantime-knowledge-worker:ci .

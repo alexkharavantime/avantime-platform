@@ -9,9 +9,11 @@ export const metadata: Metadata = { title: 'Администрирование �
 
 const labels = {
   NEW: 'Новое',
+  OPEN: 'Открыто',
   IN_PROGRESS: 'В работе',
   WAITING_CUSTOMER: 'Нужно уточнение',
   RESOLVED: 'Решено',
+  CLOSED: 'Закрыто',
 } as const;
 
 export default async function AdminPage({

@@ -110,8 +110,16 @@ targeted Playwright flow validates submit/replay, pending → created status, sa
 foreign-tenant denial and desktop/tablet/mobile accessibility. CI and local staging use only the
 deterministic Jira adapter; a passing suite is not evidence of real Jira Cloud connectivity.
 
+TASK-017 adds webhook HMAC/config/replay/size tests, status mapping and fencing, safe ADF/public
+policy, PostgreSQL duplicate/stale/unknown-issue/tenant checks, concurrent inbound claim, expired
+lease, inbound/outbound retry/DLQ and one-send customer comment assertions. The browser flow covers
+status, public/private comments, pending → sent, duplicate UI, responsive/accessibility and foreign
+tenant denial. CI remains test-mode only.
+
 ## Связанные документы
 
 - [Browser testing](./BROWSER_TESTING.md)
 - [Jira integration](./JIRA_INTEGRATION.md)
 - [TASK-016](./tasks/TASK-016.md)
+- [TASK-017](./tasks/TASK-017.md)
+- [Jira webhooks](./JIRA_WEBHOOKS.md)

@@ -74,6 +74,7 @@ model Company {
   governanceNotifications GovernanceNotification[]
   jiraMapping             JiraOrganizationMapping?
   jiraOperations          JiraOperation[]
+  jiraInboundEvents       JiraInboundEvent[]
   createdAt               DateTime                    @default(now())
   updatedAt               DateTime                    @updatedAt
 }
@@ -540,6 +541,10 @@ model SupportRequest {
   jiraKey               String?               @unique @db.VarChar(100)
   jiraIssueUrl          String?               @db.VarChar(500)
   jiraSyncAt            DateTime?
+  jiraStatusId          String?               @db.VarChar(100)
+  jiraStatusName        String?               @db.VarChar(160)
+  jiraUpdatedAt         DateTime?
+  jiraSyncVersion       Int                   @default(0)
   correlationId         String?               @db.VarChar(200)
   idempotencyKey        String?               @unique @db.VarChar(200)
   dueAt                 DateTime?
@@ -547,7 +552,8 @@ model SupportRequest {
   requesterId           String
   company               Company               @relation(fields: [companyId], references: [id])
   companyId             String
-  jiraOperation         JiraOperation?
+  jiraOperations        JiraOperation[]
+  jiraInboundEvents     JiraInboundEvent[]
   messages              RequestMessage[]
   auditEvents           AuditEvent[]
   attachments           RequestAttachment[]
@@ -568,24 +574,26 @@ enum JiraIntegrationStatus {
 }
 
 model JiraOrganizationMapping {
-  id          String          @id @default(cuid())
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  companyId   String          @unique
-  projectKey  String          @db.VarChar(50)
-  issueType   String?         @db.VarChar(100)
-  componentId String?         @db.VarChar(100)
-  requestType String?         @db.VarChar(100)
-  enabled     Boolean         @default(false)
-  version     Int             @default(1)
-  operations  JiraOperation[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id            String          @id @default(cuid())
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId     String          @unique
+  projectKey    String          @db.VarChar(50)
+  issueType     String?         @db.VarChar(100)
+  componentId   String?         @db.VarChar(100)
+  requestType   String?         @db.VarChar(100)
+  statusMapping Json?
+  enabled       Boolean         @default(false)
+  version       Int             @default(1)
+  operations    JiraOperation[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   @@index([enabled, updatedAt])
 }
 
 enum JiraOperationType {
   CREATE_ISSUE
+  ADD_COMMENT
 }
 
 enum JiraOperationStatus {
@@ -597,38 +605,100 @@ enum JiraOperationStatus {
 }
 
 model JiraOperation {
-  id               String                  @id @default(cuid())
-  request          SupportRequest          @relation(fields: [requestId], references: [id], onDelete: Restrict)
-  requestId        String                  @unique
-  company          Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  companyId        String
-  mapping          JiraOrganizationMapping @relation(fields: [mappingId], references: [id], onDelete: Restrict)
-  mappingId        String
-  mappingVersion   Int
-  operationType    JiraOperationType       @default(CREATE_ISSUE)
-  status           JiraOperationStatus     @default(PENDING)
-  attempts         Int                     @default(0)
-  maxAttempts      Int                     @default(5)
-  nextAttemptAt    DateTime                @default(now())
-  leaseToken       String?                 @db.VarChar(100)
-  leaseUntil       DateTime?
-  idempotencyKey   String                  @unique @db.VarChar(200)
-  correlationId    String                  @db.VarChar(200)
-  projectKey       String                  @db.VarChar(50)
-  issueType        String                  @db.VarChar(100)
-  componentId      String?                 @db.VarChar(100)
-  requestType      String?                 @db.VarChar(100)
-  providerIssueId  String?                 @unique @db.VarChar(200)
-  providerIssueKey String?                 @unique @db.VarChar(100)
-  lastFailureCode  String?                 @db.VarChar(100)
-  completedAt      DateTime?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  id                String                  @id @default(cuid())
+  request           SupportRequest          @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  requestId         String
+  company           Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  companyId         String
+  mapping           JiraOrganizationMapping @relation(fields: [mappingId], references: [id], onDelete: Restrict)
+  mappingId         String
+  mappingVersion    Int
+  operationType     JiraOperationType       @default(CREATE_ISSUE)
+  status            JiraOperationStatus     @default(PENDING)
+  attempts          Int                     @default(0)
+  maxAttempts       Int                     @default(5)
+  nextAttemptAt     DateTime                @default(now())
+  leaseToken        String?                 @db.VarChar(100)
+  leaseUntil        DateTime?
+  idempotencyKey    String                  @unique @db.VarChar(200)
+  correlationId     String                  @db.VarChar(200)
+  projectKey        String                  @db.VarChar(50)
+  issueType         String                  @db.VarChar(100)
+  componentId       String?                 @db.VarChar(100)
+  requestType       String?                 @db.VarChar(100)
+  localComment      RequestMessage?         @relation(fields: [localCommentId], references: [id], onDelete: Restrict)
+  localCommentId    String?                 @unique
+  providerIssueId   String?                 @unique @db.VarChar(200)
+  providerIssueKey  String?                 @unique @db.VarChar(100)
+  providerCommentId String?                 @unique @db.VarChar(200)
+  lastFailureCode   String?                 @db.VarChar(100)
+  completedAt       DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   @@index([status, nextAttemptAt])
   @@index([leaseUntil])
   @@index([companyId, status, createdAt])
+  @@index([requestId, operationType, createdAt])
   @@index([correlationId])
+}
+
+enum JiraInboundEventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  IGNORED
+  FAILED
+  DEAD_LETTER
+}
+
+model JiraInboundEvent {
+  id                String                 @id @default(cuid())
+  providerEventId   String?                @db.VarChar(200)
+  eventFingerprint  String                 @unique @db.VarChar(64)
+  eventType         String                 @db.VarChar(100)
+  jiraTenantOrigin  String                 @db.VarChar(300)
+  jiraIssueId       String                 @db.VarChar(200)
+  jiraIssueKey      String                 @db.VarChar(100)
+  request           SupportRequest         @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId         String
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId         String
+  payloadVersion    Int                    @default(1)
+  normalizedPayload Json
+  occurredAt        DateTime
+  receivedAt        DateTime               @default(now())
+  status            JiraInboundEventStatus @default(PENDING)
+  attempts          Int                    @default(0)
+  maxAttempts       Int                    @default(5)
+  nextAttemptAt     DateTime               @default(now())
+  leaseToken        String?                @db.VarChar(100)
+  leaseUntil        DateTime?
+  lastFailureCode   String?                @db.VarChar(100)
+  correlationId     String                 @db.VarChar(200)
+  completedAt       DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([jiraTenantOrigin, providerEventId])
+  @@index([status, nextAttemptAt])
+  @@index([leaseUntil])
+  @@index([companyId, status, createdAt])
+  @@index([requestId, occurredAt])
+  @@index([correlationId])
+  @@index([receivedAt])
+}
+
+model JiraInboundWorkerHeartbeat {
+  workerId             String   @id @db.VarChar(100)
+  workerVersion        String   @db.VarChar(100)
+  deploymentGeneration String   @db.VarChar(100)
+  status               String   @db.VarChar(30)
+  lastBatchSize        Int      @default(0)
+  lastErrorCode        String?  @db.VarChar(100)
+  heartbeatAt          DateTime @default(now())
+  startedAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model JiraWorkerHeartbeat {
@@ -644,13 +714,41 @@ model JiraWorkerHeartbeat {
 }
 
 model RequestMessage {
-  id        String         @id @default(cuid())
-  body      String
-  author    User           @relation(fields: [authorId], references: [id])
-  authorId  String
-  request   SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId String
-  createdAt DateTime       @default(now())
+  id                   String                       @id @default(cuid())
+  body                 String
+  author               User?                        @relation(fields: [authorId], references: [id])
+  authorId             String?
+  authorType           RequestMessageAuthorType     @default(CUSTOMER)
+  authorDisplayName    String?                      @db.VarChar(160)
+  deliveryStatus       RequestMessageDeliveryStatus @default(NOT_REQUIRED)
+  request              SupportRequest               @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId            String
+  jiraCommentId        String?                      @unique @db.VarChar(200)
+  jiraCommentUpdatedAt DateTime?
+  idempotencyKey       String?                      @unique @db.VarChar(200)
+  correlationId        String?                      @db.VarChar(200)
+  jiraOperation        JiraOperation?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  @@index([requestId, createdAt])
+  @@index([deliveryStatus, updatedAt])
+}
+
+enum RequestMessageAuthorType {
+  CUSTOMER
+  AVANTIME
+  JIRA
+  SYSTEM
+}
+
+enum RequestMessageDeliveryStatus {
+  NOT_REQUIRED
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  DEAD_LETTER
 }
 
 enum UserRole {
@@ -660,9 +758,11 @@ enum UserRole {
 
 enum RequestStatus {
   NEW
+  OPEN
   IN_PROGRESS
   WAITING_CUSTOMER
   RESOLVED
+  CLOSED
 }
 
 enum Priority {

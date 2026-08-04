@@ -138,6 +138,8 @@ views и совместимые `/dashboard/**` redirects. Организаци�
   provider-backed outbox, versioned knowledge indexing, health/readiness and restore rehearsal.
 - TASK-016 repository Jira creation: atomic local request/outbox enqueue, tenant mapping,
   deterministic/cloud adapters, safe projection, concurrent worker, retry/DLQ and portal status.
+- TASK-017 repository Jira sync: HMAC webhook intake, durable inbound worker, stale-fenced status,
+  explicit public comments and asynchronous customer-comment delivery.
 
 **Что ещё необходимо сделать:**
 
@@ -150,8 +152,8 @@ views и совместимые `/dashboard/**` redirects. Организаци�
 - синхронизировать документацию.
 - развернуть TASK-015 в managed staging и подтвердить secret store, TLS, provider delivery,
   backup/PITR, observability и независимый reviewer evidence.
-- подтвердить TASK-016 в разрешённом Jira Cloud test tenant; до этого cloud validation остаётся
-  `PENDING`, а status/comment synchronization планируется отдельной TASK-017.
+- подтвердить TASK-016/TASK-017 в разрешённом Jira Cloud test tenant; до этого issue/webhook/JSM
+  cloud validation остаётся `PENDING`, а attachments и managed operations относятся к следующим задачам.
 
 **Приоритет:** критический, первый обязательный этап.
 

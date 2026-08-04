@@ -1,6 +1,10 @@
 import { isIP } from 'node:net';
 
 import { loadJiraConfiguration, type JiraConfiguration } from './jira-configuration';
+import {
+  loadJiraWebhookConfiguration,
+  type JiraWebhookConfiguration,
+} from './jira-webhook-configuration';
 
 export type StagingMode = 'local' | 'managed';
 export type NotificationProviderMode = 'test' | 'resend';
@@ -41,6 +45,7 @@ export type StagingConfiguration = {
     leaseMs: number;
   };
   jira: JiraConfiguration;
+  jiraWebhook: JiraWebhookConfiguration;
   knowledge: {
     cacheDriver: 'redis';
     searchDriver: 'postgresql';
@@ -67,7 +72,11 @@ export type SafeStagingConfigurationSummary = {
   redis: { host: string; namespace: string; tls: boolean; readiness: 'required' | 'degraded' };
   objectStorage: { host: string; region: string; bucket: string; public: false };
   notifications: { provider: NotificationProviderMode; senderConfigured: true };
-  jira: { enabled: boolean; mode: JiraConfiguration['mode'] };
+  jira: {
+    enabled: boolean;
+    mode: JiraConfiguration['mode'];
+    webhookMode: JiraWebhookConfiguration['mode'];
+  };
   knowledge: { cache: 'redis'; search: 'postgresql'; vector: 'pgvector' };
   versions: StagingConfiguration['versions'];
   backup: { destinationConfigured: true; retentionDays: number };
@@ -221,8 +230,18 @@ export function loadStagingConfiguration(
   }
 
   const jira = loadJiraConfiguration(environment);
+  const jiraWebhook = loadJiraWebhookConfiguration(environment);
   if (mode === 'managed' && jira.enabled && jira.mode !== 'cloud') {
     throw new Error('STAGING_CONFIG_MANAGED_JIRA_CLOUD_REQUIRED');
+  }
+  if (mode === 'managed' && jira.enabled && jiraWebhook.mode !== 'cloud') {
+    throw new Error('STAGING_CONFIG_MANAGED_JIRA_WEBHOOK_CLOUD_REQUIRED');
+  }
+  if (jira.enabled !== jiraWebhook.enabled) {
+    throw new Error('STAGING_CONFIG_JIRA_WEBHOOK_MODE_MISMATCH');
+  }
+  if (jira.enabled && jira.baseUrl?.origin !== jiraWebhook.allowedOrigin) {
+    throw new Error('STAGING_CONFIG_JIRA_WEBHOOK_ORIGIN_MISMATCH');
   }
 
   secret(environment, 'SESSION_SECRET', 32);
@@ -275,6 +294,7 @@ export function loadStagingConfiguration(
       leaseMs: integer(environment, 'NOTIFICATION_LEASE_MS', 1_000, 600_000),
     },
     jira,
+    jiraWebhook,
     knowledge: {
       cacheDriver,
       searchDriver,
@@ -342,7 +362,11 @@ export function summarizeStagingConfiguration(
       provider: configuration.notifications.provider,
       senderConfigured: true,
     },
-    jira: { enabled: configuration.jira.enabled, mode: configuration.jira.mode },
+    jira: {
+      enabled: configuration.jira.enabled,
+      mode: configuration.jira.mode,
+      webhookMode: configuration.jiraWebhook.mode,
+    },
     knowledge: { cache: 'redis', search: 'postgresql', vector: 'pgvector' },
     versions: configuration.versions,
     backup: {

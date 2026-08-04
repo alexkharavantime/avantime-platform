@@ -12,10 +12,43 @@ export type JiraMappingInput = {
   issueType?: string | null;
   componentId?: string | null;
   requestType?: string | null;
+  statusMapping?: unknown;
   enabled: boolean;
   actorId: string;
   correlationId: string;
 };
+
+const REQUEST_STATUSES = new Set([
+  'NEW',
+  'OPEN',
+  'IN_PROGRESS',
+  'WAITING_CUSTOMER',
+  'RESOLVED',
+  'CLOSED',
+]);
+
+function statusMapping(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('JIRA_MAPPING_STATUS_MAPPING_INVALID');
+  }
+  const entries = Object.entries(value);
+  if (entries.length > 50) throw new Error('JIRA_MAPPING_STATUS_MAPPING_INVALID');
+  const normalized: Record<string, string> = {};
+  for (const [name, status] of entries) {
+    const safeName = name.normalize('NFKC').trim().toLowerCase();
+    if (
+      !safeName ||
+      safeName.length > 160 ||
+      typeof status !== 'string' ||
+      !REQUEST_STATUSES.has(status)
+    ) {
+      throw new Error('JIRA_MAPPING_STATUS_MAPPING_INVALID');
+    }
+    normalized[safeName] = status;
+  }
+  return normalized;
+}
 
 function optionalReference(value: string | null | undefined, name: string) {
   const normalized = value?.trim() || null;
@@ -41,6 +74,7 @@ export function validateJiraMapping(input: JiraMappingInput) {
     issueType,
     componentId: optionalReference(input.componentId, 'COMPONENT'),
     requestType: optionalReference(input.requestType, 'REQUEST_TYPE'),
+    statusMapping: statusMapping(input.statusMapping),
   };
 }
 
@@ -67,6 +101,7 @@ export async function upsertJiraOrganizationMapping(input: JiraMappingInput) {
         issueType: validated.issueType,
         componentId: validated.componentId,
         requestType: validated.requestType,
+        statusMapping: validated.statusMapping,
         enabled: validated.enabled,
       },
       update: {
@@ -74,6 +109,7 @@ export async function upsertJiraOrganizationMapping(input: JiraMappingInput) {
         issueType: validated.issueType,
         componentId: validated.componentId,
         requestType: validated.requestType,
+        statusMapping: validated.statusMapping,
         enabled: validated.enabled,
         version: { increment: 1 },
       },

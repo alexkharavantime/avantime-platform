@@ -24,6 +24,7 @@ export type StagingComponentName =
   | 'notificationWorker'
   | 'jiraAdapter'
   | 'jiraWorker'
+  | 'jiraInboundWorker'
   | 'knowledgeIndex'
   | 'knowledgeWorker'
   | 'governance';
@@ -269,6 +270,46 @@ export async function checkStagingReadiness(
                 ? 'JIRA_WORKER_READY'
                 : 'JIRA_WORKER_STALE',
       details: input.includeDetails ? { enabledMappings, backlog, deadLetters } : undefined,
+    };
+  });
+
+  components.jiraInboundWorker = await timed(async () => {
+    if (!configuration.jiraWebhook.enabled) {
+      return { status: 'ready', code: 'JIRA_WEBHOOK_DISABLED' };
+    }
+    if (!prisma) throw new Error('DATABASE_UNAVAILABLE');
+    const [heartbeat, backlog, deadLetters, lastSuccessfulSync] = await Promise.all([
+      prisma.jiraInboundWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } }),
+      prisma.jiraInboundEvent.count({ where: { status: { in: ['PENDING', 'FAILED'] } } }),
+      prisma.jiraInboundEvent.count({ where: { status: 'DEAD_LETTER' } }),
+      prisma.jiraInboundEvent.findFirst({
+        where: { status: 'COMPLETED' },
+        orderBy: { completedAt: 'desc' },
+        select: { completedAt: true },
+      }),
+    ]);
+    const ready =
+      backlog <= 1_000 &&
+      deadLetters === 0 &&
+      heartbeatReady(heartbeat?.heartbeatAt, now) &&
+      heartbeat?.deploymentGeneration === configuration.versions.deploymentGeneration;
+    return {
+      status: ready ? 'ready' : 'unavailable',
+      code:
+        deadLetters > 0
+          ? 'JIRA_INBOUND_DEAD_LETTER_THRESHOLD_EXCEEDED'
+          : backlog > 1_000
+            ? 'JIRA_INBOUND_BACKLOG_THRESHOLD_EXCEEDED'
+            : ready
+              ? 'JIRA_INBOUND_WORKER_READY'
+              : 'JIRA_INBOUND_WORKER_STALE',
+      details: input.includeDetails
+        ? {
+            backlog,
+            deadLetters,
+            lastSuccessfulSync: lastSuccessfulSync?.completedAt?.toISOString() ?? null,
+          }
+        : undefined,
     };
   });
 

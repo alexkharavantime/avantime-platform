@@ -18,10 +18,7 @@ function run(command: string, args: string[]) {
 }
 
 async function main() {
-  const prepare = run(process.execPath, [
-    require.resolve('tsx/cli'),
-    'scripts/prepare-browser-tests.ts',
-  ]);
+  const prepare = run(process.execPath, ['--import', 'tsx', 'scripts/prepare-browser-tests.ts']);
   if (prepare.status !== 0) process.exit(prepare.status ?? 1);
 
   const result = run(process.execPath, [

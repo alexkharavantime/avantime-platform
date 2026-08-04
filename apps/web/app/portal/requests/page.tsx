@@ -7,9 +7,11 @@ import { hasOrganizationPermission } from '../../../lib/organization-permissions
 
 const statusLabels = {
   NEW: 'Новое',
+  OPEN: 'Открыто',
   IN_PROGRESS: 'В работе',
   WAITING_CUSTOMER: 'Нужно уточнение',
   RESOLVED: 'Решено',
+  CLOSED: 'Закрыто',
 } as const;
 
 export default async function PortalRequestsPage() {

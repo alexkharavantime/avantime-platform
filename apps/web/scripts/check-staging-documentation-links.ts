@@ -15,9 +15,12 @@ const documents = [
   'docs/runbooks/notification-outbox.md',
   'docs/runbooks/knowledge-reindex.md',
   'docs/JIRA_INTEGRATION.md',
+  'docs/JIRA_WEBHOOKS.md',
   'docs/runbooks/jira-worker.md',
+  'docs/runbooks/jira-webhooks.md',
   'docs/tasks/TASK-015.md',
   'docs/tasks/TASK-016.md',
+  'docs/tasks/TASK-017.md',
 ];
 
 async function main() {

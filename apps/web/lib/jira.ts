@@ -58,10 +58,21 @@ export type JiraCreateIssueResult = {
   issueUrl: string;
 };
 
+export type JiraCommentPayload = {
+  issueId: string;
+  issueKey: string;
+  body: string;
+  marker: string;
+  requestReference: string;
+};
+
+export type JiraAddCommentResult = { commentId: string };
+
 export interface JiraProviderAdapter {
   readonly kind: 'disabled' | 'test' | 'cloud';
   checkReadiness(): Promise<boolean>;
   createIssue(payload: JiraIssuePayload, attempt: number): Promise<JiraCreateIssueResult>;
+  addComment(payload: JiraCommentPayload, attempt: number): Promise<JiraAddCommentResult>;
 }
 
 export class JiraProviderError extends Error {
@@ -139,6 +150,26 @@ export function projectJiraCreateIssue(input: JiraIssueProjectionInput): JiraIss
   };
 }
 
+export function projectJiraComment(input: {
+  issueId: string;
+  issueKey: string;
+  requestReference: string;
+  body: string;
+  idempotencyKey: string;
+}): JiraCommentPayload {
+  if (!SAFE_PROVIDER_ID.test(input.issueId)) throw new Error('JIRA_COMMENT_ISSUE_ID_INVALID');
+  if (!SAFE_ISSUE_KEY.test(input.issueKey)) throw new Error('JIRA_COMMENT_ISSUE_KEY_INVALID');
+  const body = plainText(input.body, 5_000, 'COMMENT');
+  const requestReference = plainText(input.requestReference, 100, 'REQUEST_REFERENCE');
+  return {
+    issueId: input.issueId,
+    issueKey: input.issueKey,
+    body,
+    marker: `avantime-comment-${createHash('sha256').update(input.idempotencyKey).digest('hex').slice(0, 32)}`,
+    requestReference,
+  };
+}
+
 function safeIssueResult(configuration: JiraConfiguration, issueId: unknown, issueKey: unknown) {
   if (
     typeof issueId !== 'string' ||
@@ -166,11 +197,16 @@ export class DisabledJiraProvider implements JiraProviderAdapter {
   async createIssue(): Promise<JiraCreateIssueResult> {
     throw new JiraProviderError('JIRA_DISABLED', false);
   }
+
+  async addComment(): Promise<JiraAddCommentResult> {
+    throw new JiraProviderError('JIRA_DISABLED', false);
+  }
 }
 
 export class TestJiraProvider implements JiraProviderAdapter {
   readonly kind = 'test' as const;
   private readonly receipts = new Map<string, JiraCreateIssueResult>();
+  private readonly commentReceipts = new Map<string, JiraAddCommentResult>();
 
   constructor(
     private readonly configuration: JiraConfiguration,
@@ -199,6 +235,20 @@ export class TestJiraProvider implements JiraProviderAdapter {
     this.receipts.set(payload.marker, result);
     return result;
   }
+
+  async addComment(payload: JiraCommentPayload, attempt: number) {
+    const previous = this.commentReceipts.get(payload.marker);
+    if (previous) return previous;
+    if (this.behavior.permanentFailure) {
+      throw new JiraProviderError('JIRA_TEST_PERMANENT_REJECTION', false);
+    }
+    if (attempt <= (this.behavior.transientFailures ?? 0)) {
+      throw new JiraProviderError('JIRA_TEST_TRANSIENT_REJECTION', true);
+    }
+    const result = { commentId: `test-${payload.marker}` };
+    this.commentReceipts.set(payload.marker, result);
+    return result;
+  }
 }
 
 export class JiraCloudProvider implements JiraProviderAdapter {
@@ -223,11 +273,11 @@ export class JiraCloudProvider implements JiraProviderAdapter {
     };
   }
 
-  private async request(path: string, body: unknown) {
+  private async request(path: string, body?: unknown, method: 'GET' | 'POST' = 'POST') {
     const response = await fetch(new URL(path, this.configuration.baseUrl!), {
-      method: 'POST',
+      method,
       headers: this.headers(),
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       redirect: 'error',
       signal: AbortSignal.timeout(this.configuration.requestTimeoutMs),
     }).catch((error: unknown) => {
@@ -260,6 +310,36 @@ export class JiraCloudProvider implements JiraProviderAdapter {
     } | null;
     return safeIssueResult(this.configuration, created?.id, created?.key);
   }
+
+  async addComment(payload: JiraCommentPayload) {
+    const marker = `Avantime reference: ${payload.requestReference}/${payload.marker}`;
+    const existing = (await this.request(
+      `/rest/servicedeskapi/request/${encodeURIComponent(payload.issueKey)}/comment?public=true&limit=100`,
+      undefined,
+      'GET',
+    )) as { values?: Array<{ id?: unknown; body?: unknown }> } | null;
+    const matched =
+      existing?.values?.filter(
+        (comment) => typeof comment.body === 'string' && comment.body.endsWith(marker),
+      ) ?? [];
+    if (matched.length > 1)
+      throw new JiraProviderError('JIRA_COMMENT_RECONCILIATION_AMBIGUOUS', false);
+    if (matched[0]) {
+      return { commentId: safeProviderReference(matched[0].id) };
+    }
+    const created = (await this.request(
+      `/rest/servicedeskapi/request/${encodeURIComponent(payload.issueKey)}/comment`,
+      { body: `${payload.body}\n\n${marker}`, public: true },
+    )) as { id?: unknown } | null;
+    return { commentId: safeProviderReference(created?.id) };
+  }
+}
+
+function safeProviderReference(value: unknown) {
+  if (typeof value !== 'string' || !SAFE_PROVIDER_ID.test(value)) {
+    throw new JiraProviderError('JIRA_COMMENT_RESPONSE_INVALID', false);
+  }
+  return value;
 }
 
 export function createJiraProvider(

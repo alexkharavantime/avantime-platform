@@ -6,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 import {
   jiraFailure,
   JiraProviderError,
+  projectJiraComment,
   projectJiraCreateIssue,
   type JiraProviderAdapter,
 } from './jira';
@@ -19,7 +20,7 @@ export type JiraOperationRecord = {
   companyId: string;
   mappingId: string;
   mappingVersion: number;
-  operationType: 'CREATE_ISSUE';
+  operationType: 'CREATE_ISSUE' | 'ADD_COMMENT';
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'DEAD_LETTER';
   attempts: number;
   maxAttempts: number;
@@ -32,8 +33,10 @@ export type JiraOperationRecord = {
   issueType: string;
   componentId: string | null;
   requestType: string | null;
+  localCommentId: string | null;
   providerIssueId: string | null;
   providerIssueKey: string | null;
+  providerCommentId: string | null;
   lastFailureCode: string | null;
   completedAt: Date | null;
 };
@@ -66,6 +69,7 @@ export async function claimJiraOperations(input: {
   leaseMs: number;
   now?: Date;
   correlationId?: string;
+  companyId?: string;
 }) {
   if (!Number.isSafeInteger(input.batchSize) || input.batchSize < 1 || input.batchSize > 100) {
     throw new Error('JIRA_BATCH_SIZE_INVALID');
@@ -76,6 +80,7 @@ export async function claimJiraOperations(input: {
   const correlationId = input.correlationId
     ? safeReference(input.correlationId, 'CORRELATION')
     : null;
+  const companyId = input.companyId ? safeReference(input.companyId, 'COMPANY') : null;
   const prisma = await getPrisma();
   if (!prisma) throw new Error('JIRA_DATABASE_UNAVAILABLE');
   const now = input.now ?? (await databaseNow(prisma));
@@ -88,12 +93,21 @@ export async function claimJiraOperations(input: {
         SET "status" = 'DEAD_LETTER', "lastFailureCode" = 'JIRA_LEASE_EXHAUSTED',
             "leaseToken" = NULL, "leaseUntil" = NULL, "updatedAt" = ${now}
         WHERE "status" = 'PROCESSING' AND "leaseUntil" <= ${now} AND "attempts" >= "maxAttempts"
-        RETURNING "requestId"
+        RETURNING "requestId", "localCommentId", "operationType"
       )
       UPDATE "SupportRequest" AS request
       SET "jiraIntegrationStatus" = 'DEAD_LETTER', "updatedAt" = ${now}
       FROM exhausted
-      WHERE request."id" = exhausted."requestId"
+      WHERE request."id" = exhausted."requestId" AND exhausted."operationType" = 'CREATE_ISSUE'
+    `;
+    await transaction.$executeRaw`
+      UPDATE "RequestMessage" AS message
+      SET "deliveryStatus" = 'DEAD_LETTER', "updatedAt" = ${now}
+      FROM "JiraOperation" AS operation
+      WHERE message."id" = operation."localCommentId"
+        AND operation."operationType" = 'ADD_COMMENT'
+        AND operation."status" = 'DEAD_LETTER'
+        AND operation."lastFailureCode" = 'JIRA_LEASE_EXHAUSTED'
     `;
     const records = (await transaction.$queryRaw`
       WITH candidates AS (
@@ -101,6 +115,7 @@ export async function claimJiraOperations(input: {
         FROM "JiraOperation"
         WHERE "attempts" < "maxAttempts"
           AND (${correlationId}::TEXT IS NULL OR "correlationId" = ${correlationId})
+          AND (${companyId}::TEXT IS NULL OR "companyId" = ${companyId})
           AND (
             ("status" IN ('PENDING', 'FAILED') AND "nextAttemptAt" <= ${now})
             OR ("status" = 'PROCESSING' AND "leaseUntil" <= ${now})
@@ -122,6 +137,14 @@ export async function claimJiraOperations(input: {
       SET "jiraIntegrationStatus" = 'PROCESSING', "updatedAt" = ${now}
       FROM "JiraOperation" AS operation
       WHERE request."id" = operation."requestId" AND operation."leaseToken" = ${leaseToken}
+        AND operation."operationType" = 'CREATE_ISSUE'
+    `;
+    await transaction.$executeRaw`
+      UPDATE "RequestMessage" AS message
+      SET "deliveryStatus" = 'PROCESSING', "updatedAt" = ${now}
+      FROM "JiraOperation" AS operation
+      WHERE message."id" = operation."localCommentId" AND operation."leaseToken" = ${leaseToken}
+        AND operation."operationType" = 'ADD_COMMENT'
     `;
     return records;
   });
@@ -207,6 +230,56 @@ async function completeJiraOperation(
   });
 }
 
+async function completeJiraCommentOperation(
+  record: JiraOperationRecord,
+  result: { commentId: string },
+  now: Date,
+) {
+  if (!record.localCommentId) throw new Error('JIRA_COMMENT_LOCAL_ID_MISSING');
+  const localCommentId = record.localCommentId;
+  const prisma = await getPrisma();
+  if (!prisma) throw new Error('JIRA_DATABASE_UNAVAILABLE');
+  await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    const updated = await transaction.jiraOperation.updateMany({
+      where: { id: record.id, status: 'PROCESSING', leaseToken: record.leaseToken },
+      data: {
+        status: 'COMPLETED',
+        providerCommentId: result.commentId,
+        completedAt: now,
+        leaseToken: null,
+        leaseUntil: null,
+        lastFailureCode: null,
+      },
+    });
+    if (updated.count !== 1) throw new Error('JIRA_LEASE_LOST');
+    const comment = await transaction.requestMessage.update({
+      where: { id: localCommentId },
+      data: {
+        deliveryStatus: 'SENT',
+        jiraCommentId: result.commentId,
+        jiraCommentUpdatedAt: now,
+      },
+      include: { request: true },
+    });
+    await transaction.productionAuditEvent.create({
+      data: {
+        companyId: record.companyId,
+        actorId: comment.authorId,
+        action: 'jira.comment.sent',
+        targetType: 'support_request',
+        targetId: comment.request.publicId,
+        result: 'SUCCEEDED',
+        correlationId: record.correlationId,
+        safeMetadata: {
+          requestId: comment.request.publicId,
+          safeCommentId: comment.id,
+          jiraIssueKey: comment.request.jiraKey ?? 'unavailable',
+        },
+      },
+    });
+  });
+}
+
 async function failJiraOperation(
   record: JiraOperationRecord,
   failure: { code: string; retryable: boolean },
@@ -231,18 +304,35 @@ async function failJiraOperation(
       },
     });
     if (updated.count !== 1) throw new Error('JIRA_LEASE_LOST');
-    const request = await transaction.supportRequest.update({
+    const request = await transaction.supportRequest.findUniqueOrThrow({
       where: { id: record.requestId },
-      data: {
-        jiraIntegrationStatus: deadLettered ? 'DEAD_LETTER' : 'FAILED',
-        version: { increment: 1 },
-      },
     });
+    if (record.operationType === 'CREATE_ISSUE') {
+      await transaction.supportRequest.update({
+        where: { id: record.requestId },
+        data: {
+          jiraIntegrationStatus: deadLettered ? 'DEAD_LETTER' : 'FAILED',
+          version: { increment: 1 },
+        },
+      });
+    } else if (record.localCommentId) {
+      await transaction.requestMessage.update({
+        where: { id: record.localCommentId },
+        data: { deliveryStatus: deadLettered ? 'DEAD_LETTER' : 'FAILED' },
+      });
+    }
     await transaction.productionAuditEvent.create({
       data: {
         companyId: record.companyId,
         actorId: request.requesterId,
-        action: deadLettered ? 'jira.operation.dead_lettered' : 'jira.issue.create_failed',
+        action:
+          record.operationType === 'ADD_COMMENT'
+            ? deadLettered
+              ? 'jira.comment.failed'
+              : 'jira.comment.failed'
+            : deadLettered
+              ? 'jira.operation.dead_lettered'
+              : 'jira.issue.create_failed',
         targetType: 'support_request',
         targetId: request.publicId,
         result: 'FAILED',
@@ -264,6 +354,7 @@ export async function processJiraOperationBatch(input: {
   leaseMs: number;
   now?: Date;
   correlationId?: string;
+  companyId?: string;
 }) {
   const records = await claimJiraOperations(input);
   let completed = 0;
@@ -285,21 +376,42 @@ export async function processJiraOperationBatch(input: {
       if (!mapping || mapping.companyId !== record.companyId || !mapping.enabled) {
         throw new JiraProviderError('JIRA_MAPPING_DISABLED', false);
       }
-      const payload = projectJiraCreateIssue({
-        requestId: request.publicId,
-        subject: request.title,
-        description: request.description,
-        category: request.category,
-        priority: request.priority,
-        correlationId: record.correlationId,
-        projectKey: record.projectKey,
-        issueType: record.issueType,
-        componentId: record.componentId,
-        requestType: record.requestType,
-        idempotencyKey: record.idempotencyKey,
-      });
-      const result = await input.provider.createIssue(payload, record.attempts);
-      await completeJiraOperation(record, result, now);
+      if (record.operationType === 'CREATE_ISSUE') {
+        const payload = projectJiraCreateIssue({
+          requestId: request.publicId,
+          subject: request.title,
+          description: request.description,
+          category: request.category,
+          priority: request.priority,
+          correlationId: record.correlationId,
+          projectKey: record.projectKey,
+          issueType: record.issueType,
+          componentId: record.componentId,
+          requestType: record.requestType,
+          idempotencyKey: record.idempotencyKey,
+        });
+        const result = await input.provider.createIssue(payload, record.attempts);
+        await completeJiraOperation(record, result, now);
+      } else {
+        if (!record.localCommentId || !request.jiraIssueId || !request.jiraKey) {
+          throw new JiraProviderError('JIRA_COMMENT_TARGET_UNAVAILABLE', false);
+        }
+        const comment = await prisma.requestMessage.findFirst({
+          where: { id: record.localCommentId, requestId: request.id },
+        });
+        if (!comment || comment.authorType !== 'CUSTOMER') {
+          throw new JiraProviderError('JIRA_COMMENT_UNAVAILABLE', false);
+        }
+        const payload = projectJiraComment({
+          issueId: request.jiraIssueId,
+          issueKey: request.jiraKey,
+          requestReference: request.publicId,
+          body: comment.body,
+          idempotencyKey: record.idempotencyKey,
+        });
+        const result = await input.provider.addComment(payload, record.attempts);
+        await completeJiraCommentOperation(record, result, now);
+      }
       completed += 1;
     } catch (error) {
       const wasDeadLettered = await failJiraOperation(record, providerFailure(error), now);
@@ -330,13 +442,24 @@ export async function retryJiraOperation(id: string, now = new Date()) {
         lastFailureCode: null,
         providerIssueId: null,
         providerIssueKey: null,
+        providerCommentId: null,
         completedAt: null,
       },
     });
-    const request = await transaction.supportRequest.update({
+    const request = await transaction.supportRequest.findUniqueOrThrow({
       where: { id: operation.requestId },
-      data: { jiraIntegrationStatus: 'PENDING', version: { increment: 1 } },
     });
+    if (operation.operationType === 'CREATE_ISSUE') {
+      await transaction.supportRequest.update({
+        where: { id: operation.requestId },
+        data: { jiraIntegrationStatus: 'PENDING', version: { increment: 1 } },
+      });
+    } else if (operation.localCommentId) {
+      await transaction.requestMessage.update({
+        where: { id: operation.localCommentId },
+        data: { deliveryStatus: 'PENDING', jiraCommentId: null, jiraCommentUpdatedAt: null },
+      });
+    }
     await transaction.productionAuditEvent.create({
       data: {
         companyId: operation.companyId,
@@ -370,10 +493,20 @@ export async function moveFailedJiraOperationToDeadLetter(id: string, now = new 
         lastFailureCode: operation.lastFailureCode ?? 'JIRA_MANUAL_DEAD_LETTER',
       },
     });
-    const request = await transaction.supportRequest.update({
+    const request = await transaction.supportRequest.findUniqueOrThrow({
       where: { id: operation.requestId },
-      data: { jiraIntegrationStatus: 'DEAD_LETTER', version: { increment: 1 } },
     });
+    if (operation.operationType === 'CREATE_ISSUE') {
+      await transaction.supportRequest.update({
+        where: { id: operation.requestId },
+        data: { jiraIntegrationStatus: 'DEAD_LETTER', version: { increment: 1 } },
+      });
+    } else if (operation.localCommentId) {
+      await transaction.requestMessage.update({
+        where: { id: operation.localCommentId },
+        data: { deliveryStatus: 'DEAD_LETTER' },
+      });
+    }
     await transaction.productionAuditEvent.create({
       data: {
         companyId: operation.companyId,
@@ -404,11 +537,14 @@ export async function inspectJiraOperations(status?: JiraOperationRecord['status
       requestId: true,
       companyId: true,
       status: true,
+      operationType: true,
+      localCommentId: true,
       attempts: true,
       maxAttempts: true,
       nextAttemptAt: true,
       leaseUntil: true,
       providerIssueKey: true,
+      providerCommentId: true,
       lastFailureCode: true,
       createdAt: true,
       updatedAt: true,

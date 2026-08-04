@@ -66,6 +66,9 @@ CMD ["node", "--import", "tsx", "apps/web/scripts/run-notification-worker.ts"]
 FROM worker-base AS jira-worker
 CMD ["node", "--import", "tsx", "apps/web/scripts/run-jira-worker.ts"]
 
+FROM worker-base AS jira-inbound-worker
+CMD ["node", "--import", "tsx", "apps/web/scripts/run-jira-inbound-worker.ts"]
+
 FROM worker-base AS knowledge-index-worker
 CMD ["node", "--import", "tsx", "apps/web/scripts/run-knowledge-index-worker.ts"]
 

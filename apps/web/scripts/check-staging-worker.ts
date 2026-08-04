@@ -4,7 +4,12 @@ import { loadStagingConfiguration } from '../lib/staging-configuration';
 
 async function main() {
   const worker = process.argv[2];
-  if (worker !== 'notification' && worker !== 'knowledge' && worker !== 'jira') {
+  if (
+    worker !== 'notification' &&
+    worker !== 'knowledge' &&
+    worker !== 'jira' &&
+    worker !== 'jira-inbound'
+  ) {
     throw new Error('WORKER_KIND_INVALID');
   }
   const configuration = loadStagingConfiguration();
@@ -15,7 +20,9 @@ async function main() {
       ? await prisma.notificationWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } })
       : worker === 'knowledge'
         ? await prisma.knowledgeIndexWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } })
-        : await prisma.jiraWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });
+        : worker === 'jira'
+          ? await prisma.jiraWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } })
+          : await prisma.jiraInboundWorkerHeartbeat.findFirst({ orderBy: { heartbeatAt: 'desc' } });
   if (
     !heartbeat ||
     Date.now() - heartbeat.heartbeatAt.getTime() > 120_000 ||
