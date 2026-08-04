@@ -721,8 +721,9 @@ adapter. Реальная Jira Cloud connectivity/issue creation остаётс�
 - **Эпик:** EPIC-007 Интеграция Jira
 - **Приоритет:** P1
 - **Версия:** Version 2.1
-- **Статус:** Planned
-- **Описание:** Синхронизировать разрешённые статусы в обе стороны.
+- **Статус:** In Progress (repository/test-adapter scope; real Jira Cloud validation pending)
+- **Описание:** TASK-017 принимает подписанные durable webhook events и синхронизирует Jira-owned
+  статусы с mapping/stale/terminal fencing.
 - **Критерии готовности:** таблица соответствий; webhooks; защита повторов; журнал; разрешение конфликтов.
 - **Зависимости:** JIRA-001, API-002.
 
@@ -733,8 +734,9 @@ adapter. Реальная Jira Cloud connectivity/issue creation остаётс�
 - **Эпик:** EPIC-007 Интеграция Jira
 - **Приоритет:** P1
 - **Версия:** Version 2.1
-- **Статус:** Planned
-- **Описание:** Передавать только явно клиентские комментарии между системами.
+- **Статус:** In Progress (repository/test-adapter scope; real Jira Cloud validation pending)
+- **Описание:** TASK-017 импортирует только явно public Jira comments и отправляет customer comments
+  через transactional durable operation с safe projection.
 - **Критерии готовности:** внутренние комментарии скрыты; авторы сопоставлены; форматирование безопасно; нет дублей.
 - **Зависимости:** JIRA-002, SEC-003.
 

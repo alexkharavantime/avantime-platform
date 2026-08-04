@@ -21,8 +21,8 @@
 
 1. TASK-015 добавила typed staging contract, Compose topology и normalized health/readiness;
 2. TASK-016 заменила синхронный Jira вызов атомарной tenant-aware durable operation;
-3. Jira test adapter, concurrent worker, retry/DLQ, portal status и notification outbox прошли
-   repository gates без real Jira credentials.
+3. Jira test adapters, outbound/inbound workers, retry/DLQ, safe status/comments и notifications
+   реализованы без real Jira credentials; Docker-backed TASK-017 gates ещё требуют запуска.
 
 ### 🚧 Три главных риска
 
@@ -37,7 +37,8 @@
 1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
 2. Развернуть TASK-015/TASK-016 artifacts, провести ceremonies и Jira Cloud test-tenant validation.
-3. Подготовить TASK-017 для разрешённой двусторонней синхронизации статусов/комментариев.
+3. Завершить Docker-backed TASK-017 validation и подтвердить secure webhook/JSM в разрешённом Jira
+   Cloud test tenant.
 
 ---
 
@@ -49,7 +50,7 @@
 | Версия документа                 | 1.26                                                                                      |
 | Дата последнего обновления       | 2026-08-02                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-016-jira-ticket-creation`                                                   |
+| Текущая ветка Git                | `feature/task-017-jira-sync`                                                              |
 | Базовый commit рабочей ветки     | `932f745`                                                                                 |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
@@ -221,6 +222,12 @@ bounded retry/DLQ и idempotency marker; portal показывает safe pendin
 прошли 27/27 каждый, targeted Jira browser — 4/4. Real Jira Cloud call не выполнялся и остаётся
 `PENDING`.
 
+[TASK-017](./tasks/TASK-017.md) реализована в repository boundary: secure-admin HMAC webhook,
+durable inbound queue/worker, stale/terminal status fencing, strict public-comment policy, safe ADF
+projection и transactional outbound customer comments. Pure unit/security contracts пройдены;
+Docker-backed integration/browser/migration/staging gates и actual Jira Cloud delivery пока не
+выполнены, поэтому задача остаётся `In Progress` и production readiness не заявляется.
+
 Проверки четвёртой итерации TASK-002:
 
 - `npm run typecheck` — успешно для четырёх workspace-пакетов;
@@ -268,7 +275,7 @@ bounded retry/DLQ и idempotency marker; portal показывает safe pendin
 | AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются        |
 | База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                           |
 | Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                       |
-| Jira                    | In Progress |        50% | TASK-016 завершила durable одностороннее создание на test adapter; real Cloud validation и двусторонняя синхронизация отсутствуют                 |
+| Jira                    | In Progress |        65% | TASK-017 добавила repository status/public-comment sync; Docker gates и actual Jira Cloud webhook/JSM validation остаются pending                 |
 | 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                             |
 | Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                              |
 | API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует              |

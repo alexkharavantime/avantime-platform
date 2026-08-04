@@ -5,6 +5,7 @@ import {
   JiraCloudProvider,
   JiraProviderError,
   projectJiraCreateIssue,
+  projectJiraComment,
   TestJiraProvider,
 } from '../lib/jira';
 import { loadJiraConfiguration } from '../lib/jira-configuration';
@@ -126,6 +127,16 @@ test('test Jira adapter is deterministic, idempotent and supports transient/perm
   assert.deepEqual(first, second);
   assert.match(first.issueKey, /^TEST-[0-9]+$/u);
   assert.match(first.issueUrl, /^https:\/\/jira\.test\.invalid\/browse\/TEST-/u);
+  const commentPayload = projectJiraComment({
+    issueId: first.issueId,
+    issueKey: first.issueKey,
+    requestReference: 'AV-TEST-001',
+    body: 'Safe customer comment',
+    idempotencyKey: 'jira:add-comment:request-1',
+  });
+  const firstComment = await adapter.addComment(commentPayload, 1);
+  assert.deepEqual(await adapter.addComment(commentPayload, 2), firstComment);
+  assert.match(firstComment.commentId, /^test-avantime-comment-/u);
 
   const transient = new TestJiraProvider(configuration, { transientFailures: 1 });
   await assert.rejects(

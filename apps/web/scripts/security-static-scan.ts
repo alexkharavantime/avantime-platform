@@ -43,6 +43,18 @@ async function main() {
       continue;
     }
     if (
+      mode === 'jira-sync' &&
+      !file.startsWith('apps/web/lib/jira') &&
+      !file.startsWith('apps/web/app/api/integrations/jira/') &&
+      file !== 'apps/web/app/api/requests/[id]/messages/route.ts' &&
+      file !== 'apps/web/lib/requests-store.ts' &&
+      file !== 'apps/web/components/portal/request-message-form.tsx' &&
+      file !== 'apps/web/app/portal/requests/[id]/page.tsx' &&
+      !file.endsWith('/20260803180000_jira_status_comment_sync/migration.sql')
+    ) {
+      continue;
+    }
+    if (
       (mode === 'identity' ||
         mode === 'credentials' ||
         mode === 'client-tenant' ||
@@ -126,6 +138,96 @@ async function main() {
         ]) {
           if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
         }
+      }
+    }
+    if (mode === 'jira-sync') {
+      if (
+        /console\.(?:log|info|warn|error)\([^)]*(?:JIRA_WEBHOOK_SECRET|comment(?:Body|Text)?|raw(?:Body|Payload)?|authorEmail|emailAddress)/iu.test(
+          content,
+        )
+      ) {
+        findings.push(`${file}: Jira webhook secret, raw payload or comment content may be logged`);
+      }
+      if (file === 'apps/web/lib/jira-webhook.ts') {
+        for (const marker of [
+          'timingSafeEqual',
+          'maximumPayloadBytes',
+          'replayWindowMs',
+          'eventFingerprint',
+          'jiraIssueId: issueId, jiraKey: issueKey',
+          'normalizedPayload: normalized',
+        ]) {
+          if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
+        }
+        if (/signature\s*={2,3}|={2,3}\s*input\.signature/u.test(content)) {
+          findings.push(`${file}: webhook signature may use a non-constant-time comparison`);
+        }
+      }
+      if (file === 'apps/web/lib/jira-inbound.ts') {
+        for (const marker of [
+          'FOR UPDATE SKIP LOCKED',
+          'jiraUpdatedAt',
+          'DEAD_LETTER',
+          'jira.comment.ignored_private',
+          'jira.status.ignored_stale',
+          '!payload.public || payload.automation',
+          'JIRA_INBOUND_TENANT_MAPPING_INVALID',
+          "existing.authorType !== 'JIRA'",
+        ]) {
+          if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
+        }
+      }
+      if (file === 'apps/web/lib/jira-sync-policy.ts') {
+        for (const marker of [
+          'projectAdfToSafeText',
+          'scrubProviderText',
+          '@participant',
+          'safeJiraAuthor',
+          'JIRA_COMMENT_HTML_DENIED',
+        ]) {
+          if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
+        }
+      }
+      if (file === 'apps/web/lib/requests-store.ts') {
+        for (const marker of [
+          "operationType: 'ADD_COMMENT'",
+          'idempotencyKey',
+          'jira.comment.enqueued',
+          'prisma.$transaction',
+        ]) {
+          if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
+        }
+      }
+      if (file.endsWith('/20260803180000_jira_status_comment_sync/migration.sql')) {
+        for (const marker of [
+          'JiraInboundEvent_eventFingerprint_key',
+          'RequestMessage_jiraCommentId_key',
+          'RequestMessage_idempotencyKey_key',
+          'JiraInboundEvent_lease_check',
+          'JiraOperation_shape_check',
+        ]) {
+          if (!content.includes(marker)) findings.push(`${file}: missing ${marker}`);
+        }
+      }
+      if (
+        file === 'apps/web/app/api/requests/[id]/messages/route.ts' &&
+        /(?:createJiraProvider|addComment\s*\(|jiraIssue(?:Id|Key))/u.test(content)
+      ) {
+        findings.push(`${file}: customer HTTP route calls Jira or accepts a Jira target`);
+      }
+      if (
+        file === 'apps/web/components/portal/request-message-form.tsx' &&
+        /(?:jiraIssueId|jiraIssueKey|companyId|organizationId|JIRA_WEBHOOK)/u.test(content)
+      ) {
+        findings.push(`${file}: browser comment form contains tenant or Jira target data`);
+      }
+      if (
+        file === 'apps/web/app/portal/requests/[id]/page.tsx' &&
+        /dangerouslySetInnerHTML|jiraCommentId|eventFingerprint|leaseToken|lastFailureCode/u.test(
+          content,
+        )
+      ) {
+        findings.push(`${file}: portal may expose raw Jira content or worker internals`);
       }
     }
     if (

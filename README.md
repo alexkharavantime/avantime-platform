@@ -86,20 +86,27 @@ Local success does not mean managed staging was deployed. Start with
 [Staging Infrastructure](./docs/STAGING_INFRASTRUCTURE.md) and
 [Staging Deployment](./docs/STAGING_DEPLOYMENT.md).
 
-## Jira ticket creation
+## Jira integration
 
-TASK-016 stores the customer request and tenant-mapped Jira operation atomically, then processes it
-with a separate lease/retry/DLQ worker. Local and CI validation uses a deterministic no-network
-adapter; real Jira Cloud validation remains pending.
+TASK-016 stores and creates Jira issues through a durable worker. TASK-017 adds signed webhook
+intake, a separate durable inbound worker, stale-fenced status synchronization, explicit public
+comment import and asynchronous customer comments. Local/CI use no-network test adapters; actual
+Jira Cloud webhook/JSM validation remains pending.
 
 ```bash
 npm run staging:jira-operations -- inspect
 npm run staging:jira-operations -- worker-once
 npm run staging:jira-worker
+npm run staging:jira-operations -- inspect-inbound
+npm run staging:jira-operations -- inbound-worker-once
+npm run staging:jira-inbound-worker
+npm run security:jira-sync-scan
 ```
 
 See [Jira Integration](./docs/JIRA_INTEGRATION.md), the
-[Jira worker runbook](./docs/runbooks/jira-worker.md), and [TASK-016](./docs/tasks/TASK-016.md).
+[Jira worker runbook](./docs/runbooks/jira-worker.md),
+[Jira webhook runbook](./docs/runbooks/jira-webhooks.md), [TASK-016](./docs/tasks/TASK-016.md), and
+[TASK-017](./docs/tasks/TASK-017.md).
 
 ## Production identity and MFA
 

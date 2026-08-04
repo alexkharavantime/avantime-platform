@@ -65,6 +65,20 @@ function validEnvironment(): Record<string, string> {
     JIRA_LEASE_MS: '5000',
     JIRA_POLL_INTERVAL_MS: '250',
     JIRA_WORKER_ID: 'jira-staging-test',
+    JIRA_WEBHOOK_MODE: 'test',
+    JIRA_WEBHOOK_SECRET: 'staging-test-webhook-secret-at-least-32-characters',
+    JIRA_WEBHOOK_ALLOWED_ORIGIN: 'https://jira.test.invalid',
+    JIRA_WEBHOOK_TIMEOUT_MS: '5000',
+    JIRA_WEBHOOK_REPLAY_WINDOW_MS: '300000',
+    JIRA_WEBHOOK_MAX_PAYLOAD_BYTES: '262144',
+    JIRA_WEBHOOK_ENABLED_EVENTS:
+      'jira:issue_updated,jira:issue_deleted,comment_created,comment_updated',
+    JIRA_INBOUND_MAX_ATTEMPTS: '3',
+    JIRA_INBOUND_BATCH_SIZE: '10',
+    JIRA_INBOUND_LEASE_MS: '5000',
+    JIRA_INBOUND_POLL_INTERVAL_MS: '250',
+    JIRA_INBOUND_RETENTION_DAYS: '30',
+    JIRA_INBOUND_WORKER_ID: 'jira-inbound-staging-test',
     APP_VERSION: 'task-015-test',
     COMMIT_SHA: 'abcdef1234567',
     MIGRATION_VERSION: '20260802180000_staging_baseline',
@@ -106,6 +120,13 @@ test('staging configuration has no development fallback and rejects defaults or 
   const jiraCredentials = validEnvironment();
   jiraCredentials.JIRA_API_TOKEN = 'must-not-be-present';
   assert.throws(() => loadStagingConfiguration(jiraCredentials), /TEST_CREDENTIALS_DENIED/u);
+
+  const jiraWebhookTenantMismatch = validEnvironment();
+  jiraWebhookTenantMismatch.JIRA_WEBHOOK_ALLOWED_ORIGIN = 'https://foreign.test.invalid';
+  assert.throws(
+    () => loadStagingConfiguration(jiraWebhookTenantMismatch),
+    /JIRA_WEBHOOK_ORIGIN_MISMATCH/u,
+  );
 });
 
 test('managed staging rejects local endpoints and test notification provider', () => {

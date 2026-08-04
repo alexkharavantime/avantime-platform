@@ -20,12 +20,13 @@ S3-compatible storage и Docker Compose. Kubernetes и привязка к ко�
 | Health             | document-specific route                             | public liveness/readiness and protected diagnostics             | all dependencies                                | full typed contract                         | external monitoring integration                  | monitoring destination absent   | safe JSON, correct HTTP status               |
 | Backup/restore     | guarded encrypted DB backup and integration restore | pre-migration backup, isolated staging rehearsal, metadata      | backup storage, `pg_dump`/`pg_restore`          | destination, key, retention, versions       | managed durable-copy/PITR rehearsal              | provider absent                 | non-zero backup and restored invariants      |
 | Observability      | structured operational events/contracts             | environment/service/version labels                              | OTLP/log sink                                   | service/resource identifiers                | managed dashboards/alerts                        | backend absent                  | safe structured logs and heartbeat           |
-| Jira               | TASK-016 durable operation and provider adapters    | separate worker, heartbeat, backlog/DLQ and test smoke          | Jira Cloud only for approved managed validation | mode, secret ref, project, worker policy    | real Cloud provider evidence                     | credentials/environment absent  | test issue created; cloud remains pending    |
+| Jira               | TASK-016 outbound plus TASK-017 repository sync     | outbound/inbound workers, signed webhook, backlog/DLQ and smoke | Jira Cloud only for approved managed validation | modes, secret refs, tenant, worker policies | actual Cloud webhook/JSM evidence                | credentials/environment absent  | test bidirectional flow; cloud stays pending |
 
 ## Topology
 
 `docker-compose.staging.yml` — единственный staging deployment manifest. Он запускает migration
-job, notification worker, knowledge index worker, Jira worker, web и опциональный backup job. Services работают
+job, notification worker, knowledge index worker, outbound Jira worker, inbound Jira worker, web и
+опциональный backup job. Services работают
 non-root, read-only, без Linux capabilities, с limits, restart policy, graceful stop и immutable
 version labels.
 
@@ -41,7 +42,7 @@ Redis и S3 не дублируются в manifest и могут быть за�
 
 `.env.staging.example` содержит только placeholders. Runtime validation требует `APP_ENV=staging`,
 explicit `STAGING_MODE`, staging DB/bucket/Redis namespace, strong server-only secrets, versions,
-backup/observability references и явный Jira mode. Managed mode дополнительно требует TLS, cloud
+backup/observability references и явные Jira/webhook modes. Managed mode дополнительно требует TLS, cloud
 Jira credentials from secret storage и реальный notification provider; local/test adapters
 запрещены. Development fallback нет.
 

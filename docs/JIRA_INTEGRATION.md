@@ -1,10 +1,11 @@
-# Jira ticket creation
+# Jira integration
 
 ## Boundary
 
-TASK-016 implements only outbound Jira issue creation. Avantime is the customer-facing source of
-the request; Jira is an internal execution system. A Jira outage never rolls back or hides the
-local request. Status, comment and attachment synchronization are not part of this boundary.
+TASK-016 implements outbound issue creation. TASK-017 adds repository-level inbound status/public
+comment synchronization and asynchronous customer comments. Avantime remains the customer-facing
+system; Jira becomes the status source after successful issue creation. A Jira outage never rolls
+back or hides the local request. Attachments remain outside this boundary.
 
 ## Request and queue sequence
 
@@ -44,6 +45,21 @@ provider-success/client-timeout window where Jira search permissions support rec
 Worker leases use PostgreSQL-authoritative time. Expired leases are reclaimable; processing is
 concurrency-safe, retries are bounded, and terminal failures remain inspectable in DLQ.
 
+## Status and comments
+
+Secure webhooks persist a separate normalized `JiraInboundEvent` and return before business
+processing. The inbound worker resolves tenant only through the persisted Jira issue ID/key pair,
+uses organization-specific/default status allowlists and fences older `jiraUpdatedAt` values.
+Resolved/closed requests do not silently roll back to a non-terminal status.
+
+Inbound Jira comments require an explicit JSM public marker and a non-automation author. ADF is
+projected to safe bounded text; URLs, provider IDs, email, HTML and attachments are excluded.
+Private content is replaced with `[withheld]` before persistence.
+
+Customer comments are committed locally with an `ADD_COMMENT` operation in one transaction. The
+same Jira worker sends a safe public JSM comment, reconciles a visible hashed Avantime reference,
+and updates delivery state to `SENT`, `FAILED` or `DEAD_LETTER` without blocking HTTP.
+
 ## Safe payload
 
 The projection normalizes plain text, strips control characters, caps summary/description length,
@@ -57,11 +73,15 @@ personal data are excluded.
 - Jira Cloud adapter: implemented against REST API v3 with normalized errors and timeout;
 - real Jira Cloud connectivity and issue creation: `PENDING` because no credentials or authorized
   environment were provided.
+- secure-admin-webhook HMAC contract: covered by Atlassian test vector and local adapters;
+- actual Jira Cloud webhook registration/delivery and JSM public-comment permissions: `PENDING`.
 
 ## Связанные документы
 
 - [TASK-016](./tasks/TASK-016.md)
 - [Jira worker runbook](./runbooks/jira-worker.md)
+- [Jira webhooks](./JIRA_WEBHOOKS.md)
+- [TASK-017](./tasks/TASK-017.md)
 - [Staging deployment](./STAGING_DEPLOYMENT.md)
 - [Architecture 2.0](./ARCHITECTURE_2_0.md)
 - [ADR](./DECISIONS.md)

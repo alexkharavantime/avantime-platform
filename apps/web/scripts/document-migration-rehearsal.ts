@@ -7,7 +7,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 14;
+const EXPECTED_MIGRATION_COUNT = 15;
 const PRE_OIDC_ROLLOUT_MIGRATIONS = [
   '20260727190000_document_processing_queue',
   '20260728120000_document_intelligence',

@@ -157,10 +157,14 @@ async function main() {
       cwd: repositoryRoot,
       environment: bootstrapEnvironment,
     });
-    await runIntegrationCommand('npx', ['tsx', '--test', ...testRunnerArguments, bootstrapTest], {
-      cwd: repositoryRoot,
-      environment: bootstrapEnvironment,
-    });
+    await runIntegrationCommand(
+      'node',
+      ['--import', 'tsx', '--test', ...testRunnerArguments, bootstrapTest],
+      {
+        cwd: repositoryRoot,
+        environment: bootstrapEnvironment,
+      },
+    );
   } finally {
     await admin.$executeRawUnsafe(
       `DROP DATABASE IF EXISTS "${bootstrapDatabaseName}" WITH (FORCE)`,
@@ -173,10 +177,14 @@ async function main() {
     cwd: repositoryRoot,
     environment,
   });
-  await runIntegrationCommand('npx', ['tsx', '--test', ...testRunnerArguments, ...tests], {
-    cwd: repositoryRoot,
-    environment,
-  });
+  await runIntegrationCommand(
+    'node',
+    ['--import', 'tsx', '--test', ...testRunnerArguments, ...tests],
+    {
+      cwd: repositoryRoot,
+      environment,
+    },
+  );
 }
 
 void main().catch(() => {

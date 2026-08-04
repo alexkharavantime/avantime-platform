@@ -4,6 +4,8 @@ import { governanceMutationOriginAllowed } from '../../../../../lib/governance-r
 import { createJiraProvider } from '../../../../../lib/jira';
 import { loadJiraConfiguration } from '../../../../../lib/jira-configuration';
 import { processJiraOperationBatch } from '../../../../../lib/jira-outbox';
+import { processJiraInboundBatch } from '../../../../../lib/jira-inbound';
+import { loadJiraWebhookConfiguration } from '../../../../../lib/jira-webhook-configuration';
 import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 
 export async function POST(request: Request) {
@@ -22,6 +24,15 @@ export async function POST(request: Request) {
     provider: createJiraProvider(),
     batchSize: configuration.batchSize,
     leaseMs: configuration.leaseMs,
+    companyId: authorization.session.companyId,
   });
-  return NextResponse.json({ status: 'processed', summary });
+  const webhookConfiguration = loadJiraWebhookConfiguration();
+  const inbound = webhookConfiguration.enabled
+    ? await processJiraInboundBatch({
+        batchSize: webhookConfiguration.batchSize,
+        leaseMs: webhookConfiguration.leaseMs,
+        companyId: authorization.session.companyId,
+      })
+    : { claimed: 0, completed: 0, ignored: 0, failed: 0, deadLettered: 0 };
+  return NextResponse.json({ status: 'processed', summary, inbound });
 }

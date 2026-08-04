@@ -2,9 +2,10 @@
 
 ## Safety boundary
 
-The worker creates Jira issues from durable `JiraOperation` rows. It does not synchronize status,
-comments or attachments and never sends email directly. Use only safe IDs/correlation references
-in operational evidence; never copy tokens, descriptions or raw provider responses.
+The outbound worker creates Jira issues and sends customer comments from durable `JiraOperation`
+rows. A separate inbound worker applies webhook events. Neither worker handles attachments or sends
+email directly. Use only safe IDs/correlation references in evidence; never copy tokens,
+descriptions, comments or raw provider responses.
 
 ## Preflight
 
@@ -13,6 +14,7 @@ npm run staging:config-check
 npm run staging:jira-operations -- mapping --company-id=<company-id>
 npm run staging:jira-operations -- connectivity
 npm run staging:jira-operations -- inspect
+npm run staging:jira-operations -- inspect-inbound
 ```
 
 `connectivity` uses the deterministic adapter in test mode. Cloud validation needs explicit
@@ -23,6 +25,7 @@ approved credentials/environment and must not be inferred from local success.
 ```bash
 npm run staging:jira-operations -- worker-once
 npm run staging:jira-worker
+npm run staging:jira-inbound-worker
 ```
 
 Continuous mode uses bounded polling and graceful SIGINT/SIGTERM shutdown. Readiness requires a
@@ -63,3 +66,5 @@ IDs for investigation.
 - [TASK-016](../tasks/TASK-016.md)
 - [Staging deployment](../STAGING_DEPLOYMENT.md)
 - [Notification outbox](./notification-outbox.md)
+- [Jira webhook runbook](./jira-webhooks.md)
+- [TASK-017](../tasks/TASK-017.md)

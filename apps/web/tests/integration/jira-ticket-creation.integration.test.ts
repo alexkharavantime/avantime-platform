@@ -149,6 +149,7 @@ test('Jira request creation is atomic, tenant-safe, idempotent and reaches retry
     const provider: JiraProviderAdapter = {
       kind: 'test',
       checkReadiness: () => baseProvider.checkReadiness(),
+      addComment: (payload, attempt) => baseProvider.addComment(payload, attempt),
       createIssue: async (payload, attempt) => {
         deliveryCalls.set(payload.marker, (deliveryCalls.get(payload.marker) ?? 0) + 1);
         return baseProvider.createIssue(payload, attempt);

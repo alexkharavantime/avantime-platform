@@ -10,9 +10,25 @@ import { hasOrganizationPermission } from '../../../../lib/organization-permissi
 export const metadata: Metadata = { title: 'Обращение — Avantime' };
 const statusLabel = {
   NEW: 'Новое',
+  OPEN: 'Открыто',
   IN_PROGRESS: 'В работе',
   WAITING_CUSTOMER: 'Нужно уточнение',
   RESOLVED: 'Решено',
+  CLOSED: 'Закрыто',
+} as const;
+const authorTypeLabel = {
+  CUSTOMER: 'Клиент',
+  AVANTIME: 'Avantime',
+  JIRA: 'Специалист поддержки',
+  SYSTEM: 'Система',
+} as const;
+const deliveryStatusLabel = {
+  NOT_REQUIRED: null,
+  PENDING: 'Ожидает отправки в Jira',
+  PROCESSING: 'Отправляется в Jira',
+  SENT: 'Отправлено в Jira',
+  FAILED: 'Будет отправлено повторно',
+  DEAD_LETTER: 'Не отправлено — обратитесь в поддержку',
 } as const;
 const priorityLabel = {
   LOW: 'Низкий',
@@ -107,6 +123,14 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
           >
             <p className="font-black text-blue-900">{jira.label}</p>
             <p className="mt-2 text-sm leading-6 text-blue-800">{jira.message}</p>
+            {item.jiraStatusName && (
+              <p className="mt-2 text-sm text-blue-800">Статус Jira: {item.jiraStatusName}</p>
+            )}
+            {item.jiraSynchronizedAt && (
+              <p className="mt-1 text-xs text-blue-700">
+                Синхронизировано: {new Date(item.jiraSynchronizedAt).toLocaleString('ru-RU')}
+              </p>
+            )}
             {item.jiraKey && jiraIssueUrl && (
               <a
                 href={jiraIssueUrl}
@@ -129,7 +153,12 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                 {item.messages.map((message) => (
                   <article key={message.id} className="rounded-2xl bg-slate-50 p-5">
                     <div className="flex flex-wrap justify-between gap-2">
-                      <p className="font-black text-slate-900">{message.authorName}</p>
+                      <div>
+                        <p className="font-black text-slate-900">{message.authorName}</p>
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          {authorTypeLabel[message.authorType]}
+                        </p>
+                      </div>
                       <time className="text-sm text-slate-500">
                         {new Date(message.createdAt).toLocaleString('ru-RU')}
                       </time>
@@ -137,6 +166,11 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                     <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-600">
                       {message.body}
                     </p>
+                    {deliveryStatusLabel[message.deliveryStatus] && (
+                      <p className="mt-3 text-sm font-bold text-blue-700" role="status">
+                        {deliveryStatusLabel[message.deliveryStatus]}
+                      </p>
+                    )}
                   </article>
                 ))}
               </div>
