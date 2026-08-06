@@ -31,19 +31,99 @@ export type RetrievalScoreComponents = {
   semantic: number;
   hybrid: number;
 };
+export type RetrievalSourceType = 'DOCUMENT' | 'ARTICLE';
 
 export type RetrievalResult = {
-  documentId: string;
-  documentTitle: string;
+  /**
+   * Унифицированный тип источника результата.
+   *
+   * DOCUMENT — загруженный документ организации.
+   * ARTICLE — статья Knowledge Hub.
+   */
+  sourceType: RetrievalSourceType;
+
+  /**
+   * Унифицированный идентификатор источника.
+   *
+   * Для DOCUMENT равен documentId.
+   * Для ARTICLE равен articleId.
+   */
+  sourceId: string;
+
+  /**
+   * Унифицированное название источника для интерфейса и citations.
+   *
+   * Для DOCUMENT обычно используется originalName.
+   * Для ARTICLE используется title статьи.
+   */
+  sourceTitle: string;
+
+  /**
+   * Поля обратной совместимости для существующего document retrieval.
+   *
+   * После добавления ARTICLE старые обработчики смогут продолжить
+   * использовать documentId и documentTitle без немедленной миграции.
+   */
+  documentId?: string;
+  documentTitle?: string;
+
+  /**
+   * Идентификатор статьи Knowledge Hub.
+   * Заполняется только для sourceType === 'ARTICLE'.
+   */
+  articleId?: string;
+
+  /**
+   * Идентификатор индексируемого фрагмента источника.
+   *
+   * Для документов это существующий document chunk id.
+   * Для статей может использоваться articleId или отдельный стабильный
+   * идентификатор фрагмента, если статьи позднее будут разбиваться на части.
+   */
   chunkId: string;
+
+  /**
+   * Порядковый номер фрагмента внутри источника.
+   */
   chunkIndex: number;
+
+  /**
+   * Страницы исходного документа.
+   *
+   * Для статей значения остаются null.
+   */
   pageStart: number | null;
   pageEnd: number | null;
-  preview: string;
-  score: number;
-  scoreComponents: RetrievalScoreComponents;
-};
 
+  /**
+   * Безопасный текстовый фрагмент, предназначенный для:
+   *
+   * - контекста RAG;
+   * - предварительного просмотра;
+   * - построения citations.
+   *
+   * Здесь не должны находиться секреты или необработанный служебный контент.
+   */
+  preview: string;
+
+  /**
+   * Итоговая оценка релевантности от 0 до 1.
+   */
+  score: number;
+
+  /**
+   * Компоненты итоговой оценки.
+   *
+   * Для lexical retrieval semantic равен 0.
+   * Для semantic retrieval lexical равен 0.
+   * Для hybrid retrieval заполняются все компоненты.
+   */
+  scoreComponents: {
+    lexical: number;
+    semantic: number;
+    hybrid: number;
+  };
+};
 export interface LexicalRetriever {
   retrieve(request: RetrievalRequest): Promise<RetrievalResult[]>;
 }
@@ -187,8 +267,13 @@ export class DefaultLexicalRetriever implements LexicalRetriever {
         const score = lexicalScore(chunk.text, query);
         if (score <= 0) continue;
         results.push({
+          sourceType: 'DOCUMENT',
+          sourceId: document.id,
+          sourceTitle: document.originalName,
+
           documentId: document.id,
           documentTitle: document.originalName,
+
           chunkId: chunk.id,
           chunkIndex: chunk.index,
           pageStart: null,
@@ -201,13 +286,14 @@ export class DefaultLexicalRetriever implements LexicalRetriever {
             hybrid: score,
           },
         });
+        
       }
     }
     const selected = results
       .sort(
         (first, second) =>
           second.score - first.score ||
-          first.documentId.localeCompare(second.documentId) ||
+          first.sourceId.localeCompare(second.sourceId)||
           first.chunkIndex - second.chunkIndex,
       )
       .slice(0, topK);
@@ -254,9 +340,14 @@ export class DefaultSemanticRetriever implements SemanticRetriever {
       minimumSimilarity: this.configuration.hybrid.semanticSimilarityThreshold,
       filters: request.filters,
     });
-    const selected = results.map((result) => ({
+    const selected: RetrievalResult[] = results.map((result) => ({
+      sourceType: 'DOCUMENT',
+      sourceId: result.documentId,
+      sourceTitle: result.documentTitle,
+
       documentId: result.documentId,
       documentTitle: result.documentTitle,
+
       chunkId: result.chunkId,
       chunkIndex: result.chunkIndex,
       pageStart: result.pageStart,
@@ -350,26 +441,16 @@ export class DefaultHybridRetriever implements HybridRetriever {
         (first, second) =>
           second.score - first.score ||
           second.scoreComponents.semantic - first.scoreComponents.semantic ||
-          first.documentId.localeCompare(second.documentId) ||
+          first.sourceId.localeCompare(second.sourceId) ||
           first.chunkIndex - second.chunkIndex,
       );
-    const perDocument = new Map<string, number>();
+    const perSource = new Map<string, number>();
     const selected: RetrievalResult[] = [];
     for (const result of ranked) {
-      const count = perDocument.get(result.documentId) ?? 0;
+      const count = perSource.get(result.sourceId) ?? 0;
       if (count >= this.configuration.hybrid.maximumChunksPerDocument) continue;
-      selected.push({
-        documentId: result.documentId,
-        documentTitle: result.documentTitle,
-        chunkId: result.chunkId,
-        chunkIndex: result.chunkIndex,
-        pageStart: result.pageStart,
-        pageEnd: result.pageEnd,
-        preview: result.preview,
-        score: result.score,
-        scoreComponents: result.scoreComponents,
-      });
-      perDocument.set(result.documentId, count + 1);
+      selected.push(result);
+      perSource.set(result.sourceId, count + 1);
       if (selected.length >= topK) break;
     }
     return selected;

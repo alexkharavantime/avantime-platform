@@ -96,7 +96,12 @@ async function main() {
       const forbidden = new Set(
         'forbiddenDocumentIds' in evaluationCase ? (evaluationCase.forbiddenDocumentIds ?? []) : [],
       );
-      tenantLeakageCount += results.filter((result) => forbidden.has(result.documentId)).length;
+      tenantLeakageCount += results.filter(
+        (result) =>
+          result.sourceType === 'DOCUMENT' &&
+          typeof result.documentId === 'string' &&
+          forbidden.has(result.documentId),
+        ).length;
       if (expected.size > 0) {
         relevantCases += 1;
         const found = new Set(

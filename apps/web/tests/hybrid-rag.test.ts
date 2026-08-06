@@ -398,6 +398,10 @@ function result(
   component: 'lexical' | 'semantic',
 ): RetrievalResult {
   return {
+    sourceType: 'DOCUMENT',
+    sourceId: documentId,
+    sourceTitle: `${documentId}.pdf`,
+
     documentId,
     documentTitle: `${documentId}.pdf`,
     chunkId,
@@ -413,6 +417,7 @@ function result(
     },
   };
 }
+
 
 test('hybrid ranking applies weights, duplicate suppression and per-document diversity', async () => {
   const configuration = loadRagConfiguration({

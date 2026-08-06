@@ -11,6 +11,8 @@ import type { HybridRetriever, RetrievalResult } from './retrieval';
 
 export type Citation = {
   sourceId: string;
+  sourceType: 'DOCUMENT';
+  sourceTitle: string;
   documentId: string;
   documentTitle: string;
   chunkId: string;
@@ -54,9 +56,14 @@ export class DefaultCitationBuilder implements CitationBuilder {
     const citations: Citation[] = [];
     const seen = new Set<string>();
     for (const result of results) {
-      const key = `${result.documentId}:${result.chunkId}`;
-      if (seen.has(key)) continue;
-      const document = await this.metadata.findById(tenant, result.documentId);
+    if (result.sourceType !== 'DOCUMENT' || !result.documentId) {
+      continue;
+    }
+
+    const key = `${result.documentId}:${result.chunkId}`;
+    if (seen.has(key)) continue;
+
+  const document = await this.metadata.findById(tenant, result.documentId);
       if (!document || document.status !== 'COMPLETED' || document.deletedAt) continue;
       const chunks = await this.processing.readChunks(tenant, document.id);
       const chunk = chunks.find((candidate) => candidate.id === result.chunkId);
@@ -70,6 +77,8 @@ export class DefaultCitationBuilder implements CitationBuilder {
       citations.push({
         sourceId: `S${citations.length + 1}`,
         documentId: document.id,
+        sourceType: 'DOCUMENT',
+        sourceTitle: document.originalName,
         documentTitle: document.originalName,
         chunkId: chunk.id,
         pageStart: result.pageStart,
