@@ -25,6 +25,12 @@ import {
   type SemanticRetriever,
 } from './retrieval';
 import {
+  CompositeLexicalRetriever,
+  KnowledgeLexicalRetriever,
+} from './knowledge-retrieval';
+
+import { PostgreSQLKnowledgeSearchAdapter } from './knowledge-indexing';
+import {
   DefaultCitationBuilder,
   DefaultRagAnswerService,
   type CitationBuilder,
@@ -114,13 +120,22 @@ export function createRagServices(
     deploymentGeneration:
       dependencies.environment?.DEPLOYMENT_GENERATION ?? process.env.DEPLOYMENT_GENERATION,
   };
-  const lexical = new DefaultLexicalRetriever(
-    documents.metadata,
-    documents.processing,
-    configuration,
-    events,
+  const documentLexical = new DefaultLexicalRetriever(
+  documents.metadata,
+  documents.processing,
+  configuration,
+  events,
+);
+
+  const knowledgeLexical = new KnowledgeLexicalRetriever(
+    new PostgreSQLKnowledgeSearchAdapter(),
   );
-  const semantic = new DefaultSemanticRetriever(gateway, vectors, configuration, events);
+
+  const lexical = new CompositeLexicalRetriever([
+    documentLexical,
+    knowledgeLexical,
+  ]);
+    const semantic = new DefaultSemanticRetriever(gateway, vectors, configuration, events);
   const hybrid = new DefaultHybridRetriever(lexical, semantic, configuration);
   const citationBuilder = new DefaultCitationBuilder(documents.metadata, documents.processing);
   const answers = new DefaultRagAnswerService(
