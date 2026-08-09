@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:22.17.1-alpine3.22 AS dependencies
+FROM node:22.23.1-alpine3.23 AS dependencies
 WORKDIR /workspace
 COPY package.json package-lock.json turbo.json ./
 COPY apps/web/package.json apps/web/package.json
@@ -24,7 +24,7 @@ RUN mkdir -p apps/web/public \
     && npm run db:generate \
     && npm run build -w @avantime/web
 
-FROM node:22.17.1-alpine3.22 AS web
+FROM node:22.23.1-alpine3.23 AS web
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
@@ -39,7 +39,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health/documents || exit 1
 CMD ["node", "apps/web/server.js"]
 
-FROM node:22.17.1-alpine3.22 AS worker-base
+FROM node:22.23.1-alpine3.23 AS worker-base
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /workspace
