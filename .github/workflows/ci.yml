@@ -168,6 +168,15 @@ jobs:
           BACKUP_ENCRYPTION_REQUIRED: 'true'
       - run: docker build --target web -f docker/production.Dockerfile -t avantime-platform:ci .
       - run: docker build --target document-worker -f docker/production.Dockerfile -t avantime-document-worker:ci .
+      - name: Scan document worker for Critical/High vulnerabilities
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: avantime-document-worker:ci
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
       - run: docker build --target embedding-worker -f docker/production.Dockerfile -t avantime-embedding-worker:ci .
       - run: docker build --target migration -f docker/production.Dockerfile -t avantime-migration:ci .
       - run: docker build --target operations -f docker/production.Dockerfile -t avantime-operations:ci .
