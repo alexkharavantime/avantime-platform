@@ -22,12 +22,30 @@ export type KnowledgeIndexDocument = {
   searchText: string;
 };
 
+export type KnowledgeVectorSearchResult = Pick<
+  KnowledgeIndexDocument,
+  'articleId' | 'sourceVersion' | 'generation' | 'ownerScope' | 'companyId' | 'visibility' | 'lifecycleStatus' | 'title' | 'summary' | 'tags' | 'searchText'
+> & {
+  score: number;
+};
+
 function tenantKey(document: Pick<KnowledgeIndexDocument, 'ownerScope' | 'companyId'>) {
   return document.ownerScope === 'ORGANIZATION' ? (document.companyId ?? 'invalid') : 'platform';
 }
 
 function assertVersion(version: number) {
   if (!Number.isSafeInteger(version) || version < 1) throw new Error('KNOWLEDGE_VERSION_INVALID');
+}
+
+function assertVector(vector: readonly number[]) {
+  if (vector.length === 0 || vector.some((value) => !Number.isFinite(value))) {
+    throw new Error('KNOWLEDGE_VECTOR_INVALID');
+  }
+}
+
+function vectorLiteral(vector: readonly number[]) {
+  assertVector(vector);
+  return `[${vector.join(',')}]`;
 }
 
 export function canReadKnowledgeIndex(
@@ -206,12 +224,10 @@ export class PostgreSQLKnowledgeVectorAdapter {
     model: string;
     embeddingVersion: string;
   }) {
-    if (input.vector.length === 0 || input.vector.some((value) => !Number.isFinite(value))) {
-      throw new Error('KNOWLEDGE_VECTOR_INVALID');
-    }
+    assertVector(input.vector);
     const prisma = await getPrisma();
     if (!prisma) throw new Error('KNOWLEDGE_VECTOR_DATABASE_UNAVAILABLE');
-    const vector = `[${input.vector.join(',')}]`;
+    const vector = vectorLiteral(input.vector);
     const contentHash = createHash('sha256').update(input.document.searchText).digest('hex');
     await prisma.$executeRaw`
       INSERT INTO "KnowledgeVectorIndex" (
@@ -256,6 +272,83 @@ export class PostgreSQLKnowledgeVectorAdapter {
     });
     if (!article || article.quarantinedAt || article.version !== row.sourceVersion) return null;
     return canReadKnowledgeIndex(row, audience) ? row : null;
+  }
+
+  async search(input: {
+    vector: readonly number[];
+    model: string;
+    embeddingVersion: string;
+    audience: KnowledgeIndexAudience;
+    topK: number;
+    minimumSimilarity: number;
+  }): Promise<KnowledgeVectorSearchResult[]> {
+    assertVector(input.vector);
+    if (!Number.isSafeInteger(input.topK) || input.topK <= 0 || input.topK > 100) {
+      throw new Error('KNOWLEDGE_VECTOR_TOPK_INVALID');
+    }
+    if (!Number.isFinite(input.minimumSimilarity) || input.minimumSimilarity < 0 || input.minimumSimilarity > 1) {
+      throw new Error('KNOWLEDGE_VECTOR_SIMILARITY_INVALID');
+    }
+
+    const prisma = await getPrisma();
+    if (!prisma) throw new Error('KNOWLEDGE_VECTOR_DATABASE_UNAVAILABLE');
+
+    const values: unknown[] = [
+      vectorLiteral(input.vector),
+      input.model,
+      input.embeddingVersion,
+      input.minimumSimilarity,
+      input.topK,
+    ];
+    let audienceFilter = '';
+    if (input.audience.kind === 'PUBLIC') {
+      audienceFilter = `AND vector."visibility" = 'PUBLIC'`;
+    } else if (input.audience.kind === 'PLATFORM') {
+      audienceFilter = `AND vector."ownerScope" = 'PLATFORM' AND vector."visibility" IN ('PLATFORM', 'PUBLIC')`;
+    } else {
+      values.push(input.audience.companyId);
+      audienceFilter = `AND (
+        (vector."ownerScope" = 'ORGANIZATION' AND vector."companyId" = $6 AND vector."visibility" IN ('ORGANIZATION', 'PUBLIC'))
+        OR (vector."ownerScope" = 'PLATFORM' AND vector."visibility" IN ('PLATFORM', 'PUBLIC'))
+      )`;
+    }
+
+    const rows = await prisma.$queryRawUnsafe<KnowledgeVectorSearchResult[]>(
+      `SELECT
+        vector."articleId",
+        vector."sourceVersion",
+        vector."generation",
+        vector."ownerScope",
+        vector."companyId",
+        vector."visibility",
+        vector."lifecycleStatus",
+        search."title",
+        search."summary",
+        search."tags",
+        search."searchText",
+        1 - (vector."embedding" <=> $1::vector) AS "score"
+      FROM "KnowledgeVectorIndex" vector
+      INNER JOIN "KnowledgeArticle" article
+        ON article."id" = vector."articleId" AND article."version" = vector."sourceVersion"
+      INNER JOIN "KnowledgeSearchIndex" search
+        ON search."articleId" = vector."articleId" AND search."sourceVersion" = vector."sourceVersion"
+      WHERE article."quarantinedAt" IS NULL
+        AND vector."operationalStatus" = 'READY'
+        AND vector."lifecycleStatus" = 'PUBLISHED'
+        AND vector."visibility" <> 'PRIVATE'
+        AND vector."embeddingModel" = $2
+        AND vector."embeddingVersion" = $3
+        AND 1 - (vector."embedding" <=> $1::vector) >= $4
+        ${audienceFilter}
+      ORDER BY vector."embedding" <=> $1::vector
+      LIMIT $5`,
+      ...values,
+    );
+
+    return rows.map((row) => ({
+      ...row,
+      score: Number(row.score),
+    }));
   }
 }
 
