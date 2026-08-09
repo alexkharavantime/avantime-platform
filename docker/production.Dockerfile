@@ -24,6 +24,16 @@ RUN mkdir -p apps/web/public \
     && npm run db:generate \
     && npm run build -w @avantime/web
 
+FROM dependencies AS worker-dependencies
+RUN npm prune --omit=dev \
+    && npm pkg delete overrides.esbuild \
+    && npm install --no-save --omit=dev tsx@4.23.1 esbuild@0.28.1 \
+    && rm -rf /root/.npm \
+              /workspace/node_modules/nanoid \
+              /workspace/node_modules/postcss \
+              /workspace/node_modules/next/node_modules/postcss \
+              /workspace/node_modules/sharp
+
 FROM node:22.23.1-alpine3.23 AS web
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -46,26 +56,18 @@ WORKDIR /workspace
 RUN apk add --no-cache poppler-utils tesseract-ocr tesseract-ocr-data-eng \
       tesseract-ocr-data-rus tesseract-ocr-data-lav \
     && addgroup -S -g 10001 avantime \
-    && adduser -S -u 10001 -G avantime avantime
-COPY --from=builder --chown=avantime:avantime /workspace/package.json /workspace/package-lock.json ./
-COPY --from=builder --chown=avantime:avantime /workspace/node_modules ./node_modules
-COPY --from=builder --chown=avantime:avantime /workspace/apps ./apps
-COPY --from=builder --chown=avantime:avantime /workspace/packages ./packages
-RUN npm prune --omit=dev \
-    && npm pkg delete overrides.esbuild \
-    && npm install --no-save --omit=dev esbuild@0.28.1 \
-    && rm -rf /root/.npm \
-              /workspace/apps/web/.next \
-              /workspace/node_modules/nanoid \
-              /workspace/node_modules/postcss \
-              /workspace/node_modules/next/node_modules/postcss \
-              /workspace/node_modules/sharp \
-              /usr/local/lib/node_modules/npm \
+    && adduser -S -u 10001 -G avantime avantime \
+    && rm -rf /usr/local/lib/node_modules/npm \
               /usr/local/lib/node_modules/corepack \
               /opt/yarn-v1.22.22 \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg \
     && mkdir -p /tmp/avantime \
     && chown avantime:avantime /tmp/avantime
+COPY --from=builder --chown=avantime:avantime /workspace/package.json /workspace/package-lock.json ./
+COPY --from=worker-dependencies --chown=avantime:avantime /workspace/node_modules ./node_modules
+COPY --from=builder --chown=avantime:avantime /workspace/apps ./apps
+COPY --from=builder --chown=avantime:avantime /workspace/packages ./packages
+RUN rm -rf /workspace/apps/web/.next
 USER 10001:10001
 
 FROM worker-base AS document-worker
