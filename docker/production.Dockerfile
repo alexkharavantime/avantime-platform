@@ -51,7 +51,15 @@ COPY --from=builder --chown=avantime:avantime /workspace/package.json /workspace
 COPY --from=builder --chown=avantime:avantime /workspace/node_modules ./node_modules
 COPY --from=builder --chown=avantime:avantime /workspace/apps ./apps
 COPY --from=builder --chown=avantime:avantime /workspace/packages ./packages
-RUN npm prune --omit=dev && mkdir -p /tmp/avantime && chown avantime:avantime /tmp/avantime
+RUN npm prune --omit=dev \
+    && rm -rf /root/.npm \
+              /workspace/apps/web/.next \
+              /usr/local/lib/node_modules/npm \
+              /usr/local/lib/node_modules/corepack \
+              /opt/yarn-v1.22.22 \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+    && mkdir -p /tmp/avantime \
+    && chown avantime:avantime /tmp/avantime
 USER 10001:10001
 
 FROM worker-base AS document-worker
