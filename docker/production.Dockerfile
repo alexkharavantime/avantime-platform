@@ -52,6 +52,7 @@ COPY --from=builder --chown=avantime:avantime /workspace/node_modules ./node_mod
 COPY --from=builder --chown=avantime:avantime /workspace/apps ./apps
 COPY --from=builder --chown=avantime:avantime /workspace/packages ./packages
 RUN npm prune --omit=dev \
+    && npm pkg delete overrides.esbuild \
     && npm install --no-save --omit=dev esbuild@0.28.1 \
     && rm -rf /root/.npm \
               /workspace/apps/web/.next \
