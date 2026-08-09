@@ -52,8 +52,13 @@ COPY --from=builder --chown=avantime:avantime /workspace/node_modules ./node_mod
 COPY --from=builder --chown=avantime:avantime /workspace/apps ./apps
 COPY --from=builder --chown=avantime:avantime /workspace/packages ./packages
 RUN npm prune --omit=dev \
+    && npm install --no-save --omit=dev esbuild@0.28.1 \
     && rm -rf /root/.npm \
               /workspace/apps/web/.next \
+              /workspace/node_modules/nanoid \
+              /workspace/node_modules/postcss \
+              /workspace/node_modules/next/node_modules/postcss \
+              /workspace/node_modules/sharp \
               /usr/local/lib/node_modules/npm \
               /usr/local/lib/node_modules/corepack \
               /opt/yarn-v1.22.22 \
