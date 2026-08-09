@@ -38,12 +38,18 @@ RUN npm prune --omit=dev \
          package_dir="$(dirname "$package_json")"; \
          modules_dir="$(dirname "$package_dir")"; \
          version="$(node -p "require('$package_json').version")"; \
-         binary="$modules_dir/@esbuild/linux-x64/bin/esbuild"; \
-         if [ -f "$binary" ]; then \
+         platform_binary="$modules_dir/@esbuild/linux-x64/bin/esbuild"; \
+         package_binary="$package_dir/bin/esbuild"; \
+         if [ -f "$platform_binary" ] || [ -f "$package_binary" ]; then \
            rm -rf /tmp/esbuild-bin; \
            mkdir -p /tmp/esbuild-bin; \
            GOBIN=/tmp/esbuild-bin go install "github.com/evanw/esbuild/cmd/esbuild@v${version}"; \
-           install -m 0755 /tmp/esbuild-bin/esbuild "$binary"; \
+           if [ -f "$platform_binary" ]; then \
+             install -m 0755 /tmp/esbuild-bin/esbuild "$platform_binary"; \
+           fi; \
+           if [ -f "$package_binary" ]; then \
+             install -m 0755 /tmp/esbuild-bin/esbuild "$package_binary"; \
+           fi; \
          fi; \
        done; \
        rm -rf /tmp/esbuild-bin \
@@ -86,6 +92,10 @@ RUN apk add --no-cache poppler-utils tesseract-ocr tesseract-ocr-data-eng \
     && chown avantime:avantime /tmp/avantime
 COPY --from=builder --chown=avantime:avantime /workspace/package.json /workspace/package-lock.json ./
 COPY --from=worker-dependencies --chown=avantime:avantime /workspace/node_modules ./node_modules
+# Prisma Client is generated in the builder after npm ci. Restore those generated
+# artifacts on top of the pruned runtime dependency tree used by workers.
+COPY --from=builder --chown=avantime:avantime /workspace/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=avantime:avantime /workspace/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=builder --chown=avantime:avantime /workspace/apps ./apps
 COPY --from=builder --chown=avantime:avantime /workspace/packages ./packages
 RUN rm -rf /workspace/apps/web/.next
