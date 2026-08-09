@@ -26,10 +26,15 @@ import {
 } from './retrieval';
 import {
   CompositeLexicalRetriever,
+  CompositeSemanticRetriever,
   KnowledgeLexicalRetriever,
+  KnowledgeSemanticRetriever,
 } from './knowledge-retrieval';
 
-import { PostgreSQLKnowledgeSearchAdapter } from './knowledge-indexing';
+import {
+  PostgreSQLKnowledgeSearchAdapter,
+  PostgreSQLKnowledgeVectorAdapter,
+} from './knowledge-indexing';
 import {
   DefaultCitationBuilder,
   DefaultRagAnswerService,
@@ -120,22 +125,39 @@ export function createRagServices(
     deploymentGeneration:
       dependencies.environment?.DEPLOYMENT_GENERATION ?? process.env.DEPLOYMENT_GENERATION,
   };
-  const documentLexical = new DefaultLexicalRetriever(
-  documents.metadata,
-  documents.processing,
-  configuration,
-  events,
-);
 
+  const documentLexical = new DefaultLexicalRetriever(
+    documents.metadata,
+    documents.processing,
+    configuration,
+    events,
+  );
   const knowledgeLexical = new KnowledgeLexicalRetriever(
     new PostgreSQLKnowledgeSearchAdapter(),
   );
-
   const lexical = new CompositeLexicalRetriever([
     documentLexical,
     knowledgeLexical,
   ]);
-    const semantic = new DefaultSemanticRetriever(gateway, vectors, configuration, events);
+
+  const documentSemantic = new DefaultSemanticRetriever(
+    gateway,
+    vectors,
+    configuration,
+    events,
+  );
+  const semantic: SemanticRetriever =
+    configuration.vector.driver === 'pgvector'
+      ? new CompositeSemanticRetriever([
+          documentSemantic,
+          new KnowledgeSemanticRetriever(
+            gateway,
+            new PostgreSQLKnowledgeVectorAdapter(),
+            configuration,
+          ),
+        ])
+      : documentSemantic;
+
   const hybrid = new DefaultHybridRetriever(lexical, semantic, configuration);
   const citationBuilder = new DefaultCitationBuilder(documents.metadata, documents.processing);
   const answers = new DefaultRagAnswerService(
