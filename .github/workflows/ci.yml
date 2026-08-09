@@ -169,7 +169,7 @@ jobs:
       - run: docker build --target web -f docker/production.Dockerfile -t avantime-platform:ci .
       - run: docker build --target document-worker -f docker/production.Dockerfile -t avantime-document-worker:ci .
       - name: Scan document worker for Critical/High vulnerabilities
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: avantime-document-worker:ci
           format: table
