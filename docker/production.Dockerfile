@@ -24,11 +24,32 @@ RUN mkdir -p apps/web/public \
     && npm run db:generate \
     && npm run build -w @avantime/web
 
+# Keep the runtime dependency graph pinned to the application lockfile. Rebuild each
+# esbuild executable with the current patched Go toolchain so Trivy does not surface
+# vulnerabilities inherited from the upstream prebuilt Go binaries.
+FROM golang:1.26.5-alpine AS worker-esbuild-toolchain
+
 FROM dependencies AS worker-dependencies
+COPY --from=worker-esbuild-toolchain /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:${PATH}"
 RUN npm prune --omit=dev \
-    && npm pkg delete overrides.esbuild \
-    && npm install --no-save --omit=dev tsx@4.23.1 esbuild@0.28.1 \
-    && rm -rf /root/.npm \
+    && set -eux; \
+       find /workspace/node_modules -path '*/esbuild/package.json' -type f | while read -r package_json; do \
+         package_dir="$(dirname "$package_json")"; \
+         modules_dir="$(dirname "$package_dir")"; \
+         version="$(node -p "require('$package_json').version")"; \
+         binary="$modules_dir/@esbuild/linux-x64/bin/esbuild"; \
+         if [ -f "$binary" ]; then \
+           rm -rf /tmp/esbuild-bin; \
+           mkdir -p /tmp/esbuild-bin; \
+           GOBIN=/tmp/esbuild-bin go install "github.com/evanw/esbuild/cmd/esbuild@v${version}"; \
+           install -m 0755 /tmp/esbuild-bin/esbuild "$binary"; \
+         fi; \
+       done; \
+       rm -rf /tmp/esbuild-bin \
+              /root/.cache/go-build \
+              /go/pkg/mod \
+              /root/.npm \
               /workspace/node_modules/nanoid \
               /workspace/node_modules/postcss \
               /workspace/node_modules/next/node_modules/postcss \
