@@ -26,6 +26,19 @@
       "owner": "platform-security",
       "expiresAt": "2026-08-12T23:59:59.000Z",
       "remediationTrigger": "upstream-next-supports-sharp-0.35-or-newer"
+    },
+    {
+      "id": "AR-DEP-2026-004",
+      "packages": ["js-yaml", "nanoid"],
+      "exposure": "build-time",
+      "compensatingControls": [
+        "repository-controlled-build-input-only",
+        "no-untrusted-yaml-or-custom-nanoid-generator-entrypoint",
+        "critical-audit-gate-unchanged"
+      ],
+      "owner": "platform-security",
+      "expiresAt": "2026-08-12T23:59:59.000Z",
+      "remediationTrigger": "upstream-compatible-patched-js-yaml-and-nanoid-release"
     }
   ]
 }
