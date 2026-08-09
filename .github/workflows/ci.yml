@@ -93,7 +93,7 @@ jobs:
       - run: npm run staging:up
       - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml exec -T knowledge-index-worker node --import tsx apps/web/scripts/check-staging-configuration.ts
       - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml exec -T knowledge-index-worker node --import tsx apps/web/scripts/check-staging-migrations.ts
-      - run: npm run staging:smoke
+      - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml exec -T knowledge-index-worker node --import tsx apps/web/scripts/run-staging-smoke.ts
       - run: docker compose --env-file .env.staging -p avantime-staging -f docker-compose.staging.yml -f docker-compose.staging.local.yml --profile operations run --rm backup
       - run: npm run staging:restore-rehearsal
       - if: always()
