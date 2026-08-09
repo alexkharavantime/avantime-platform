@@ -161,7 +161,7 @@ services:
       context: .
       dockerfile: docker/production.Dockerfile
       target: operations
-    command: ['npm', 'run', 'backup:create', '--', '--execute']
+    command: ['node', '--import', 'tsx', 'apps/web/scripts/backup-production.ts', '--execute']
     depends_on:
       backup-volume-init:
         condition: service_completed_successfully
