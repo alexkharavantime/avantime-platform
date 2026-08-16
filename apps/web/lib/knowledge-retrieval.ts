@@ -1,4 +1,5 @@
 import type {
+  AdditionalSemanticSource,
   LexicalRetriever,
   RetrievalRequest,
   RetrievalResult,
@@ -6,9 +7,13 @@ import type {
 
 import {
   PostgreSQLKnowledgeSearchAdapter,
+  PostgreSQLKnowledgeVectorAdapter,
   type KnowledgeIndexAudience,
   type KnowledgeIndexDocument,
 } from './knowledge-indexing';
+
+
+import type { RagConfiguration } from './rag-configuration';
 
 function toAudience(request: RetrievalRequest): KnowledgeIndexAudience {
   return {
@@ -16,8 +21,12 @@ function toAudience(request: RetrievalRequest): KnowledgeIndexAudience {
     companyId: request.tenant.companyId,
   };
 }
+function preview(
+  document: Pick<KnowledgeIndexDocument, 'title' | 'summary'> & {
+    searchText?: string;
+  },
+): string {
 
-function preview(document: KnowledgeIndexDocument): string {
   const value =
     document.summary ||
     document.searchText ||
@@ -62,7 +71,70 @@ export class KnowledgeLexicalRetriever implements LexicalRetriever {
       }));
   }
 }
-export class CompositeLexicalRetriever implements LexicalRetriever {
+export class KnowledgeSemanticRetriever
+  implements AdditionalSemanticSource
+{
+  constructor(
+    private readonly vectors: PostgreSQLKnowledgeVectorAdapter,
+    private readonly configuration: RagConfiguration,
+  ) {}
+
+  async retrieveWithEmbedding(
+    request: RetrievalRequest,
+    embedding: {
+      vector: readonly number[];
+      model: string;
+      dimensions: number;
+      version: string;
+    },
+  ): Promise<RetrievalResult[]> {
+    if (
+      embedding.model !== this.configuration.embedding.model ||
+      embedding.dimensions !== this.configuration.embedding.dimensions ||
+      embedding.version !== this.configuration.embedding.version
+    ) {
+      throw new Error(
+        'Query embedding is incompatible with the active knowledge vector index.',
+      );
+    }
+
+    const results = await this.vectors.search({
+      audience: toAudience(request),
+      vector: [...embedding.vector],
+      embeddingModel: embedding.model,
+      embeddingVersion: embedding.version,
+      topK: request.topK ?? this.configuration.hybrid.topK,
+      minimumSimilarity:
+        this.configuration.hybrid.semanticSimilarityThreshold,
+    });
+
+    return results.map((result, index) => {
+      const score = Number(
+        Math.max(0, Math.min(1, result.score)).toFixed(6),
+      );
+
+      return {
+        sourceType: 'ARTICLE',
+        sourceId: result.articleId,
+        sourceTitle: result.title,
+
+        articleId: result.articleId,
+
+        chunkId: `${result.articleId}:article`,
+        chunkIndex: index,
+        pageStart: null,
+        pageEnd: null,
+        preview: preview(result),
+        score,
+        scoreComponents: {
+          lexical: 0,
+          semantic: score,
+          hybrid: score,
+        },
+      };
+    });
+  }
+}export class CompositeLexicalRetriever implements LexicalRetriever {
   constructor(
     private readonly retrievers: readonly LexicalRetriever[],
   ) {}

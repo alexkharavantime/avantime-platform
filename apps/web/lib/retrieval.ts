@@ -132,6 +132,30 @@ export interface SemanticRetriever {
   retrieve(request: RetrievalRequest): Promise<RetrievalResult[]>;
 }
 
+export interface AdditionalSemanticSource {
+  retrieveWithEmbedding(
+    request: RetrievalRequest,
+    embedding: {
+      vector: readonly number[];
+      model: string;
+      dimensions: number;
+      version: string;
+    },
+  ): Promise<RetrievalResult[]>;
+}
+
+export interface AdditionalSemanticSource {
+  retrieveWithEmbedding(
+    request: RetrievalRequest,
+    embedding: {
+      vector: readonly number[];
+      model: string;
+      dimensions: number;
+      version: string;
+    },
+  ): Promise<RetrievalResult[]>;
+}
+
 export interface HybridRetriever {
   retrieve(request: RetrievalRequest): Promise<RetrievalResult[]>;
 }
@@ -311,12 +335,12 @@ export class DefaultLexicalRetriever implements LexicalRetriever {
 
 export class DefaultSemanticRetriever implements SemanticRetriever {
   constructor(
-    private readonly gateway: AiGateway,
-    private readonly vectors: VectorRepository,
-    private readonly configuration: RagConfiguration,
-    private readonly events: AiOperationalEventSink = new NoopAiOperationalEventSink(),
-  ) {}
-
+  private readonly gateway: AiGateway,
+  private readonly vectors: VectorRepository,
+  private readonly configuration: RagConfiguration,
+  private readonly events: AiOperationalEventSink = new NoopAiOperationalEventSink(),
+  private readonly additionalSources: readonly AdditionalSemanticSource[] = [],
+) {}
   async retrieve(request: RetrievalRequest) {
     const { query, topK } = validateRequest(request, this.configuration);
     const embedding = await this.gateway.createQueryEmbedding({
@@ -330,16 +354,32 @@ export class DefaultSemanticRetriever implements SemanticRetriever {
     ) {
       throw new Error('Query embedding is incompatible with the active vector index.');
     }
-    const results = await this.vectors.search({
-      tenant: request.tenant,
-      vector: embedding.vectors[0],
-      embeddingModel: this.configuration.embedding.model,
-      embeddingVersion: this.configuration.embedding.version,
-      dimensions: this.configuration.embedding.dimensions,
-      topK,
-      minimumSimilarity: this.configuration.hybrid.semanticSimilarityThreshold,
-      filters: request.filters,
-    });
+
+    const [results, additionalBatches] = await Promise.all([
+      this.vectors.search({
+        tenant: request.tenant,
+        vector: embedding.vectors[0],
+        embeddingModel: this.configuration.embedding.model,
+        embeddingVersion: this.configuration.embedding.version,
+        dimensions: this.configuration.embedding.dimensions,
+        topK,
+        minimumSimilarity:
+          this.configuration.hybrid.semanticSimilarityThreshold,
+        filters: request.filters,
+      }),
+
+  Promise.all(
+    this.additionalSources.map((source) =>
+      source.retrieveWithEmbedding(request, {
+        vector: embedding.vectors[0],
+        model: this.configuration.embedding.model,
+        dimensions: this.configuration.embedding.dimensions,
+        version: this.configuration.embedding.version,
+      }),
+    ),
+  ),
+]);
+
     const selected: RetrievalResult[] = results.map((result) => ({
       sourceType: 'DOCUMENT',
       sourceId: result.documentId,
@@ -360,17 +400,31 @@ export class DefaultSemanticRetriever implements SemanticRetriever {
         hybrid: Number(Math.max(0, Math.min(1, result.score)).toFixed(6)),
       },
     }));
+
+    const combined: RetrievalResult[] = [
+  ...selected,
+  ...additionalBatches.flat(),
+]
+  .sort(
+    (first, second) =>
+      second.score - first.score ||
+      first.sourceType.localeCompare(second.sourceType) ||
+      first.sourceId.localeCompare(second.sourceId) ||
+      first.chunkIndex - second.chunkIndex,
+  )
+  .slice(0, topK);
+
     this.events.record({
       name: 'retrieval_query',
       occurredAt: new Date().toISOString(),
       companyId: request.tenant.companyId,
       correlationId: request.correlationId,
       outcome: 'success',
-      count: selected.length,
+      count: combined.length,
       inputTokens: embedding.usage.inputTokens,
       estimatedCostEur: embedding.usage.estimatedCostEur,
     });
-    return selected;
+    return combined;
   }
 }
 
@@ -398,7 +452,7 @@ export class DefaultHybridRetriever implements HybridRetriever {
       }
     >();
     for (const result of lexical) {
-      const key = `${result.documentId}:${result.chunkId}`;
+      const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
       combined.set(key, {
         ...result,
         lexicalNormalized: lexicalMaximum > 0 ? result.score / lexicalMaximum : 0,
@@ -406,7 +460,7 @@ export class DefaultHybridRetriever implements HybridRetriever {
       });
     }
     for (const result of semantic) {
-      const key = `${result.documentId}:${result.chunkId}`;
+      const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
       const existing = combined.get(key);
       combined.set(key, {
         ...(existing ?? result),

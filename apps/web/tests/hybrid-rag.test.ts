@@ -86,14 +86,15 @@ async function fixture(
     ...overrides,
   };
   const services = createDocumentServices(loadDocumentConfiguration(environment), {
-    ragConfiguration: loadRagConfiguration(environment),
-    rag: {
-      embeddingProvider: provider,
-      answerProvider: provider,
-      costController: new MemoryAiCostController(100, 1_000),
-      environment,
-    },
-  });
+  ragConfiguration: loadRagConfiguration(environment),
+  rag: {
+    embeddingProvider: provider,
+    answerProvider: provider,
+    costController: new MemoryAiCostController(100, 1_000),
+    environment,
+    knowledgeSemanticSource: null,
+  },
+});
   return {
     dataDirectory,
     services,
