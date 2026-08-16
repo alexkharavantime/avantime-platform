@@ -565,25 +565,69 @@ test('prompt assembly keeps document prompt injection inside untrusted source da
   assert.doesNotMatch(request.systemInstructions, /reveal secrets/);
 });
 
-test('RAG returns a no-answer response without calling the answer provider', async () => {
+test('RAG answer carries ARTICLE source through generation and citations', async () => {
   const current = await fixture();
+
   try {
     assert.ok(current.services.rag);
-    const emptyRetriever: HybridRetriever = { retrieve: async () => [] };
+
+    const retrieval: RetrievalResult = {
+      sourceType: 'ARTICLE',
+      sourceId: 'article-1',
+      sourceTitle: 'Knowledge article',
+      articleId: 'article-1',
+      articleSlug: 'knowledge-article',
+
+      chunkId: 'article-1:article',
+      chunkIndex: 0,
+      pageStart: null,
+      pageEnd: null,
+      preview: 'Verified Knowledge Hub article text.',
+      score: 0.91,
+      scoreComponents: {
+        lexical: 0,
+        semantic: 0.91,
+        hybrid: 0.91,
+      },
+    };
+
+    const retriever: HybridRetriever = {
+      retrieve: async () => [retrieval],
+    };
+
+    const builder = new DefaultCitationBuilder(
+      current.services.metadata,
+      current.services.processing,
+      480,
+    );
+
     const service = new DefaultRagAnswerService(
-      emptyRetriever,
-      current.services.rag.citationBuilder,
+      retriever,
+      builder,
       current.services.rag.gateway,
       current.services.rag.configuration,
     );
+
     const answer = await service.answer({
       tenant: tenantA,
-      question: 'Unknown information?',
-      correlationId: 'no-answer',
+      question: 'What does the Knowledge Hub article say?',
+      correlationId: 'article-answer-e2e',
     });
-    assert.equal(answer.status, 'no_answer');
-    assert.deepEqual(answer.citations, []);
-    assert.equal(current.provider.answerCalls, 0);
+
+    assert.equal(current.provider.answerCalls, 1);
+    assert.equal(answer.status, 'answered');
+    assert.equal(answer.citations.length, 1);
+
+    const citation = answer.citations[0];
+    assert.equal(citation.sourceId, 'S1');
+    assert.equal(citation.sourceType, 'ARTICLE');
+    assert.equal(citation.articleId, 'article-1');
+    assert.equal(citation.articleSlug, 'knowledge-article');
+    assert.equal(citation.documentId, undefined);
+    assert.equal(
+      citation.link,
+      '/portal/knowledge/knowledge-article',
+    );
   } finally {
     await current.cleanup();
   }
