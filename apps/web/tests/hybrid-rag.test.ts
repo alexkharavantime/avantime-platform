@@ -486,6 +486,58 @@ test('citations are rebuilt from tenant-authorized chunks and forged markers are
   }
 });
 
+test('ARTICLE citations use Knowledge Hub slug without document lookup', async () => {
+  const current = await fixture();
+
+  try {
+    const builder = new DefaultCitationBuilder(
+      current.services.metadata,
+      current.services.processing,
+      40,
+    );
+
+    const retrieval: RetrievalResult = {
+      sourceType: 'ARTICLE',
+      sourceId: 'article-1',
+      sourceTitle: 'Knowledge article',
+      articleId: 'article-1',
+      articleSlug: 'knowledge-article',
+
+      chunkId: 'article-1:article',
+      chunkIndex: 0,
+      pageStart: null,
+      pageEnd: null,
+      preview: 'Verified Knowledge Hub article text.',
+      score: 0.91,
+      scoreComponents: {
+        lexical: 0,
+        semantic: 0.91,
+        hybrid: 0.91,
+      },
+    };
+
+    const citations = await builder.build(tenantA, [retrieval]);
+
+    assert.equal(citations.length, 1);
+    assert.equal(citations[0].sourceId, 'S1');
+    assert.equal(citations[0].sourceType, 'ARTICLE');
+    assert.equal(citations[0].articleId, 'article-1');
+    assert.equal(citations[0].articleSlug, 'knowledge-article');
+    assert.equal(citations[0].documentId, undefined);
+    assert.equal(citations[0].sourceTitle, 'Knowledge article');
+    assert.equal(
+      citations[0].link,
+      '/portal/knowledge/knowledge-article',
+    );
+    assert.equal(
+      citations[0].excerpt,
+      'Verified Knowledge Hub article text.',
+    );
+  } finally {
+    await current.cleanup();
+  }
+});
+
 test('prompt assembly keeps document prompt injection inside untrusted source data', () => {
   const request: RagGenerationRequest = {
     tenant: tenantA,
@@ -497,6 +549,7 @@ test('prompt assembly keeps document prompt injection inside untrusted source da
     sources: [
       {
         sourceId: 'S1',
+        sourceType: 'DOCUMENT',
         documentId: 'document-a',
         chunkId: 'chunk-a',
         title: 'Policy',

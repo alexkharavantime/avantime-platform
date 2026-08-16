@@ -72,7 +72,7 @@ export type RetrievalResult = {
    * Заполняется только для sourceType === 'ARTICLE'.
    */
   articleId?: string;
-
+  articleSlug?: string;
   /**
    * Идентификатор индексируемого фрагмента источника.
    *

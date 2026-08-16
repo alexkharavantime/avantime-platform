@@ -10,6 +10,7 @@ export type KnowledgeIndexAudience =
 
 export type KnowledgeIndexDocument = {
   articleId: string;
+  slug: string;
   sourceVersion: number;
   generation: number;
   ownerScope: 'PLATFORM' | 'ORGANIZATION' | 'SYSTEM' | 'LEGACY_UNCLASSIFIED';
@@ -201,6 +202,7 @@ export class PostgreSQLKnowledgeSearchAdapter {
 export type KnowledgeVectorSearchResult = Pick<
   KnowledgeIndexDocument,
   | 'articleId'
+  |'slug'
   | 'sourceVersion'
   | 'generation'
   | 'ownerScope'
@@ -329,6 +331,7 @@ export class PostgreSQLKnowledgeVectorAdapter {
         v."companyId",
         v."visibility",
         v."lifecycleStatus",
+        a."slug",
         a."title",
         a."summary",
         a."tags",
@@ -384,6 +387,7 @@ export class PostgreSQLKnowledgeVectorAdapter {
 
 export function knowledgeDocumentFromArticle(article: {
   id: string;
+  slug: string;
   version: number;
   ownerScope: KnowledgeIndexDocument['ownerScope'];
   companyId: string | null;
@@ -397,6 +401,7 @@ export function knowledgeDocumentFromArticle(article: {
   const content = JSON.stringify(article.content);
   return {
     articleId: article.id,
+    slug: article.slug,
     sourceVersion: article.version,
     generation: article.version,
     ownerScope: article.ownerScope,

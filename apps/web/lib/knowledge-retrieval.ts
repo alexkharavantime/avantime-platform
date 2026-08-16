@@ -119,6 +119,7 @@ export class KnowledgeSemanticRetriever
         sourceTitle: result.title,
 
         articleId: result.articleId,
+        articleSlug: result.slug,
 
         chunkId: `${result.articleId}:article`,
         chunkIndex: index,

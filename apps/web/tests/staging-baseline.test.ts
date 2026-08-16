@@ -210,6 +210,7 @@ test('test notification adapter is idempotent and exposes only safe receipt IDs'
 
 const article: KnowledgeIndexDocument = {
   articleId: 'article-1',
+  slug: 'article-1',
   sourceVersion: 2,
   generation: 2,
   ownerScope: 'ORGANIZATION',

@@ -210,6 +210,7 @@ test('KnowledgeSemanticRetriever maps vector result to ARTICLE retrieval result'
 
   const vectorResult: KnowledgeVectorSearchResult = {
     articleId: 'article-1',
+    slug: 'article-1',
     sourceVersion: 3,
     generation: 3,
     ownerScope: 'ORGANIZATION',

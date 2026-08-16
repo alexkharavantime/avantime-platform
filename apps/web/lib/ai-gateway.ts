@@ -43,7 +43,11 @@ export type EmbeddingResult = {
 
 export type RagContextSource = {
   sourceId: string;
-  documentId: string;
+  sourceType: 'DOCUMENT' | 'ARTICLE';
+
+  documentId?: string;
+  articleId?: string;
+
   chunkId: string;
   title: string;
   excerpt: string;

@@ -11,10 +11,15 @@ import type { HybridRetriever, RetrievalResult } from './retrieval';
 
 export type Citation = {
   sourceId: string;
-  sourceType: 'DOCUMENT';
+  sourceType: 'DOCUMENT' | 'ARTICLE';
   sourceTitle: string;
-  documentId: string;
-  documentTitle: string;
+
+  documentId?: string;
+  documentTitle?: string;
+
+  articleId?: string;
+  articleSlug?: string;
+
   chunkId: string;
   pageStart: number | null;
   pageEnd: number | null;
@@ -52,44 +57,88 @@ export class DefaultCitationBuilder implements CitationBuilder {
     private readonly maximumExcerptCharacters = 480,
   ) {}
 
-  async build(tenant: DocumentTenantContext, results: readonly RetrievalResult[]) {
-    const citations: Citation[] = [];
-    const seen = new Set<string>();
-    for (const result of results) {
-    if (result.sourceType !== 'DOCUMENT' || !result.documentId) {
-      continue;
-    }
+  async build(
+  tenant: DocumentTenantContext,
+  results: readonly RetrievalResult[],
+): Promise<Citation[]> {
+  const citations: Citation[] = [];
+  const seen = new Set<string>();
 
-    const key = `${result.documentId}:${result.chunkId}`;
-    if (seen.has(key)) continue;
+  for (const result of results) {
+    if (result.sourceType === 'ARTICLE') {
+      if (!result.articleId || !result.articleSlug) continue;
 
-  const document = await this.metadata.findById(tenant, result.documentId);
-      if (!document || document.status !== 'COMPLETED' || document.deletedAt) continue;
-      const chunks = await this.processing.readChunks(tenant, document.id);
-      const chunk = chunks.find((candidate) => candidate.id === result.chunkId);
-      if (!chunk) continue;
-      const excerpt = chunk.text
+      const key = `ARTICLE:${result.articleId}:${result.chunkId}`;
+      if (seen.has(key)) continue;
+
+      const excerpt = result.preview
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, this.maximumExcerptCharacters);
+
       if (!excerpt) continue;
+
       seen.add(key);
+
       citations.push({
         sourceId: `S${citations.length + 1}`,
-        documentId: document.id,
-        sourceType: 'DOCUMENT',
-        sourceTitle: document.originalName,
-        documentTitle: document.originalName,
-        chunkId: chunk.id,
-        pageStart: result.pageStart,
-        pageEnd: result.pageEnd,
+        sourceType: 'ARTICLE',
+        sourceTitle: result.sourceTitle,
+
+        articleId: result.articleId,
+        articleSlug: result.articleSlug,
+
+        chunkId: result.chunkId,
+        pageStart: null,
+        pageEnd: null,
         excerpt,
         retrievalScore: result.score,
-        link: `/portal/documents/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(chunk.id)}`,
+        link: `/portal/knowledge/${encodeURIComponent(result.articleSlug)}`,
       });
+
+      continue;
     }
-    return citations;
+
+    if (!result.documentId) continue;
+
+    const key = `DOCUMENT:${result.documentId}:${result.chunkId}`;
+    if (seen.has(key)) continue;
+
+    const document = await this.metadata.findById(tenant, result.documentId);
+    if (!document || document.status !== 'COMPLETED' || document.deletedAt) continue;
+
+    const chunks = await this.processing.readChunks(tenant, document.id);
+    const chunk = chunks.find((candidate) => candidate.id === result.chunkId);
+    if (!chunk) continue;
+
+    const excerpt = chunk.text
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, this.maximumExcerptCharacters);
+
+    if (!excerpt) continue;
+
+    seen.add(key);
+
+    citations.push({
+      sourceId: `S${citations.length + 1}`,
+      sourceType: 'DOCUMENT',
+      sourceTitle: document.originalName,
+
+      documentId: document.id,
+      documentTitle: document.originalName,
+
+      chunkId: chunk.id,
+      pageStart: result.pageStart,
+      pageEnd: result.pageEnd,
+      excerpt,
+      retrievalScore: result.score,
+      link: `/portal/documents/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(chunk.id)}`,
+    });
   }
+
+  return citations;
+}
 }
 
 export function detectQuestionLanguage(question: string) {
@@ -97,6 +146,7 @@ export function detectQuestionLanguage(question: string) {
   if (/[āčēģīķļņšūž]/iu.test(question)) return 'lv';
   return 'en';
 }
+
 
 export function buildRagSystemInstructions(language: string) {
   return [
@@ -181,12 +231,14 @@ export class DefaultRagAnswerService implements RagAnswerService {
     }
     const language = detectQuestionLanguage(question);
     const sources: RagContextSource[] = selected.map((citation) => ({
-      sourceId: citation.sourceId,
-      documentId: citation.documentId,
-      chunkId: citation.chunkId,
-      title: citation.documentTitle,
-      excerpt: citation.excerpt,
-    }));
+    sourceId: citation.sourceId,
+    sourceType: citation.sourceType,
+    documentId: citation.documentId,
+    articleId: citation.articleId,
+    chunkId: citation.chunkId,
+    title: citation.sourceTitle,
+    excerpt: citation.excerpt,
+  }));
     const generated = await this.gateway.generateRagAnswer({
       tenant: request.tenant,
       question,
