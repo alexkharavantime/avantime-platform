@@ -14,6 +14,9 @@ immutable CI artifact, release digest, runbook record or approved ticket.
 | Identity/MFA/session lifecycle   | Security          | Pending       | Yes             | TASK-009 migration, key rotation, admin enrollment and staging login/revoke smoke  |
 | Document workers/OCR             | Operations        | Pending       | Yes             | heartbeat and real OCR smoke                                                       |
 | Embedding workers                | Operations        | Pending       | Yes             | embedding/vector checks                                                            |
+| Knowledge index workers          | Operations        | Pending       | Yes             | article index heartbeat, lifecycle and retrieval smoke                             |
+| Notification workers             | Operations        | Pending       | Yes             | outbox heartbeat and approved-provider terminal receipt                            |
+| Jira outbound/inbound workers    | Operations        | Pending       | Yes             | both heartbeats, backlog/DLQ and approved test-project evidence                    |
 | AI providers                     | AI owner          | Pending       | Yes             | safe configuration/model/dimension check                                           |
 | Backups                          | DBA/Platform      | Pending       | Yes             | `npm run backup:dry-run`, freshness                                                |
 | Restore/DR                       | Incident owner    | Pending       | Yes             | isolated rehearsal and signed record                                               |
@@ -59,6 +62,10 @@ npm run workers:heartbeat-check
 npm run ai:budget-check
 npm run backup:status
 ```
+
+`npm run staging:smoke:local` is local simulation evidence only. Managed staging starts with the
+read-only `npm run staging:preflight:managed` contract and requires separately authorized provider
+evidence; it cannot accept test Jira/notification or fake AI as success.
 
 Perform one authorized document/OCR/embedding/RAG flow with non-sensitive staging
 data, then verify citations, audit event, ledger entry and absence of content in

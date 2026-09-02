@@ -13,6 +13,10 @@ import {
 } from './staging-configuration';
 import { probeStagingObjectStorage } from './staging-object-storage';
 import { probeStagingRedis } from './staging-redis';
+import {
+  inspectCriticalStagingWorkerHeartbeat,
+  type CriticalStagingWorker,
+} from './staging-worker-heartbeat';
 
 export type StagingComponentName =
   | 'environment'
@@ -20,6 +24,8 @@ export type StagingComponentName =
   | 'migrations'
   | 'redis'
   | 'objectStorage'
+  | 'documentWorker'
+  | 'embeddingWorker'
   | 'notificationAdapter'
   | 'notificationWorker'
   | 'jiraAdapter'
@@ -120,10 +126,13 @@ export async function checkStagingReadiness(
       'migrations',
       'redis',
       'objectStorage',
+      'documentWorker',
+      'embeddingWorker',
       'notificationAdapter',
       'notificationWorker',
       'jiraAdapter',
       'jiraWorker',
+      'jiraInboundWorker',
       'knowledgeIndex',
       'knowledgeWorker',
       'governance',
@@ -200,6 +209,67 @@ export async function checkStagingReadiness(
     await probeStagingObjectStorage(configuration.objectStorage);
     return { status: 'ready', code: 'OBJECT_STORAGE_READY' };
   });
+
+  const criticalWorkerReadiness = async (worker: CriticalStagingWorker) => {
+    if (!prisma) throw new Error('DATABASE_UNAVAILABLE');
+    const client = await createRedisCommandClient(configuration.redis.url.toString(), {
+      connectTimeoutMs: configuration.redis.connectTimeoutMs,
+    });
+    try {
+      const runtime = await inspectCriticalStagingWorkerHeartbeat({
+        client,
+        configuration,
+        worker,
+        now,
+      });
+      if (!runtime.ready) {
+        return { status: 'unavailable' as const, code: runtime.code };
+      }
+      const rows =
+        worker === 'document'
+          ? await prisma.$queryRaw<Array<{ activeJobs: bigint; staleJobs: bigint }>>`
+              SELECT
+                COUNT(*) FILTER (WHERE "status" = 'PROCESSING') AS "activeJobs",
+                COUNT(*) FILTER (
+                  WHERE "status" = 'PROCESSING'
+                    AND (
+                      "workerHeartbeatAt" IS NULL
+                      OR "processingLeaseUntil" IS NULL
+                      OR "processingLeaseUntil" <= ${now}
+                    )
+                ) AS "staleJobs"
+              FROM "DocumentMetadata"
+            `
+          : await prisma.$queryRaw<Array<{ activeJobs: bigint; staleJobs: bigint }>>`
+              SELECT
+                COUNT(*) FILTER (WHERE "status" = 'PROCESSING') AS "activeJobs",
+                COUNT(*) FILTER (
+                  WHERE "status" = 'PROCESSING'
+                    AND (
+                      "heartbeatAt" IS NULL
+                      OR "leaseUntil" IS NULL
+                      OR "leaseUntil" <= ${now}
+                    )
+                ) AS "staleJobs"
+              FROM "DocumentEmbeddingJob"
+            `;
+      const activeJobs = Number(rows[0]?.activeJobs ?? 0);
+      const staleJobs = Number(rows[0]?.staleJobs ?? 0);
+      return {
+        status: staleJobs === 0 ? ('ready' as const) : ('unavailable' as const),
+        code:
+          staleJobs === 0
+            ? `${worker.toUpperCase()}_WORKER_READY`
+            : `${worker.toUpperCase()}_WORKER_STALE_JOBS`,
+        details: input.includeDetails ? { activeJobs, staleJobs } : undefined,
+      };
+    } finally {
+      await client.close?.();
+    }
+  };
+
+  components.documentWorker = await timed(() => criticalWorkerReadiness('document'));
+  components.embeddingWorker = await timed(() => criticalWorkerReadiness('embedding'));
 
   components.notificationAdapter = await timed(async () => {
     const ready = await createNotificationProvider(environment).checkReadiness();

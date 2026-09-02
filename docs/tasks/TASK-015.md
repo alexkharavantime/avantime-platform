@@ -20,7 +20,11 @@ subsystem.
   pgvector, ownership/visibility/version fencing and archive removal;
 - encrypted backup metadata and isolated local staging restore rehearsal;
 - staging smoke/security/CI gates, deployment and rollback runbooks;
-- Jira remains disabled and contains no credentials.
+- Jira remained disabled in the original TASK-015 scope and was added by TASK-016/TASK-017.
+
+После TASK-018 topology remediation синхронизировала тот же manifest с текущей архитектурой:
+staging теперь явно запускает document, embedding, notification, knowledge и оба Jira workers.
+Это follow-up к repository baseline, а не изменение исторического scope TASK-015.
 
 ## Критерии приёмки
 
@@ -43,7 +47,7 @@ Repository/local implementation validated on 2026-08-02:
 - `npm run db:generate`, forced typecheck and lint passed for all workspaces;
 - full unit suite: 174/174; full integration suite: 26/26; RAG and production integration: 1/1 each;
 - empty/legacy/repeated migration rehearsal passed with 13 migrations;
-- local staging Compose reached healthy for PostgreSQL, Redis, MinIO, both workers and web;
+- local staging Compose reached healthy for PostgreSQL, Redis, MinIO, then-current workers and web;
 - smoke passed 11 checks across HTTP, DB, Redis, object storage, outbox and knowledge fencing;
 - encrypted backup completed; isolated restore found 13 migrations, 41 tables and both TASK-015 tables;
 - targeted Chromium browser smoke passed desktop/tablet/mobile: 3/3;
@@ -54,6 +58,10 @@ Repository/local implementation validated on 2026-08-02:
 The live `npm audit` registry request was not executed because external dependency metadata
 transmission was not approved in this environment. Managed staging must not be marked complete from
 local simulation.
+
+Актуальное local/Docker evidence после topology remediation зафиксировано в Project Status и
+TASK-018; изменения пока находятся в незакоммиченном working tree. Старые показатели TASK-015 выше
+остаются историческим evidence и не доказывают готовность нового managed staging deployment.
 
 ## Известные ограничения
 

@@ -5,6 +5,8 @@
 Done — repository/application scope завершён и подтверждён unit/security, PostgreSQL/pgvector
 integration, migration, browser/accessibility и production build gates. Managed staging с реальными
 AI providers остаётся общим environment gate Version 2.0, а не незавершённой реализацией TASK-018.
+Follow-up topology remediation добавила недостающие runtime processes/readiness в deployment
+manifests и не изменила retrieval semantics TASK-018.
 
 ## Ветка
 
@@ -263,6 +265,20 @@ Merge diverged ветки вернул бы старую competing implementatio
   передачей dependency metadata не был разрешён; lockfiles и dependencies не изменялись;
 - managed staging и реальные AI/Jira providers — NOT RUN и не считаются validated.
 
+### Follow-up topology validation
+
+- staging и production reference manifests содержат document, embedding, notification, knowledge и
+  Jira outbound/inbound workers с migration dependency и fail-closed health/readiness;
+- local Compose достиг healthy для PostgreSQL/pgvector, Redis, MinIO, всех шести workers и web;
+- `/ready` вернул общий `ready`, включая document/embedding heartbeat и active-job lease checks;
+- local smoke прошёл actual document worker extraction, embedding worker/pgvector,
+  hybrid retrieval/citation, notification, Jira outbound/inbound и knowledge lifecycle;
+- isolated restore rehearsal подтвердил 17 migrations, 50 tables и оба staging-critical tables;
+- unit suite 198/198, typecheck, lint, topology/security/docs/secret checks — PASS;
+- PostgreSQL volume не удалялся: после освобождения только устаревшего build cache сервер завершил
+  WAL recovery и вернулся в healthy; низкий запас Docker VM остаётся локальным operational risk;
+- managed staging/provider/PITR/capacity evidence по-прежнему `PENDING`.
+
 ## Известные ограничения
 
 - статья индексируется как один стабильный article chunk; отдельное paragraph-level chunking и
@@ -271,6 +287,7 @@ Merge diverged ветки вернул бы старую competing implementatio
   PostgreSQL, retention/consent и полноценные conversation entities остаются AI-010;
 - managed staging, реальные AI providers, capacity/PITR и human operational ceremonies остаются
   общими внешними gates Version 2.0.
+- local smoke и reference topology не считаются managed evidence.
 
 ## Связанные документы
 

@@ -10,11 +10,16 @@ import { knowledgeIndexBackoffMs } from '../lib/knowledge-index-worker';
 import { notificationBackoffMs } from '../lib/notification-outbox';
 import { TestNotificationProvider } from '../lib/notification-providers';
 import {
+  CURRENT_STAGING_MIGRATION,
   loadStagingConfiguration,
   summarizeStagingConfiguration,
 } from '../lib/staging-configuration';
 import { createStagingProbeObjectKey } from '../lib/staging-object-storage';
 import { stagingRedisKey } from '../lib/staging-redis';
+import {
+  inspectCriticalStagingWorkerHeartbeat,
+  publishCriticalStagingWorkerHeartbeat,
+} from '../lib/staging-worker-heartbeat';
 
 function validEnvironment(): Record<string, string> {
   return {
@@ -79,14 +84,30 @@ function validEnvironment(): Record<string, string> {
     JIRA_INBOUND_POLL_INTERVAL_MS: '250',
     JIRA_INBOUND_RETENTION_DAYS: '30',
     JIRA_INBOUND_WORKER_ID: 'jira-inbound-staging-test',
-    APP_VERSION: 'task-015-test',
+    APP_VERSION: '2.0-test',
     COMMIT_SHA: 'abcdef1234567',
-    MIGRATION_VERSION: '20260802180000_staging_baseline',
+    MIGRATION_VERSION: CURRENT_STAGING_MIGRATION,
     DEPLOYMENT_GENERATION: 'staging-test-1',
     BACKUP_DESTINATION_REFERENCE: 'test:isolated-backup',
     BACKUP_DRIVER: 'local',
     BACKUP_RETENTION_DAYS: '7',
     OTEL_SERVICE_NAME: 'avantime-staging-test',
+    DOCUMENT_STORAGE_DRIVER: 's3',
+    DOCUMENT_METADATA_DRIVER: 'postgresql',
+    DOCUMENT_PROCESSING_QUEUE_DRIVER: 'external',
+    DOCUMENT_PROCESSING_QUEUE_NAME: 'staging-test-document',
+    DOCUMENT_WORKER_TENANT_ID: 'staging-system',
+    DOCUMENT_WORKER_ID: 'document-staging-test-1',
+    WORKER_VERSION: '2.0-test',
+    DOCUMENT_OCR_DRIVER: 'disabled',
+    DOCUMENT_OCR_REQUIRED_FOR_READINESS: 'false',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_EMBEDDING_MODEL: 'deterministic-staging-v1',
+    DOCUMENT_EMBEDDING_VERSION: 'staging-v1',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'redis',
+    DOCUMENT_VECTOR_DRIVER: 'pgvector',
+    RAG_ANSWER_DRIVER: 'fake',
+    DOCUMENT_RAG_REQUIRED_FOR_READINESS: 'true',
   };
 }
 
@@ -133,6 +154,104 @@ test('managed staging rejects local endpoints and test notification provider', (
   const environment = validEnvironment();
   environment.STAGING_MODE = 'managed';
   assert.throws(() => loadStagingConfiguration(environment), /TLS_REQUIRED/u);
+});
+
+test('managed staging rejects fake AI, disabled OCR, stale versions and non-immutable commits', () => {
+  const environment = validEnvironment();
+  environment.STAGING_MODE = 'managed';
+  environment.APP_BASE_URL = 'https://portal.staging.avantime.invalid';
+  environment.DATABASE_URL =
+    'postgresql://staging_user:staging_password_2026@database.staging.avantime.invalid/avantime_staging?sslmode=require';
+  environment.REDIS_URL =
+    'rediss://default:staging_redis_password_2026@redis.staging.avantime.invalid:6379/0';
+  environment.OBJECT_STORAGE_ENDPOINT = 'https://objects.staging.avantime.invalid';
+  environment.NOTIFICATION_PROVIDER_MODE = 'resend';
+  environment.RESEND_API_KEY = 'resend-staging-key-with-20-characters';
+  environment.BACKUP_DRIVER = 's3';
+  environment.BACKUP_STORAGE_ENDPOINT = 'https://backups.staging.avantime.invalid';
+  environment.BACKUP_OBJECT_STORAGE_BUCKET = 'avantime-staging-test-backups';
+  environment.JIRA_INTEGRATION_ENABLED = 'false';
+  environment.JIRA_MODE = 'disabled';
+  environment.JIRA_WEBHOOK_MODE = 'disabled';
+  environment.COMMIT_SHA = 'a'.repeat(40);
+  environment.DOCUMENT_OCR_DRIVER = 'local';
+  environment.DOCUMENT_OCR_REQUIRED_FOR_READINESS = 'true';
+
+  assert.throws(() => loadStagingConfiguration(environment), /MANAGED_RAG_RUNTIME_INVALID/u);
+
+  environment.DOCUMENT_EMBEDDING_DRIVER = 'openai';
+  environment.DOCUMENT_EMBEDDING_MODEL = 'text-embedding-3-small';
+  environment.KNOWLEDGE_EMBEDDING_MODEL = 'text-embedding-3-small';
+  environment.RAG_ANSWER_DRIVER = 'openai';
+  environment.OPENAI_API_KEY = 'openai-staging-key-with-20-characters';
+  assert.equal(loadStagingConfiguration(environment).mode, 'managed');
+
+  environment.MIGRATION_VERSION = '20260803180000_jira_status_comment_sync';
+  assert.throws(() => loadStagingConfiguration(environment), /MIGRATION_VERSION_STALE/u);
+  environment.MIGRATION_VERSION = CURRENT_STAGING_MIGRATION;
+  environment.COMMIT_SHA = 'local-validation';
+  assert.throws(() => loadStagingConfiguration(environment), /COMMIT_SHA_INVALID/u);
+  environment.COMMIT_SHA = 'a'.repeat(40);
+  environment.APP_VERSION = 'task-016-local';
+  environment.WORKER_VERSION = 'task-016-local';
+  assert.throws(() => loadStagingConfiguration(environment), /APP_VERSION_STALE/u);
+});
+
+test('critical staging worker heartbeat is versioned, expiring and fail-closed', async () => {
+  const values = new Map<string, string>();
+  const client = {
+    async sendCommand(args: string[]) {
+      const [command, key, value] = args;
+      if (command === 'SET') {
+        values.set(key!, value!);
+        return 'OK';
+      }
+      if (command === 'GET') return values.get(key!) ?? null;
+      throw new Error('unsupported');
+    },
+  };
+  const configuration = loadStagingConfiguration(validEnvironment());
+  const now = new Date('2026-09-02T12:00:00.000Z');
+  await publishCriticalStagingWorkerHeartbeat({
+    client,
+    configuration,
+    worker: 'document',
+    workerVersion: configuration.versions.application,
+    now,
+  });
+  assert.equal(
+    (
+      await inspectCriticalStagingWorkerHeartbeat({
+        client,
+        configuration,
+        worker: 'document',
+        now,
+      })
+    ).ready,
+    true,
+  );
+  assert.equal(
+    (
+      await inspectCriticalStagingWorkerHeartbeat({
+        client,
+        configuration,
+        worker: 'document',
+        now: new Date(now.getTime() + 121_000),
+      })
+    ).ready,
+    false,
+  );
+  assert.equal(
+    (
+      await inspectCriticalStagingWorkerHeartbeat({
+        client,
+        configuration,
+        worker: 'embedding',
+        now,
+      })
+    ).ready,
+    false,
+  );
 });
 
 test('Redis keys separate staging areas and tenants', () => {

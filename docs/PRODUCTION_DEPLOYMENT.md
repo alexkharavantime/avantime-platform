@@ -13,14 +13,15 @@ provider keys or production credentials.
 
 ## Images and processes
 
-`docker/production.Dockerfile` contains `web`, `document-worker` and
-`embedding-worker` targets. Runtime images use a non-root user; workers include
+`docker/production.Dockerfile` contains `web`, `migration`, `document-worker`,
+`embedding-worker`, `knowledge-index-worker`, `notification-worker`, `jira-worker`,
+`jira-inbound-worker` and `operations` targets. Runtime images use a non-root user; workers include
 Tesseract/Poppler. Reference topology and resource/read-only/tmpfs settings are in
 `docker-compose.production.example.yml`. Its backup job writes encrypted archives
 to a dedicated persistent volume; production automation must transfer and verify
 them in isolated immutable backup storage before marking the backup durable.
-Only web and embedding workers join the reference egress network for AI provider
-calls. A production deployment must replace unrestricted bridge egress with an
+Only processes that call approved external providers join the reference egress network. A
+production deployment must replace unrestricted bridge egress with an
 explicit provider/telemetry allowlist and keep PostgreSQL, Redis and object
 storage on private networks.
 
@@ -30,6 +31,10 @@ Build locally without publishing:
 docker build -f docker/production.Dockerfile --target web -t avantime-web:local .
 docker build -f docker/production.Dockerfile --target document-worker -t avantime-document-worker:local .
 docker build -f docker/production.Dockerfile --target embedding-worker -t avantime-embedding-worker:local .
+docker build -f docker/production.Dockerfile --target knowledge-index-worker -t avantime-knowledge-worker:local .
+docker build -f docker/production.Dockerfile --target notification-worker -t avantime-notification-worker:local .
+docker build -f docker/production.Dockerfile --target jira-worker -t avantime-jira-worker:local .
+docker build -f docker/production.Dockerfile --target jira-inbound-worker -t avantime-jira-inbound-worker:local .
 docker build -f docker/production.Dockerfile --target migration -t avantime-migration:local .
 docker build -f docker/production.Dockerfile --target operations -t avantime-operations:local .
 ```
@@ -59,7 +64,8 @@ are prohibited without separate approval.
 1. Freeze destructive administration and verify backup timestamps.
 2. Run migration job before application rollout.
 3. Deploy Redis-compatible queue schema/application code.
-4. Start new workers with unique `workerId`, version and generation.
+4. Start document, embedding, knowledge, notification and both Jira workers with unique
+   `workerId`, version and generation.
 5. Roll web nodes behind the load balancer.
 6. Stop claims on old workers and let current jobs finish or leases expire.
 7. Verify queues, heartbeat, OCR, vector/RAG, budget and audit state.

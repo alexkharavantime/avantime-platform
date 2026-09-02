@@ -1,13 +1,16 @@
 import { isIP } from 'node:net';
 
+import { loadDocumentConfiguration } from './document-configuration';
 import { loadJiraConfiguration, type JiraConfiguration } from './jira-configuration';
 import {
   loadJiraWebhookConfiguration,
   type JiraWebhookConfiguration,
 } from './jira-webhook-configuration';
+import { loadRagConfiguration } from './rag-configuration';
 
 export type StagingMode = 'local' | 'managed';
 export type NotificationProviderMode = 'test' | 'resend';
+export const CURRENT_STAGING_MIGRATION = '20260902120000_task_018_knowledge_delete_lifecycle';
 
 export type StagingConfiguration = {
   appEnvironment: 'staging';
@@ -53,6 +56,22 @@ export type StagingConfiguration = {
     embeddingModel: string;
     embeddingVersion: string;
   };
+  runtime: {
+    documents: {
+      storageDriver: 'local' | 's3';
+      metadataDriver: 'local' | 'postgresql';
+      queueDriver: 'local' | 'external';
+      ocrDriver: 'local' | 'disabled';
+      ocrRequiredForReadiness: boolean;
+    };
+    rag: {
+      embeddingDriver: 'fake' | 'openai' | 'gemini' | 'disabled';
+      answerDriver: 'fake' | 'openai' | 'gemini' | 'disabled';
+      embeddingQueueDriver: 'local' | 'postgresql' | 'redis';
+      vectorDriver: 'memory' | 'pgvector';
+      requiredForReadiness: boolean;
+    };
+  };
   versions: {
     application: string;
     commitSha: string;
@@ -78,6 +97,7 @@ export type SafeStagingConfigurationSummary = {
     webhookMode: JiraWebhookConfiguration['mode'];
   };
   knowledge: { cache: 'redis'; search: 'postgresql'; vector: 'pgvector' };
+  runtime: StagingConfiguration['runtime'];
   versions: StagingConfiguration['versions'];
   backup: { destinationConfigured: true; retentionDays: number };
   observability: StagingConfiguration['observability'];
@@ -254,6 +274,53 @@ export function loadStagingConfiguration(
   if (cacheDriver !== 'redis' || searchDriver !== 'postgresql' || vectorDriver !== 'pgvector') {
     throw new Error('STAGING_CONFIG_KNOWLEDGE_DRIVERS_INVALID');
   }
+  const documents = loadDocumentConfiguration(environment);
+  const rag = loadRagConfiguration(environment);
+  if (
+    mode === 'managed' &&
+    (documents.storageDriver !== 's3' ||
+      documents.metadataDriver !== 'postgresql' ||
+      documents.queueDriver !== 'external' ||
+      documents.ocr.driver !== 'local' ||
+      !documents.ocrRequiredForReadiness)
+  ) {
+    throw new Error('STAGING_CONFIG_MANAGED_DOCUMENT_RUNTIME_INVALID');
+  }
+  if (
+    mode === 'managed' &&
+    ((rag.embedding.driver !== 'openai' && rag.embedding.driver !== 'gemini') ||
+      (rag.answer.driver !== 'openai' && rag.answer.driver !== 'gemini') ||
+      rag.embeddingQueue.driver !== 'redis' ||
+      rag.vector.driver !== 'pgvector' ||
+      !rag.requiredForReadiness)
+  ) {
+    throw new Error('STAGING_CONFIG_MANAGED_RAG_RUNTIME_INVALID');
+  }
+  if (
+    required(environment, 'KNOWLEDGE_EMBEDDING_MODEL') !== rag.embedding.model ||
+    required(environment, 'KNOWLEDGE_EMBEDDING_VERSION') !== rag.embedding.version
+  ) {
+    throw new Error('STAGING_CONFIG_EMBEDDING_CONTRACT_MISMATCH');
+  }
+
+  const applicationVersion = assertReference(required(environment, 'APP_VERSION'), 'APP_VERSION');
+  if (/^task-0(?:0[1-9]|1[0-7])(?:-|$)/u.test(applicationVersion)) {
+    throw new Error('STAGING_CONFIG_APP_VERSION_STALE');
+  }
+  const commitSha = assertReference(required(environment, 'COMMIT_SHA'), 'COMMIT_SHA');
+  if (mode === 'managed' && !/^[a-f0-9]{40}$/u.test(commitSha)) {
+    throw new Error('STAGING_CONFIG_COMMIT_SHA_INVALID');
+  }
+  const migrationVersion = assertReference(
+    required(environment, 'MIGRATION_VERSION'),
+    'MIGRATION_VERSION',
+  );
+  if (migrationVersion !== CURRENT_STAGING_MIGRATION) {
+    throw new Error('STAGING_CONFIG_MIGRATION_VERSION_STALE');
+  }
+  if (required(environment, 'WORKER_VERSION') !== applicationVersion) {
+    throw new Error('STAGING_CONFIG_WORKER_VERSION_MISMATCH');
+  }
 
   return {
     appEnvironment: 'staging',
@@ -308,10 +375,26 @@ export function loadStagingConfiguration(
         'KNOWLEDGE_EMBEDDING_VERSION',
       ),
     },
+    runtime: {
+      documents: {
+        storageDriver: documents.storageDriver,
+        metadataDriver: documents.metadataDriver,
+        queueDriver: documents.queueDriver,
+        ocrDriver: documents.ocr.driver,
+        ocrRequiredForReadiness: documents.ocrRequiredForReadiness,
+      },
+      rag: {
+        embeddingDriver: rag.embedding.driver,
+        answerDriver: rag.answer.driver,
+        embeddingQueueDriver: rag.embeddingQueue.driver,
+        vectorDriver: rag.vector.driver,
+        requiredForReadiness: rag.requiredForReadiness,
+      },
+    },
     versions: {
-      application: assertReference(required(environment, 'APP_VERSION'), 'APP_VERSION'),
-      commitSha: assertReference(required(environment, 'COMMIT_SHA'), 'COMMIT_SHA'),
-      migration: assertReference(required(environment, 'MIGRATION_VERSION'), 'MIGRATION_VERSION'),
+      application: applicationVersion,
+      commitSha,
+      migration: migrationVersion,
       deploymentGeneration: assertReference(
         required(environment, 'DEPLOYMENT_GENERATION'),
         'DEPLOYMENT_GENERATION',
@@ -368,6 +451,7 @@ export function summarizeStagingConfiguration(
       webhookMode: configuration.jiraWebhook.mode,
     },
     knowledge: { cache: 'redis', search: 'postgresql', vector: 'pgvector' },
+    runtime: configuration.runtime,
     versions: configuration.versions,
     backup: {
       destinationConfigured: true,

@@ -83,6 +83,12 @@ Worker требует безопасные `DOCUMENT_WORKER_TENANT_ID` и `DOCUM
 
 При аварийном завершении lease recovery возвращает просроченный job в обработку с более высоким fencing token. Heartbeat продлевает lease во время OCR/embedding, а critical metadata/completion updates отклоняются после потери lease. Worker version и deployment generation сохраняются для диагностики.
 
+В staging `document-worker` и `embedding-worker` являются отдельными обязательными процессами
+из `docker-compose.staging.yml`. Каждый публикует короткоживущий Redis runtime heartbeat,
+привязанный к application version и deployment generation. Этот signal доказывает присутствие
+idle worker process; job heartbeat/lease в PostgreSQL отдельно доказывает здоровье активной работы.
+Local Compose использует тот же worker entrypoint и image target, а не отдельную реализацию.
+
 ## Health
 
 Route `/api/health/documents` поддерживает:
@@ -185,6 +191,11 @@ decisions. Application contracts, Redis adapter, fencing, backup/restore guards,
 telemetry, ledger and reference deployment are implemented by TASK-005.
 
 Локальный OCR завершённой TASK-003 проверяется отдельными `documents:ocr-check`, `test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; real OCR test не входит в обычные unit или PostgreSQL/MinIO integration tests.
+
+Полный local staging smoke запускается как `npm run staging:smoke:local` и использует synthetic PDF,
+реальные Redis queues, отдельные document/embedding processes, PostgreSQL/pgvector и MinIO. Он не
+является managed staging evidence. Managed contract требует enabled production-like OCR и approved
+AI provider, но внешние providers в repository gate не вызываются.
 
 ## Связанные документы
 

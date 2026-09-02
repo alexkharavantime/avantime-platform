@@ -12,15 +12,15 @@ embeddings, credentials, passwords, secrets and API keys.
 
 ## Required metrics
 
-| Area       | Metrics                                                      |
-| ---------- | ------------------------------------------------------------ |
-| Queues     | depth, oldest job age, retries, quarantine                   |
-| Workers    | heartbeat age, lease loss/fence rejection                    |
-| Processing | OCR and embedding latency/error rate                         |
-| Retrieval  | retrieval/RAG/vector latency, no-answer rate, citation count |
-| Security   | tenant leakage count, rejected unsafe telemetry              |
-| AI cost    | EUR cost, reservation failures, budget utilization           |
-| Recovery   | backup age, restore rehearsal status                         |
+| Area       | Metrics                                                                  |
+| ---------- | ------------------------------------------------------------------------ |
+| Queues     | depth, oldest job age, retries, quarantine                               |
+| Workers    | per-runtime heartbeat age, active/stale jobs, lease loss/fence rejection |
+| Processing | OCR and embedding latency/error rate                                     |
+| Retrieval  | retrieval/RAG/vector latency, no-answer rate, citation count             |
+| Security   | tenant leakage count, rejected unsafe telemetry                          |
+| AI cost    | EUR cost, reservation failures, budget utilization                       |
+| Recovery   | backup age, restore rehearsal status                                     |
 
 ## Initial alert thresholds
 
@@ -40,7 +40,10 @@ These are proposed, not measured SLO commitments:
 ## Health access
 
 Public liveness/readiness remains sanitized. Core, OCR, embedding/vector and RAG
-components are explicit. Detailed health is `ADMIN`-only; queue, heartbeat,
+components are explicit. Staging additionally reports document, embedding, knowledge,
+notification, Jira outbound and Jira inbound workers. Document/embedding runtime heartbeat is
+stored as a short-lived version/generation-bound Redis record; per-job database heartbeat and
+lease remain a separate workload-readiness signal. Detailed health is `ADMIN`-only; queue, heartbeat,
 backup and budget details are available through restricted operational commands.
 No response exposes URLs, bucket/database names, credentials or provider errors.
 

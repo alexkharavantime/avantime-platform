@@ -16,6 +16,7 @@ npm run security:staging-scan
 npm run staging:config-check
 docker compose --env-file "$STAGING_ENV_FILE" -f docker-compose.staging.yml config --quiet
 npm run staging:migration-status
+npm run staging:preflight:managed
 ```
 
 The migration status command is expected to fail before a deployment that contains a pending
@@ -27,7 +28,7 @@ evidence.
 ```bash
 cp .env.staging.local.example .env.staging
 npm run staging:up
-npm run staging:smoke
+npm run staging:smoke:local
 npm run staging:restore-rehearsal
 npm run staging:down
 ```
@@ -42,9 +43,11 @@ it does not prove managed provider readiness.
 3. Render environment from secret store and run configuration/manifest preflight.
 4. Run encrypted PostgreSQL backup and private object inventory; verify checksums and durable copy.
 5. Run the one-shot migration service. Stop on non-zero exit; never reset the database.
-6. Start/update notification, knowledge and Jira workers; require matching-generation heartbeats.
+6. Start/update document, embedding, notification, knowledge and both Jira workers; require
+   matching-generation runtime heartbeats and no stale active jobs.
 7. Update web and wait for `/ready`.
-8. Run the staging smoke suite and targeted browser smoke.
+8. Run an approved managed smoke/evidence procedure after `staging:preflight:managed`; never use
+   `staging:smoke:local` as managed evidence.
 9. Preserve redacted logs, backup manifest, migration result, readiness report and smoke evidence.
 
 On a completely empty database the migration image creates only the historical account-schema
@@ -60,7 +63,8 @@ docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
 docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
   -f docker-compose.staging.yml run --rm migration
 docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
-  -f docker-compose.staging.yml up -d --wait notification-worker knowledge-index-worker jira-worker web
+  -f docker-compose.staging.yml up -d --wait document-worker embedding-worker notification-worker \
+  knowledge-index-worker jira-worker jira-inbound-worker web
 ```
 
 ## Failure handling

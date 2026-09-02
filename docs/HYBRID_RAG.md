@@ -18,6 +18,12 @@ Embedding worker:
 
 HTTP request не выполняет embeddings. Удаление или повторная обработка документа удаляет embedding job/vector records либо планирует новую индексацию.
 
+В canonical staging/production reference topology `embedding-worker` и
+`knowledge-index-worker` — разные процессы: первый обслуживает document embedding queue, второй —
+durable ARTICLE index events. Оба используют существующий AI Gateway/vector contracts, но имеют
+разные lifecycle/heartbeat boundaries. Local staging запускает оба процесса; managed configuration
+fail-closed отклоняет fake/disabled embedding и answer providers.
+
 ## Vector storage
 
 Production и integration используют PostgreSQL с расширением `pgvector`. Составной ключ и запросы включают `companyId`, `documentId`, `chunkId`, embedding model и version. SQL migration:

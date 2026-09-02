@@ -1,7 +1,7 @@
 name: avantime-production-reference
 
 x-runtime: &runtime
-  image: avantime-platform:task-005
+  image: ${PRODUCTION_APP_IMAGE:-avantime-platform}:${APP_VERSION:?APP_VERSION is required}
   restart: unless-stopped
   read_only: true
   tmpfs:
@@ -12,6 +12,10 @@ x-runtime: &runtime
     - ALL
   networks:
     - application
+  labels:
+    com.avantime.environment: production
+    com.avantime.version: ${APP_VERSION:?APP_VERSION is required}
+    com.avantime.commit: ${COMMIT_SHA:?COMMIT_SHA is required}
   deploy:
     resources:
       limits:
@@ -24,7 +28,7 @@ x-runtime: &runtime
 services:
   migration:
     <<: *runtime
-    image: avantime-platform-migration:task-005
+    image: ${PRODUCTION_MIGRATION_IMAGE:-avantime-platform-migration}:${APP_VERSION}
     command:
       ['npx', 'prisma', 'migrate', 'deploy', '--schema', 'packages/database/prisma/schema.prisma']
     restart: 'no'
@@ -36,11 +40,26 @@ services:
 
   web:
     <<: *runtime
+    image: ${PRODUCTION_WEB_IMAGE:-avantime-platform-web}:${APP_VERSION}
     depends_on:
       migration:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      object-storage:
+        condition: service_healthy
+      document-worker:
+        condition: service_started
+      embedding-worker:
+        condition: service_started
+      notification-worker:
+        condition: service_started
+      jira-worker:
+        condition: service_started
+      jira-inbound-worker:
+        condition: service_started
+      knowledge-index-worker:
+        condition: service_started
     expose:
       - '3000'
     networks:
@@ -48,14 +67,36 @@ services:
       - internal
       - egress
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/health/documents']
+      test:
+        [
+          'CMD',
+          'wget',
+          '-q',
+          '-O',
+          '/dev/null',
+          'http://127.0.0.1:3000/api/health/documents?mode=readiness',
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
 
   document-worker:
     <<: *runtime
-    image: avantime-platform-document-worker:task-005
+    image: ${PRODUCTION_DOCUMENT_WORKER_IMAGE:-avantime-platform-document-worker}:${APP_VERSION}
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-storage:
+        condition: service_healthy
+    networks:
+      - application
+      - internal
+
+  embedding-worker:
+    <<: *runtime
+    image: ${PRODUCTION_EMBEDDING_WORKER_IMAGE:-avantime-platform-embedding-worker}:${APP_VERSION}
     depends_on:
       migration:
         condition: service_completed_successfully
@@ -64,10 +105,44 @@ services:
     networks:
       - application
       - internal
+      - egress
 
-  embedding-worker:
+  notification-worker:
     <<: *runtime
-    image: avantime-platform-embedding-worker:task-005
+    image: ${PRODUCTION_NOTIFICATION_WORKER_IMAGE:-avantime-platform-notification-worker}:${APP_VERSION}
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks:
+      - application
+      - internal
+      - egress
+
+  jira-worker:
+    <<: *runtime
+    image: ${PRODUCTION_JIRA_WORKER_IMAGE:-avantime-platform-jira-worker}:${APP_VERSION}
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks:
+      - application
+      - internal
+      - egress
+
+  jira-inbound-worker:
+    <<: *runtime
+    image: ${PRODUCTION_JIRA_INBOUND_WORKER_IMAGE:-avantime-platform-jira-inbound-worker}:${APP_VERSION}
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks:
+      - application
+      - internal
+      - egress
+
+  knowledge-index-worker:
+    <<: *runtime
+    image: ${PRODUCTION_KNOWLEDGE_WORKER_IMAGE:-avantime-platform-knowledge-worker}:${APP_VERSION}
     depends_on:
       migration:
         condition: service_completed_successfully
@@ -147,7 +222,7 @@ services:
 
   backup:
     <<: *runtime
-    image: avantime-platform-operations:task-005
+    image: ${PRODUCTION_OPERATIONS_IMAGE:-avantime-platform-operations}:${APP_VERSION}
     command: ['npm', 'run', 'backup:create', '--', '--execute']
     environment:
       BACKUP_OUTPUT_DIR: /var/lib/avantime-backups

@@ -1,6 +1,11 @@
 import { getPrisma } from '@avantime/database';
 
+import { createRedisCommandClient } from '../lib/redis-lease-queue';
 import { loadStagingConfiguration } from '../lib/staging-configuration';
+import {
+  inspectCriticalStagingWorkerHeartbeat,
+  type CriticalStagingWorker,
+} from '../lib/staging-worker-heartbeat';
 
 async function main() {
   const worker = process.argv[2];
@@ -8,11 +13,30 @@ async function main() {
     worker !== 'notification' &&
     worker !== 'knowledge' &&
     worker !== 'jira' &&
-    worker !== 'jira-inbound'
+    worker !== 'jira-inbound' &&
+    worker !== 'document' &&
+    worker !== 'embedding'
   ) {
     throw new Error('WORKER_KIND_INVALID');
   }
   const configuration = loadStagingConfiguration();
+  if (worker === 'document' || worker === 'embedding') {
+    const client = await createRedisCommandClient(configuration.redis.url.toString(), {
+      connectTimeoutMs: configuration.redis.connectTimeoutMs,
+    });
+    try {
+      const heartbeat = await inspectCriticalStagingWorkerHeartbeat({
+        client,
+        configuration,
+        worker: worker as CriticalStagingWorker,
+      });
+      if (!heartbeat.ready) throw new Error(heartbeat.code);
+      console.info(JSON.stringify({ status: 'passed', worker }));
+      return;
+    } finally {
+      await client.close?.();
+    }
+  }
   const prisma = await getPrisma();
   if (!prisma) throw new Error('WORKER_HEALTH_DATABASE_UNAVAILABLE');
   const heartbeat =

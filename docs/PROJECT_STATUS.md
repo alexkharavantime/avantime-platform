@@ -10,9 +10,9 @@
 
 ### 🎯 Текущая цель проекта
 
-Закрыть superseded PR #24 и подтвердить завершённые repository artifacts TASK-015–TASK-018 в
-managed staging без production readiness claim до получения provider, capacity, PITR и
-human-review evidence.
+Локальный/Docker gate синхронизированной после TASK-018 runtime topology завершён. Следующий этап —
+отдельный managed-staging preflight и rollout без production readiness claim до получения provider,
+capacity, PITR, dependency и human-review evidence.
 
 ### 📈 Общий процент готовности
 
@@ -21,13 +21,14 @@ human-review evidence.
 ### ✅ Три главных достижения с прошлого обновления
 
 1. TASK-018 объединила DOCUMENT и ARTICLE в существующем lexical/semantic/hybrid RAG pipeline;
-2. Knowledge lifecycle теперь подтверждён publish/update/archive/delete/quarantine integration tests;
-3. client AI citations/history и Admin Knowledge Center поддерживают ARTICLE без client-trusted tenant
-   или source metadata; PR #24 признан superseded.
+2. staging/reference-production manifests теперь отражают document, embedding, knowledge,
+   notification и Jira outbound/inbound workers;
+3. staging readiness различает runtime heartbeat и active-job lease, а local smoke отделён от
+   managed preflight.
 
 ### 🚧 Три главных риска
 
-1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
+1. Локальный/Docker gate не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
 3. Outbox/index/Jira Cloud adapters ещё не проверены в managed staging; прежние временные
@@ -35,27 +36,26 @@ human-review evidence.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Закрыть PR #24 как superseded без merge diverged branch.
-2. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
+1. Обеспечить устойчивый запас места Docker VM перед следующей полной image build/release rehearsal.
+2. Закрыть PR #24 как superseded без merge diverged branch.
+3. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
-3. Развернуть TASK-015–TASK-018 artifacts и подтвердить AI/Jira providers, backup/PITR,
-   observability, accessibility и reviewer ceremonies в разрешённых средах.
 
 ---
 
 # Общая информация
 
-| Поле                             | Значение                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------- |
-| Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.27                                                                                      |
-| Дата последнего обновления       | 2026-09-02                                                                                |
-| Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `main`                                                                                    |
-| Базовый commit рабочей ветки     | Parent `006b742`; TASK-018 reconciliation фиксируется текущим `HEAD`                      |
-| Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
-| Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
-| Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
+| Поле                             | Значение                                                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Проект                           | Avantime Platform                                                                                                      |
+| Версия документа                 | 1.28                                                                                                                   |
+| Дата последнего обновления       | 2026-09-02                                                                                                             |
+| Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения                              |
+| Текущая ветка Git                | `main`                                                                                                                 |
+| Базовый commit рабочей ветки     | TASK-018 baseline `41660fab465df75f32c32658187e79a55f643511`; topology remediation пока в незакоммиченном working tree |
+| Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                                             |
+| Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                                                 |
+| Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                                                       |
 
 Снимок TASK-018 соответствует reconciliation commit в `main`. Локальные зелёные gates не означают
 managed-staging или production readiness.
@@ -146,6 +146,14 @@ flow. ARTICLE history/UI и Admin Knowledge Center показывают безо
 state; controlled reindex имеет permission и audit boundary. PostgreSQL/pgvector integration
 подтвердила publish/update/archive/delete и stale-version fencing; exhausted retries quarantines
 current article. PR #24 (`a5546fb`) полностью superseded и не должен merge-иться.
+
+Follow-up topology remediation также подтверждена локально: Compose запускает document, embedding,
+notification, knowledge и оба Jira workers; PostgreSQL/pgvector, Redis, MinIO и web достигают
+healthy, `/ready` возвращает общий `ready`. Synthetic smoke прошёл фактическую document extraction,
+embedding, hybrid retrieval/citation, notification, Jira outbound/inbound и knowledge lifecycle;
+restore rehearsal подтвердил 17 migrations и 50 tables. Из-за исчерпания Docker VM перед проверкой
+был очищен только неиспользуемый build cache старше часа; PostgreSQL успешно завершил WAL recovery.
+Свободный запас остаётся операционным риском, а local evidence не заменяет managed staging.
 
 [TASK-005](./tasks/TASK-005.md) завершена в application/code/documentation scope:
 реализованы Redis queues/fencing, distributed AI limits, PostgreSQL cost/budget
@@ -584,6 +592,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
 | ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-02 | 1.28   | Codex, по поручению владельца проекта | TASK-018 topology remediation: шесть workers в staging/production reference, fail-closed heartbeat readiness, local/managed command split, local smoke и restore evidence; managed validation pending  |
 | 2026-09-02 | 1.27   | Codex, по поручению владельца проекта | TASK-018 repository reconciliation: unified DOCUMENT/ARTICLE RAG, lifecycle/citations/client/Admin fixes, PR #24 superseded, local validation evidence                                                 |
 | 2026-07-31 | 1.21   | Codex, по поручению владельца проекта | TASK-011 central tenant permissions, system roles, OWNER governance, lifecycle, audit/navigation/API и migration; 147 unit, 22 integration и 60 browser tests, build и security gates passed           |
 | 2026-07-31 | 1.20   | Codex, по поручению владельца проекта | TASK-010 repository OIDC callback/lifecycle, tenant mapping, SSO policy, ADMIN UI, rollout/evidence docs; local unit/integration/build/browser/security gates passed, real tenant validation pending   |

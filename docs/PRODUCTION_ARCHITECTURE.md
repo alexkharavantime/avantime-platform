@@ -3,7 +3,7 @@
 ## Назначение
 
 Документ фиксирует provider-neutral topology для безопасной эксплуатации
-document/OCR/embedding/RAG subsystem. Это reference architecture, а не
+всего runtime Avantime Platform после TASK-018. Это reference architecture, а не
 подтверждение конкретной production-среды.
 
 ## Topology
@@ -21,32 +21,51 @@ flowchart LR
   W2 --> R
   DW[Document workers + OCR runtime] --> R
   EW[Embedding workers] --> R
+  KW[Knowledge index workers] --> R
+  NW[Notification workers] --> PG
+  JO[Jira outbound workers] --> PG
+  JI[Jira inbound workers] --> PG
   DW --> PG
   EW --> PG
+  KW --> PG
   DW --> S3
   EW --> AI[AI Gateway / providers]
+  KW --> AI
+  NW --> NP[Notification provider]
+  JO --> JIRA[Jira provider]
+  JI --> JIRA
   W1 --> AI
   MON[Monitoring / traces / alerts] -.-> W1
   MON -.-> DW
   MON -.-> EW
+  MON -.-> KW
+  MON -.-> NW
+  MON -.-> JO
+  MON -.-> JI
   BK[Encrypted backup storage] --- PG
   BK --- S3
 ```
 
 ## Responsibilities
 
-| Component             | Responsibility                                   | Public access    |
-| --------------------- | ------------------------------------------------ | ---------------- |
-| Reverse proxy         | TLS termination, request limits, rolling routing | HTTPS only       |
-| Web                   | Authenticated API/UI, readiness, orchestration   | Through proxy    |
-| Document worker       | Checksum, extraction, OCR, chunks                | No               |
-| Embedding worker      | Versioned embeddings and vector lifecycle        | No               |
-| PostgreSQL/pgvector   | Metadata, vectors, jobs, budgets, ledger, audit  | No               |
-| S3-compatible storage | Private originals and derivatives                | No               |
-| Redis                 | Queue leases/fencing and distributed limits      | No               |
-| AI providers          | Embeddings/answers through AI Gateway only       | Egress allowlist |
-| Monitoring            | Logs, metrics, traces and alerts                 | Restricted       |
-| Backup storage        | Encrypted isolated copies                        | Restricted       |
+| Component              | Responsibility                                   | Public access    |
+| ---------------------- | ------------------------------------------------ | ---------------- |
+| Reverse proxy          | TLS termination, request limits, rolling routing | HTTPS only       |
+| Web                    | Authenticated API/UI, readiness, orchestration   | Through proxy    |
+| Document worker        | Checksum, extraction, OCR, chunks                | No               |
+| Embedding worker       | Versioned embeddings and vector lifecycle        | No               |
+| Knowledge index worker | Article index lifecycle and invalidation         | No               |
+| Notification worker    | Durable notification outbox delivery             | No               |
+| Jira outbound worker   | Durable issue/comment synchronization            | No               |
+| Jira inbound worker    | Durable webhook/status/comment projection        | No               |
+| Migration job          | One-shot additive Prisma migration chain         | No               |
+| Backup/operations      | Guarded backup, restore and operational checks   | No               |
+| PostgreSQL/pgvector    | Metadata, vectors, jobs, budgets, ledger, audit  | No               |
+| S3-compatible storage  | Private originals and derivatives                | No               |
+| Redis                  | Queue leases/fencing and distributed limits      | No               |
+| AI providers           | Embeddings/answers through AI Gateway only       | Egress allowlist |
+| Monitoring             | Logs, metrics, traces and alerts                 | Restricted       |
+| Backup storage         | Encrypted isolated copies                        | Restricted       |
 
 ## Scaling and isolation
 
@@ -63,8 +82,8 @@ flowchart LR
 
 1. Validate secrets/configuration and backup freshness.
 2. Run additive migrations once in a dedicated migration job.
-3. Deploy workers with claim disabled, then web nodes.
-4. Enable new workers and observe heartbeat/queue age.
+3. Deploy document, embedding, knowledge, notification and both Jira worker generations.
+4. Observe matching runtime heartbeat and queue/lease age, then deploy web nodes.
 5. Drain old generation; stale writes are rejected by fencing.
 6. Run health, retrieval and backup smoke checks.
 
@@ -73,7 +92,9 @@ leaves additive schema in place. Destructive schema rollback is not automatic.
 
 ## Availability boundaries
 
-Core document readiness, OCR, embedding/vector and RAG remain separate components.
+Core document readiness, OCR, embedding/vector and RAG remain separate components. Staging `/ready`
+also requires fresh document/embedding runtime heartbeat, no stale active jobs, and the existing
+notification, knowledge and Jira worker heartbeat contracts.
 Production requires configured OCR and RAG boundaries. Queue, worker, budget,
 backup and restore state are exposed through restricted operational commands and
 metrics without secrets.

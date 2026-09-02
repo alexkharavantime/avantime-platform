@@ -2,6 +2,7 @@ import { loadDocumentWorkerConfiguration } from '../lib/document-configuration';
 import type { DocumentTenantContext } from '../lib/document-model';
 import { createDocumentProcessingWorker, getDocumentServices } from '../lib/document-services';
 import { DocumentWorkerShutdown, runDocumentWorkerLoop } from '../lib/document-worker-runtime';
+import { startCriticalStagingWorkerHeartbeat } from '../lib/staging-worker-heartbeat';
 
 async function main() {
   const configuration = loadDocumentWorkerConfiguration();
@@ -12,6 +13,7 @@ async function main() {
   const services = getDocumentServices();
   const worker = createDocumentProcessingWorker(services);
   const shutdown = new DocumentWorkerShutdown();
+  const runtimeHeartbeat = await startCriticalStagingWorkerHeartbeat({ worker: 'document' });
   const stop = () => shutdown.request();
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
@@ -36,6 +38,7 @@ async function main() {
       },
     });
   } finally {
+    await runtimeHeartbeat?.stop();
     process.removeListener('SIGINT', stop);
     process.removeListener('SIGTERM', stop);
   }

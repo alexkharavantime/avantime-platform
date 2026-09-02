@@ -21,6 +21,7 @@ async function main() {
     'docker-compose.staging.yml',
     'docker-compose.staging.local.yml',
     'apps/web/lib/staging-configuration.ts',
+    'apps/web/lib/staging-worker-heartbeat.ts',
     'apps/web/lib/notification-outbox.ts',
     'apps/web/lib/jira-configuration.ts',
     'apps/web/lib/jira-outbox.ts',
@@ -99,8 +100,39 @@ async function main() {
     'DATABASE_NAME_NOT_STAGING',
     'REDIS_NAMESPACE_NOT_STAGING',
     'loadJiraConfiguration',
+    'STAGING_CONFIG_MANAGED_DOCUMENT_RUNTIME_INVALID',
+    'STAGING_CONFIG_MANAGED_RAG_RUNTIME_INVALID',
+    'STAGING_CONFIG_MIGRATION_VERSION_STALE',
   ]) {
     if (!configuration.includes(marker)) findings.push(`staging-configuration: missing ${marker}`);
+  }
+  const stagingCompose = await readFile(
+    new URL('docker-compose.staging.yml', repositoryRoot),
+    'utf8',
+  );
+  const productionCompose = await readFile(
+    new URL('docker-compose.production.example.yml', repositoryRoot),
+    'utf8',
+  );
+  for (const service of [
+    'document-worker:',
+    'embedding-worker:',
+    'notification-worker:',
+    'jira-worker:',
+    'jira-inbound-worker:',
+    'knowledge-index-worker:',
+  ]) {
+    if (!stagingCompose.includes(`  ${service}`)) {
+      findings.push(`docker-compose.staging.yml: missing ${service}`);
+    }
+    if (!productionCompose.includes(`  ${service}`)) {
+      findings.push(`docker-compose.production.example.yml: missing ${service}`);
+    }
+  }
+  for (const worker of ['document', 'embedding']) {
+    if (!stagingCompose.includes(`'${worker}'`)) {
+      findings.push(`docker-compose.staging.yml: missing ${worker} worker health check`);
+    }
   }
   console.info(JSON.stringify({ status: findings.length === 0 ? 'passed' : 'failed', findings }));
   if (findings.length > 0) process.exitCode = 1;

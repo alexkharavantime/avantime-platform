@@ -42,6 +42,42 @@ services:
     command: ['run-staging-migrations']
     restart: 'no'
 
+  document-worker:
+    <<: *staging-runtime
+    image: ${STAGING_DOCUMENT_WORKER_IMAGE:-avantime-platform-document-worker}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: document-worker
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        ['CMD', 'node', '--import', 'tsx', 'apps/web/scripts/check-staging-worker.ts', 'document']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+
+  embedding-worker:
+    <<: *staging-runtime
+    image: ${STAGING_EMBEDDING_WORKER_IMAGE:-avantime-platform-embedding-worker}:${APP_VERSION}
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+      target: embedding-worker
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        ['CMD', 'node', '--import', 'tsx', 'apps/web/scripts/check-staging-worker.ts', 'embedding']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+
   notification-worker:
     <<: *staging-runtime
     image: ${STAGING_NOTIFICATION_WORKER_IMAGE:-avantime-platform-notification-worker}:${APP_VERSION}
@@ -63,7 +99,7 @@ services:
           'notification',
         ]
       interval: 30s
-      timeout: 10s
+      timeout: 20s
       retries: 5
       start_period: 30s
 
@@ -80,7 +116,7 @@ services:
     healthcheck:
       test: ['CMD', 'node', '--import', 'tsx', 'apps/web/scripts/check-staging-worker.ts', 'jira']
       interval: 30s
-      timeout: 10s
+      timeout: 20s
       retries: 5
       start_period: 30s
 
@@ -105,7 +141,7 @@ services:
           'jira-inbound',
         ]
       interval: 30s
-      timeout: 10s
+      timeout: 20s
       retries: 5
       start_period: 30s
 
@@ -123,7 +159,7 @@ services:
       test:
         ['CMD', 'node', '--import', 'tsx', 'apps/web/scripts/check-staging-worker.ts', 'knowledge']
       interval: 30s
-      timeout: 10s
+      timeout: 20s
       retries: 5
       start_period: 30s
 
@@ -144,6 +180,10 @@ services:
       jira-inbound-worker:
         condition: service_healthy
       knowledge-index-worker:
+        condition: service_healthy
+      document-worker:
+        condition: service_healthy
+      embedding-worker:
         condition: service_healthy
     ports:
       - '127.0.0.1:${STAGING_WEB_PORT:-3300}:3000'

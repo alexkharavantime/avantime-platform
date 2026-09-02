@@ -7,6 +7,13 @@ const documents = [
   'README.md',
   'docs/STAGING_INFRASTRUCTURE.md',
   'docs/STAGING_DEPLOYMENT.md',
+  'docs/PROJECT_STATUS.md',
+  'docs/PRODUCTION_ARCHITECTURE.md',
+  'docs/PRODUCTION_DEPLOYMENT.md',
+  'docs/PRODUCTION_READINESS_CHECKLIST.md',
+  'docs/OBSERVABILITY.md',
+  'docs/DOCUMENT_OPERATIONS.md',
+  'docs/HYBRID_RAG.md',
   'docs/NOTIFICATION_OUTBOX.md',
   'docs/KNOWLEDGE_INDEXING.md',
   'docs/BACKUP_RESTORE.md',
@@ -21,6 +28,7 @@ const documents = [
   'docs/tasks/TASK-015.md',
   'docs/tasks/TASK-016.md',
   'docs/tasks/TASK-017.md',
+  'docs/tasks/TASK-018.md',
 ];
 
 async function main() {
@@ -36,7 +44,7 @@ async function main() {
       const target = path.resolve(path.dirname(absolute), decodeURIComponent(link));
       await access(target).catch(() => missing.push(`${file} -> ${link}`));
     }
-    if (file !== 'README.md' && !source.includes('## Связанные документы')) {
+    if (file !== 'README.md' && !/^#{1,2} Связанные документы$/mu.test(source)) {
       missing.push(`${file} -> missing final related documents section`);
     }
   }

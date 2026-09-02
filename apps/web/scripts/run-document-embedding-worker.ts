@@ -2,6 +2,7 @@ import { loadDocumentWorkerConfiguration } from '../lib/document-configuration';
 import type { DocumentTenantContext } from '../lib/document-model';
 import { getDocumentServices } from '../lib/document-services';
 import { DocumentWorkerShutdown, runDocumentWorkerLoop } from '../lib/document-worker-runtime';
+import { startCriticalStagingWorkerHeartbeat } from '../lib/staging-worker-heartbeat';
 
 async function main() {
   const workerConfiguration = loadDocumentWorkerConfiguration();
@@ -13,6 +14,7 @@ async function main() {
   if (!services.rag) throw new Error('RAG services are unavailable.');
   const worker = services.rag.createEmbeddingWorker();
   const shutdown = new DocumentWorkerShutdown();
+  const runtimeHeartbeat = await startCriticalStagingWorkerHeartbeat({ worker: 'embedding' });
   const stop = () => shutdown.request();
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
@@ -37,6 +39,7 @@ async function main() {
       },
     });
   } finally {
+    await runtimeHeartbeat?.stop();
     process.removeListener('SIGINT', stop);
     process.removeListener('SIGTERM', stop);
   }
