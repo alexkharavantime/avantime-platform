@@ -64,3 +64,10 @@ test('tracked staging templates use the current migration and no stale task rele
     assert.doesNotMatch(source, /20260803180000_jira_status_comment_sync|task-016-local/u);
   }
 });
+
+test('document worker exits immediately after a fatal runtime failure', async () => {
+  const source = await repositoryFile('apps/web/scripts/run-document-worker.ts');
+
+  assert.match(source, /void main\(\)\.catch\(\(\) => \{[\s\S]*process\.exit\(1\);[\s\S]*\}\);/u);
+  assert.doesNotMatch(source, /process\.exitCode\s*=/u);
+});

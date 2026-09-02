@@ -53,5 +53,5 @@ async function main() {
 
 void main().catch(() => {
   console.error('Document worker failed.');
-  process.exitCode = 1;
+  process.exit(1);
 });
