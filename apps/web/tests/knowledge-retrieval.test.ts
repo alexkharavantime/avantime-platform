@@ -1,10 +1,14 @@
-import { KnowledgeSemanticRetriever } from '../lib/knowledge-retrieval';
+import { KnowledgeLexicalRetriever, KnowledgeSemanticRetriever } from '../lib/knowledge-retrieval';
 
-import { PostgreSQLKnowledgeVectorAdapter } from '../lib/knowledge-indexing';
+import {
+  PostgreSQLKnowledgeSearchAdapter,
+  PostgreSQLKnowledgeVectorAdapter,
+} from '../lib/knowledge-indexing';
 
 import type {
   KnowledgeVectorSearchRequest,
   KnowledgeVectorSearchResult,
+  KnowledgeSearchResult,
 } from '../lib/knowledge-indexing';
 
 import assert from 'node:assert/strict';
@@ -19,17 +23,47 @@ import {
 
 import type { AiGateway } from '../lib/ai-gateway';
 import type { VectorRepository } from '../lib/vector-repository';
-import {
-  loadRagConfiguration,
-  type RagConfiguration,
-} from '../lib/rag-configuration';
+import { loadRagConfiguration, type RagConfiguration } from '../lib/rag-configuration';
+
+test('knowledge lexical retrieval preserves ARTICLE metadata and database rank', async () => {
+  const indexed: KnowledgeSearchResult = {
+    articleId: 'article-lexical',
+    slug: 'article-lexical',
+    sourceVersion: 2,
+    generation: 2,
+    ownerScope: 'PLATFORM',
+    companyId: null,
+    visibility: 'PLATFORM',
+    lifecycleStatus: 'PUBLISHED',
+    title: 'Lexical article',
+    summary: 'Ranked lexical result',
+    tags: ['knowledge'],
+    searchText: 'Lexical article Ranked lexical result',
+    score: 0.37,
+  };
+  const retriever = new KnowledgeLexicalRetriever({
+    search: async () => [indexed],
+  } as never);
+
+  const results = await retriever.retrieve({
+    tenant: { companyId: 'tenant-a', userId: 'user-a' },
+    query: 'lexical result',
+    correlationId: 'knowledge-lexical-test',
+    topK: 5,
+  });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].sourceType, 'ARTICLE');
+  assert.equal(results[0].articleId, indexed.articleId);
+  assert.equal(results[0].articleSlug, indexed.slug);
+  assert.equal(results[0].sourceTitle, indexed.title);
+  assert.equal(results[0].score, 0.37);
+  assert.equal(results[0].scoreComponents.lexical, 0.37);
+});
 
 test('knowledge semantic source returns ARTICLE retrieval result', async () => {
   const source: AdditionalSemanticSource = {
-    async retrieveWithEmbedding(
-      request,
-      embedding,
-    ): Promise<RetrievalResult[]> {
+    async retrieveWithEmbedding(request, embedding): Promise<RetrievalResult[]> {
       assert.equal(request.tenant.companyId, 'tenant-a');
       assert.equal(embedding.model, 'deterministic-test-v1');
       assert.equal(embedding.version, 'test-v1');
@@ -128,10 +162,7 @@ test('default semantic retriever combines DOCUMENT and ARTICLE with one query em
   } as unknown as VectorRepository;
 
   const knowledgeSource: AdditionalSemanticSource = {
-    async retrieveWithEmbedding(
-      request,
-      embedding,
-    ): Promise<RetrievalResult[]> {
+    async retrieveWithEmbedding(request, embedding): Promise<RetrievalResult[]> {
       assert.equal(request.query, 'shared semantic query');
       assert.equal(embedding.model, 'deterministic-test-v1');
       assert.equal(embedding.version, 'test-v1');
@@ -161,26 +192,22 @@ test('default semantic retriever combines DOCUMENT and ARTICLE with one query em
   };
 
   const configuration = loadRagConfiguration({
-  NODE_ENV: 'test',
-  DOCUMENT_EMBEDDING_DRIVER: 'fake',
-  DOCUMENT_EMBEDDING_MODEL: 'deterministic-test-v1',
-  DOCUMENT_EMBEDDING_DIMENSIONS: '16',
-  DOCUMENT_EMBEDDING_VERSION: 'test-v1',
-  DOCUMENT_VECTOR_DRIVER: 'memory',
-  DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
-  RAG_ANSWER_DRIVER: 'fake',
-  HYBRID_MIN_SCORE: '0',
-  SEMANTIC_SIMILARITY_THRESHOLD: '0',
-  AI_RATE_LIMIT_PER_MINUTE: '1000',
-});
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_EMBEDDING_MODEL: 'deterministic-test-v1',
+    DOCUMENT_EMBEDDING_DIMENSIONS: '16',
+    DOCUMENT_EMBEDDING_VERSION: 'test-v1',
+    DOCUMENT_VECTOR_DRIVER: 'memory',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
+    RAG_ANSWER_DRIVER: 'fake',
+    HYBRID_MIN_SCORE: '0',
+    SEMANTIC_SIMILARITY_THRESHOLD: '0',
+    AI_RATE_LIMIT_PER_MINUTE: '1000',
+  });
 
-  const semantic = new DefaultSemanticRetriever(
-    gateway,
-    vectors,
-    configuration,
-    undefined,
-    [knowledgeSource],
-  );
+  const semantic = new DefaultSemanticRetriever(gateway, vectors, configuration, undefined, [
+    knowledgeSource,
+  ]);
 
   const request = {
     tenant: {
@@ -242,10 +269,7 @@ test('KnowledgeSemanticRetriever maps vector result to ARTICLE retrieval result'
     },
   } as RagConfiguration;
 
-  const retriever = new KnowledgeSemanticRetriever(
-    vectors,
-    configuration,
-  );
+  const retriever = new KnowledgeSemanticRetriever(vectors, configuration);
 
   const request = {
     tenant: {
@@ -256,15 +280,12 @@ test('KnowledgeSemanticRetriever maps vector result to ARTICLE retrieval result'
     topK: 3,
   } as RetrievalRequest;
 
-  const results = await retriever.retrieveWithEmbedding(
-    request,
-    {
-      vector: Array.from({ length: 16 }, () => 0.1),
-      model: 'deterministic-test-v1',
-      dimensions: 16,
-      version: 'test-v1',
-    },
-  );
+  const results = await retriever.retrieveWithEmbedding(request, {
+    vector: Array.from({ length: 16 }, () => 0.1),
+    model: 'deterministic-test-v1',
+    dimensions: 16,
+    version: 'test-v1',
+  });
 
   assert.ok(capturedRequest);
 
@@ -273,10 +294,7 @@ test('KnowledgeSemanticRetriever maps vector result to ARTICLE retrieval result'
     companyId: 'tenant-a',
   });
 
-  assert.equal(
-    capturedRequest.embeddingModel,
-    'deterministic-test-v1',
-  );
+  assert.equal(capturedRequest.embeddingModel, 'deterministic-test-v1');
   assert.equal(capturedRequest.embeddingVersion, 'test-v1');
   assert.equal(capturedRequest.topK, 3);
   assert.equal(capturedRequest.minimumSimilarity, 0.25);
@@ -306,6 +324,66 @@ test('KnowledgeSemanticRetriever maps vector result to ARTICLE retrieval result'
     semantic: 0.93,
     hybrid: 0.93,
   });
+});
+
+test('PostgreSQLKnowledgeSearchAdapter applies tenant and active-version filters before limit', async () => {
+  const globalWithPrisma = globalThis as typeof globalThis & {
+    avantimePrismaClient?: unknown;
+  };
+  const previousPrisma = globalWithPrisma.avantimePrismaClient;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  let capturedSql = '';
+  let capturedValues: unknown[] = [];
+  const fakePrisma = {
+    async $queryRawUnsafe(sql: string, ...values: unknown[]) {
+      capturedSql = sql;
+      capturedValues = values;
+      return [
+        {
+          articleId: 'article-1',
+          slug: 'article-1',
+          sourceVersion: 3,
+          generation: 3,
+          ownerScope: 'ORGANIZATION',
+          companyId: 'tenant-a',
+          visibility: 'ORGANIZATION',
+          lifecycleStatus: 'PUBLISHED',
+          title: 'Allowed article',
+          summary: 'Allowed summary',
+          tags: ['knowledge'],
+          searchText: 'Allowed article Allowed summary',
+          operationalStatus: 'READY',
+          indexedAt: new Date(),
+          updatedAt: new Date(),
+          score: 0.4,
+        },
+      ];
+    },
+  };
+
+  try {
+    process.env.DATABASE_URL = 'postgresql://test-only';
+    globalWithPrisma.avantimePrismaClient = fakePrisma;
+    const results = await new PostgreSQLKnowledgeSearchAdapter().search('allowed query', {
+      kind: 'ORGANIZATION',
+      companyId: 'tenant-a',
+    });
+
+    assert.equal(results.length, 1);
+    assert.deepEqual(capturedValues, ['allowed query', 'tenant-a']);
+    assert.match(capturedSql, /index\."companyId"\s*=\s*\$2/u);
+    assert.match(capturedSql, /index\."generation"\s*=\s*article\."version"/u);
+    assert.match(
+      capturedSql,
+      /article\."companyId"\s+IS\s+NOT\s+DISTINCT\s+FROM\s+index\."companyId"/u,
+    );
+    assert.ok(capturedSql.indexOf('index."companyId" = $2') < capturedSql.indexOf('LIMIT 50'));
+  } finally {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    if (previousPrisma === undefined) delete globalWithPrisma.avantimePrismaClient;
+    else globalWithPrisma.avantimePrismaClient = previousPrisma;
+  }
 });
 
 test('PostgreSQLKnowledgeVectorAdapter enforces organization security filters', async () => {
@@ -366,50 +444,27 @@ test('PostgreSQLKnowledgeVectorAdapter enforces organization security filters', 
     assert.equal(results[0].articleId, 'article-1');
     assert.equal(results[0].companyId, 'tenant-a');
 
-    assert.match(
-      capturedSql,
-      /v\."operationalStatus"\s*=\s*'READY'/,
-    );
+    assert.match(capturedSql, /v\."operationalStatus"\s*=\s*'READY'/);
 
-    assert.match(
-      capturedSql,
-      /v\."lifecycleStatus"\s*=\s*'PUBLISHED'/,
-    );
+    assert.match(capturedSql, /v\."lifecycleStatus"\s*=\s*'PUBLISHED'/);
 
-    assert.match(
-      capturedSql,
-      /v\."visibility"\s*<>\s*'PRIVATE'/,
-    );
+    assert.match(capturedSql, /v\."visibility"\s*<>\s*'PRIVATE'/);
 
-    assert.match(
-      capturedSql,
-      /a\."status"\s*=\s*'PUBLISHED'/,
-    );
+    assert.match(capturedSql, /a\."status"\s*=\s*'PUBLISHED'/);
 
-    assert.match(
-      capturedSql,
-      /a\."quarantinedAt"\s+IS\s+NULL/,
-    );
+    assert.match(capturedSql, /a\."quarantinedAt"\s+IS\s+NULL/);
 
-    assert.match(
-      capturedSql,
-      /v\."ownerScope"\s*=\s*'ORGANIZATION'/,
-    );
+    assert.match(capturedSql, /v\."generation"\s*=\s*a\."version"/);
 
-    assert.match(
-      capturedSql,
-      /v\."companyId"\s*=\s*\$5/,
-    );
+    assert.match(capturedSql, /a\."visibility"\s*=\s*v\."visibility"/);
 
-    assert.match(
-      capturedSql,
-      /v\."ownerScope"\s*=\s*'PLATFORM'/,
-    );
+    assert.match(capturedSql, /v\."ownerScope"\s*=\s*'ORGANIZATION'/);
 
-    assert.match(
-      capturedSql,
-      /1\s*-\s*\(v\."embedding"\s*<=>\s*\$1::vector\)\s*>=\s*\$4/,
-    );
+    assert.match(capturedSql, /v\."companyId"\s*=\s*\$5/);
+
+    assert.match(capturedSql, /v\."ownerScope"\s*=\s*'PLATFORM'/);
+
+    assert.match(capturedSql, /1\s*-\s*\(v\."embedding"\s*<=>\s*\$1::vector\)\s*>=\s*\$4/);
 
     assert.deepEqual(capturedValues.slice(1, 6), [
       'deterministic-test-v1',

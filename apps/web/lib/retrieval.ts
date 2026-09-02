@@ -144,18 +144,6 @@ export interface AdditionalSemanticSource {
   ): Promise<RetrievalResult[]>;
 }
 
-export interface AdditionalSemanticSource {
-  retrieveWithEmbedding(
-    request: RetrievalRequest,
-    embedding: {
-      vector: readonly number[];
-      model: string;
-      dimensions: number;
-      version: string;
-    },
-  ): Promise<RetrievalResult[]>;
-}
-
 export interface HybridRetriever {
   retrieve(request: RetrievalRequest): Promise<RetrievalResult[]>;
 }
@@ -310,14 +298,13 @@ export class DefaultLexicalRetriever implements LexicalRetriever {
             hybrid: score,
           },
         });
-        
       }
     }
     const selected = results
       .sort(
         (first, second) =>
           second.score - first.score ||
-          first.sourceId.localeCompare(second.sourceId)||
+          first.sourceId.localeCompare(second.sourceId) ||
           first.chunkIndex - second.chunkIndex,
       )
       .slice(0, topK);
@@ -335,12 +322,13 @@ export class DefaultLexicalRetriever implements LexicalRetriever {
 
 export class DefaultSemanticRetriever implements SemanticRetriever {
   constructor(
-  private readonly gateway: AiGateway,
-  private readonly vectors: VectorRepository,
-  private readonly configuration: RagConfiguration,
-  private readonly events: AiOperationalEventSink = new NoopAiOperationalEventSink(),
-  private readonly additionalSources: readonly AdditionalSemanticSource[] = [],
-) {}
+    private readonly gateway: AiGateway,
+    private readonly vectors: VectorRepository,
+    private readonly configuration: RagConfiguration,
+    private readonly events: AiOperationalEventSink = new NoopAiOperationalEventSink(),
+    private readonly additionalSources: readonly AdditionalSemanticSource[] = [],
+  ) {}
+
   async retrieve(request: RetrievalRequest) {
     const { query, topK } = validateRequest(request, this.configuration);
     const embedding = await this.gateway.createQueryEmbedding({
@@ -363,22 +351,20 @@ export class DefaultSemanticRetriever implements SemanticRetriever {
         embeddingVersion: this.configuration.embedding.version,
         dimensions: this.configuration.embedding.dimensions,
         topK,
-        minimumSimilarity:
-          this.configuration.hybrid.semanticSimilarityThreshold,
+        minimumSimilarity: this.configuration.hybrid.semanticSimilarityThreshold,
         filters: request.filters,
       }),
-
-  Promise.all(
-    this.additionalSources.map((source) =>
-      source.retrieveWithEmbedding(request, {
-        vector: embedding.vectors[0],
-        model: this.configuration.embedding.model,
-        dimensions: this.configuration.embedding.dimensions,
-        version: this.configuration.embedding.version,
-      }),
-    ),
-  ),
-]);
+      Promise.all(
+        this.additionalSources.map((source) =>
+          source.retrieveWithEmbedding(request, {
+            vector: embedding.vectors[0],
+            model: this.configuration.embedding.model,
+            dimensions: this.configuration.embedding.dimensions,
+            version: this.configuration.embedding.version,
+          }),
+        ),
+      ),
+    ]);
 
     const selected: RetrievalResult[] = results.map((result) => ({
       sourceType: 'DOCUMENT',
@@ -401,18 +387,15 @@ export class DefaultSemanticRetriever implements SemanticRetriever {
       },
     }));
 
-    const combined: RetrievalResult[] = [
-  ...selected,
-  ...additionalBatches.flat(),
-]
-  .sort(
-    (first, second) =>
-      second.score - first.score ||
-      first.sourceType.localeCompare(second.sourceType) ||
-      first.sourceId.localeCompare(second.sourceId) ||
-      first.chunkIndex - second.chunkIndex,
-  )
-  .slice(0, topK);
+    const combined: RetrievalResult[] = [...selected, ...additionalBatches.flat()]
+      .sort(
+        (first, second) =>
+          second.score - first.score ||
+          first.sourceType.localeCompare(second.sourceType) ||
+          first.sourceId.localeCompare(second.sourceId) ||
+          first.chunkIndex - second.chunkIndex,
+      )
+      .slice(0, topK);
 
     this.events.record({
       name: 'retrieval_query',
@@ -464,7 +447,7 @@ export class DefaultHybridRetriever implements HybridRetriever {
       const existing = combined.get(key);
       combined.set(key, {
         ...(existing ?? result),
-        documentTitle: result.documentTitle || existing?.documentTitle || '',
+        sourceTitle: result.sourceTitle || existing?.sourceTitle || '',
         preview: existing?.preview || result.preview,
         pageStart: result.pageStart ?? existing?.pageStart ?? null,
         pageEnd: result.pageEnd ?? existing?.pageEnd ?? null,
@@ -495,16 +478,18 @@ export class DefaultHybridRetriever implements HybridRetriever {
         (first, second) =>
           second.score - first.score ||
           second.scoreComponents.semantic - first.scoreComponents.semantic ||
+          first.sourceType.localeCompare(second.sourceType) ||
           first.sourceId.localeCompare(second.sourceId) ||
           first.chunkIndex - second.chunkIndex,
       );
     const perSource = new Map<string, number>();
     const selected: RetrievalResult[] = [];
     for (const result of ranked) {
-      const count = perSource.get(result.sourceId) ?? 0;
+      const sourceKey = `${result.sourceType}:${result.sourceId}`;
+      const count = perSource.get(sourceKey) ?? 0;
       if (count >= this.configuration.hybrid.maximumChunksPerDocument) continue;
       selected.push(result);
-      perSource.set(result.sourceId, count + 1);
+      perSource.set(sourceKey, count + 1);
       if (selected.length >= topK) break;
     }
     return selected;

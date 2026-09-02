@@ -127,47 +127,33 @@ export function createRagServices(
     deploymentGeneration:
       dependencies.environment?.DEPLOYMENT_GENERATION ?? process.env.DEPLOYMENT_GENERATION,
   };
- const documentLexical = new DefaultLexicalRetriever(
-  documents.metadata,
-  documents.processing,
-  configuration,
-  events,
-);
+  const documentLexical = new DefaultLexicalRetriever(
+    documents.metadata,
+    documents.processing,
+    configuration,
+    events,
+  );
 
-const knowledgeLexical = new KnowledgeLexicalRetriever(
-  new PostgreSQLKnowledgeSearchAdapter(),
-);
+  const knowledgeLexical = new KnowledgeLexicalRetriever(new PostgreSQLKnowledgeSearchAdapter());
 
-const lexical = new CompositeLexicalRetriever([
-  documentLexical,
-  knowledgeLexical,
-]);
+  const lexical = new CompositeLexicalRetriever([documentLexical, knowledgeLexical]);
 
-const knowledgeSemantic =
-  dependencies.knowledgeSemanticSource === undefined
-    ? new KnowledgeSemanticRetriever(
-        new PostgreSQLKnowledgeVectorAdapter(),
-        configuration,
-      )
-    : dependencies.knowledgeSemanticSource;
+  const knowledgeSemantic =
+    dependencies.knowledgeSemanticSource === undefined
+      ? new KnowledgeSemanticRetriever(new PostgreSQLKnowledgeVectorAdapter(), configuration)
+      : dependencies.knowledgeSemanticSource;
 
-const semantic = new DefaultSemanticRetriever(
-  gateway,
-  vectors,
-  configuration,
-  events,
-  knowledgeSemantic ? [knowledgeSemantic] : [],
-);
+  const semantic = new DefaultSemanticRetriever(
+    gateway,
+    vectors,
+    configuration,
+    events,
+    knowledgeSemantic ? [knowledgeSemantic] : [],
+  );
 
-const hybrid = new DefaultHybridRetriever(
-  lexical,
-  semantic,
-  configuration,
-);
-const citationBuilder = new DefaultCitationBuilder(
-  documents.metadata,
-  documents.processing,
-); const answers = new DefaultRagAnswerService(
+  const hybrid = new DefaultHybridRetriever(lexical, semantic, configuration);
+  const citationBuilder = new DefaultCitationBuilder(documents.metadata, documents.processing);
+  const answers = new DefaultRagAnswerService(
     hybrid,
     citationBuilder,
     gateway,

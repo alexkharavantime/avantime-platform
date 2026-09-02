@@ -2,13 +2,14 @@
 
 ## Статус
 
-Planned
+Done — repository/application scope завершён и подтверждён unit/security, PostgreSQL/pgvector
+integration, migration, browser/accessibility и production build gates. Managed staging с реальными
+AI providers остаётся общим environment gate Version 2.0, а не незавершённой реализацией TASK-018.
 
 ## Ветка
 
-`feature/task-018-knowledge-hub`
-
-# TASK-018. Unified retrieval для клиентского AI-консультанта
+`main` (reconciliation выполнена поверх `006b742` без merge устаревшей ветки PR #24; итоговый
+commit определяется текущим `HEAD`)
 
 ## Цель
 
@@ -40,6 +41,7 @@ TASK-018 расширяет существующий RAG на новые тип�
 - сохранить server-derived companyId;
 - добавить regression и tenant-isolation tests;
 - обновить UI citations для article sources.
+
 ### Индексация статей
 
 - публикация статьи создаёт индексируемые chunks;
@@ -122,17 +124,17 @@ Knowledge Center показывает:
 
 ## Критерии готовности
 
-- [ ] Статьи индексируются после публикации.
-- [ ] Обновлённые статьи переиндексируются идемпотентно.
-- [ ] Снятые с публикации статьи не находятся.
-- [ ] Удалённые источники исключаются из retrieval.
-- [ ] Поиск объединяет документы и статьи.
-- [ ] Клиент видит только разрешённые источники своей организации.
-- [ ] Все содержательные ответы имеют проверенные citations.
-- [ ] При недостатке источников возвращается no-answer.
-- [ ] Проходят tenant-isolation, prompt-injection и citation tests.
-- [ ] Проходят migration, integration, build и staging gates.
-- [ ] Обновлены Architecture, Decisions, Backlog, Roadmap и Project Status.
+- [x] Статьи индексируются после публикации.
+- [x] Обновлённые статьи переиндексируются идемпотентно.
+- [x] Снятые с публикации статьи не находятся.
+- [x] Удалённые источники исключаются из retrieval, а index rows удаляются worker-ом.
+- [x] Поиск объединяет документы и статьи.
+- [x] Клиент видит только разрешённые источники своей организации.
+- [x] Все содержательные ответы имеют проверенные citations.
+- [x] При недостатке источников возвращается no-answer.
+- [x] Проходят tenant-isolation, prompt-injection и citation tests.
+- [x] Проходят доступные migration, integration, build, browser и accessibility gates.
+- [x] Обновлены Backlog, Roadmap, Project Status и task registry; новые ADR/architecture changes не требуются.
 
 ## План реализации
 
@@ -201,3 +203,83 @@ Knowledge Center показывает:
 4. Делать миграции обратимо и PostgreSQL-safe.
 5. Не ослаблять CI и staging readiness.
 6. Публиковать изменения через отдельный PR.
+
+## Результат выполнения
+
+### Реализованный pipeline
+
+- `DOCUMENT` и `ARTICLE` проходят через существующие lexical, semantic и hybrid retriever contracts;
+- semantic retrieval создаёт один query embedding и повторно использует его для document и article
+  vector search;
+- article vector query проверяет active source version, generation, embedding model/version,
+  `READY`, `PUBLISHED`, quarantine, visibility, owner scope и organization audience;
+- lexical rank берётся из PostgreSQL FTS и смешивается с document candidates без фиксированного
+  преимущества ARTICLE;
+- hybrid merge сохраняет source metadata и применяет deterministic source-type/source-id ordering;
+- article citations повторно разрешаются server-side по текущей статье и индексу; client/model title,
+  slug, source ID и foreign article не принимаются как authoritative;
+- клиентский `/api/documents/ask` сохраняет server-derived tenant, отвергает `companyId`, возвращает
+  safe no-answer и используется существующим responsive `KnowledgeAsk` UI;
+- UI и локальная история поддерживают document/article citations и безопасные source links.
+
+### Lifecycle и operations
+
+- INSERT/version/lifecycle/visibility/quarantine changes создают durable versioned index event;
+- stale event не перезаписывает текущую версию, а stale index исключается join-ом с active article;
+- retries используют bounded backoff; исчерпанный event получает `DEAD_LETTER`, а текущая версия
+  статьи переводится в quarantine;
+- DELETE создаёт durable delete event; worker удаляет lexical и vector rows до указанной версии;
+- Admin Knowledge Center показывает source/publication/search/embedding status, chunk count,
+  model/version, indexed time, source/index version, error/quarantine и предоставляет permission-
+  protected audited reindex/retry.
+
+### Reconciliation PR #24
+
+Решение: **SUPERSEDED**. PR #24 (`agent/knowledge-semantic-retrieval`, `a5546fb`) расходится от
+`main` после `57c6cd2`: три его commit заменены `e266c70`, `ad595db`, `5a219c5`, `006b742` и
+настоящей reconciliation. Полезный semantic scope присутствует в `main`; актуальная реализация
+дополнительно использует один query embedding, server-side citations, tests и lifecycle fixes.
+Merge diverged ветки вернул бы старую competing implementation и не требуется. PR рекомендуется
+закрыть как superseded; внешний GitHub state в рамках этой задачи не изменялся.
+
+### Validation evidence
+
+- Prisma generate/validate — PASS (`DATABASE_URL` для validate передан как ephemeral placeholder,
+  `.env` не изменялся);
+- targeted Knowledge/Hybrid RAG/security tests — PASS, 33/33;
+- web unit suite — PASS, 193/193;
+- PostgreSQL/pgvector lifecycle integration и full integration suite — PASS, 31/31;
+- RAG integration — PASS, 1/1;
+- production integration — PASS, 1/1;
+- empty/legacy/repeated migration rehearsal (17 migrations) — PASS;
+- lint, typecheck, formatting и `git diff --check` — PASS;
+- browser suite — PASS, 77/77, включая Jira flow с первого прохода;
+- отдельный accessibility suite — PASS, 13/13 без critical/serious axe findings;
+- production build — PASS, 106/106 pages;
+- pgvector smoke load test — PASS: recall `1`, sequential scans `0`, timeout `0`, p95 `2.568 ms`;
+- static secrets/credentials/defaults/client-tenant/identity/permissions/governance/Jira/migrations
+  scans — PASS без findings;
+- live dependency audit — BLOCKED: sandbox не имеет DNS, а внешний `registry.npmjs.org` request с
+  передачей dependency metadata не был разрешён; lockfiles и dependencies не изменялись;
+- managed staging и реальные AI/Jira providers — NOT RUN и не считаются validated.
+
+## Известные ограничения
+
+- статья индексируется как один стабильный article chunk; отдельное paragraph-level chunking и
+  reranking относятся к последующему развитию KB-002, а не к критериям TASK-018;
+- история AI-консультанта всё ещё использует существующий repository, поэтому перенос истории в
+  PostgreSQL, retention/consent и полноценные conversation entities остаются AI-010;
+- managed staging, реальные AI providers, capacity/PITR и human operational ceremonies остаются
+  общими внешними gates Version 2.0.
+
+## Связанные документы
+
+- [Master Specification](../MASTER_SPECIFICATION.md)
+- [Vision](../VISION.md)
+- [Roadmap](../ROADMAP.md)
+- [Product Backlog](../PRODUCT_BACKLOG.md)
+- [Architecture 2.0](../ARCHITECTURE_2_0.md)
+- [Architecture Decision Records](../DECISIONS.md), ADR-0008
+- [Project Status](../PROJECT_STATUS.md)
+- [TASK-004](./TASK-004.md)
+- [TASK-015](./TASK-015.md)

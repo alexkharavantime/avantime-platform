@@ -140,16 +140,19 @@ views и совместимые `/dashboard/**` redirects. Организаци�
   deterministic/cloud adapters, safe projection, concurrent worker, retry/DLQ and portal status.
 - TASK-017 repository Jira sync: HMAC webhook intake, durable inbound worker, stale-fenced status,
   explicit public comments and asynchronous customer-comment delivery.
+- TASK-018 unified Knowledge RAG: DOCUMENT и ARTICLE используют один existing retrieval/answer
+  pipeline, shared query embedding, tenant/visibility/lifecycle fencing, server-resolved citations,
+  client AI flow и operational Admin Knowledge Center.
 
 **Что ещё необходимо сделать:**
 
-- консолидировать параллельные реализации;
+- закрыть оставшиеся параллельные прототипы вне завершённого unified Knowledge RAG;
 - закрыть пробелы безопасности;
 - развернуть/проверить production AI providers и PostgreSQL/S3 infrastructure для реализованных Gateway/storage boundaries;
 - подключить production external queue adapter, process supervision и queue monitoring;
-- выполнить подготовленные PostgreSQL/MinIO integration tests и migration rehearsal в Docker-enabled CI;
+- повторять пройденные PostgreSQL/MinIO integration tests и migration rehearsal в Docker-enabled CI;
 - внедрить production observability, backup/restore и disaster recovery rehearsal;
-- синхронизировать документацию.
+- поддерживать документацию и validation evidence синхронизированными с текущим `HEAD`.
 - развернуть TASK-015 в managed staging и подтвердить secret store, TLS, provider delivery,
   backup/PITR, observability и независимый reviewer evidence.
 - подтвердить TASK-016/TASK-017 в разрешённом Jira Cloud test tenant; до этого issue/webhook/JSM
@@ -453,11 +456,13 @@ security/dependency gate, назначения owners и environment evidence.
 - ADMIN-only tenant-aware semantic/hybrid document search и RAG;
 - server-generated citations, safe no-answer и prompt-injection boundary;
 - embedding worker, pgvector integration и multilingual synthetic evaluation.
+- unified lexical/semantic/hybrid retrieval для DOCUMENT и ARTICLE, client-safe citations,
+  delete/quarantine lifecycle и operational reindex UI (TASK-018).
 
 **Что ещё необходимо сделать:**
 
 - перенести прототип в production-хранилища;
-- развернуть production providers/workers и расширить завершённый TASK-004 на единую knowledge permission model и статьи;
+- развернуть и проверить production providers/workers для завершённого repository pipeline;
 - внедрить права на всех уровнях;
 - поддержать дополнительные форматы;
 - создать версии, редакционный процесс и аналитику;

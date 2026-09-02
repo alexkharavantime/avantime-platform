@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageShell } from '../../../components/page-shell';
 import { KnowledgeArticleForm } from '../../../components/admin/knowledge-article-form';
+import { getPlatformKnowledgeIndexDiagnostics } from '../../../lib/knowledge-indexing';
 import { listKnowledgeArticles } from '../../../lib/knowledge-store';
 import { getSession } from '../../../lib/session';
 import { hasPlatformPermission } from '../../../lib/platform-authorization';
@@ -12,14 +13,27 @@ const statusLabels = {
   PUBLISHED: 'Опубликована',
   ARCHIVED: 'Архив',
 } as const;
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('ru-RU', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 export default async function AdminKnowledgePage() {
   const session = await getSession();
   if (!session) redirect('/portal/login');
   if (!(await hasPlatformPermission(session, 'platform.knowledge.view'))) redirect('/portal');
   const articles = await listKnowledgeArticles({
     includeDrafts: true,
+    includeQuarantined: true,
     audience: { kind: 'PLATFORM' },
   });
+  const diagnostics = await getPlatformKnowledgeIndexDiagnostics(
+    articles.map((article) => article.id),
+  );
   return (
     <PageShell>
       <section className="bg-slate-50 py-16">
@@ -54,6 +68,63 @@ export default async function AdminKnowledgePage() {
                     </span>
                   </div>
                   <p className="mt-3 text-slate-600">{article.summary}</p>
+                  {(() => {
+                    const diagnostic = diagnostics.get(article.id);
+                    return (
+                      <dl className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+                        <div>
+                          <dt className="font-bold text-slate-500">Тип источника</dt>
+                          <dd className="mt-1 font-black text-slate-900">ARTICLE</dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Lexical index</dt>
+                          <dd className="mt-1 font-black text-slate-900">
+                            {diagnostic?.searchStatus ?? 'NOT_INDEXED'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Embedding status</dt>
+                          <dd className="mt-1 font-black text-slate-900">
+                            {diagnostic?.embeddingStatus ?? 'NOT_INDEXED'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Chunks</dt>
+                          <dd className="mt-1 font-black text-slate-900">
+                            {diagnostic?.chunkCount ?? 0}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Embedding model/version</dt>
+                          <dd className="mt-1 break-words font-black text-slate-900">
+                            {diagnostic?.embeddingModel && diagnostic.embeddingVersion
+                              ? `${diagnostic.embeddingModel} / ${diagnostic.embeddingVersion}`
+                              : '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Индексировано</dt>
+                          <dd className="mt-1 font-black text-slate-900">
+                            {formatDate(diagnostic?.indexedAt)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Версия source/index</dt>
+                          <dd className="mt-1 font-black text-slate-900">
+                            {article.version} / {diagnostic?.indexedVersion ?? '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="font-bold text-slate-500">Quarantine / ошибка</dt>
+                          <dd className="mt-1 break-words font-black text-slate-900">
+                            {article.quarantinedAt
+                              ? `QUARANTINED · ${formatDate(article.quarantinedAt)}`
+                              : (diagnostic?.indexingError ?? '—')}
+                          </dd>
+                        </div>
+                      </dl>
+                    );
+                  })()}
                   <div className="mt-5 flex flex-wrap gap-2">
                     <Link
                       href={`/knowledge/${article.slug}`}
@@ -61,7 +132,7 @@ export default async function AdminKnowledgePage() {
                     >
                       Просмотр
                     </Link>
-                    {article.status !== 'PUBLISHED' && (
+                    {!article.quarantinedAt && article.status !== 'PUBLISHED' && (
                       <form action={`/api/admin/knowledge/${article.id}/status`} method="post">
                         <input type="hidden" name="status" value="PUBLISHED" />
                         <input type="hidden" name="expectedVersion" value={article.version} />
@@ -70,7 +141,7 @@ export default async function AdminKnowledgePage() {
                         </button>
                       </form>
                     )}
-                    {article.status === 'PUBLISHED' && (
+                    {!article.quarantinedAt && article.status === 'PUBLISHED' && (
                       <form action={`/api/admin/knowledge/${article.id}/status`} method="post">
                         <input type="hidden" name="status" value="ARCHIVED" />
                         <input type="hidden" name="expectedVersion" value={article.version} />
@@ -79,6 +150,12 @@ export default async function AdminKnowledgePage() {
                         </button>
                       </form>
                     )}
+                    <form action={`/api/admin/knowledge/${article.id}/reindex`} method="post">
+                      <input type="hidden" name="expectedVersion" value={article.version} />
+                      <button className="rounded-full border border-blue-300 px-4 py-2 text-sm font-black text-blue-700">
+                        {article.quarantinedAt ? 'Повторить индексацию' : 'Переиндексировать'}
+                      </button>
+                    </form>
                   </div>
                 </article>
               ))}

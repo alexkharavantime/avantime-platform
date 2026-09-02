@@ -6,6 +6,10 @@ import type {
   DocumentMetadataRepository,
   DocumentProcessingRepository,
 } from './document-repositories';
+import {
+  PostgreSQLKnowledgeCitationResolver,
+  type KnowledgeCitationResolver,
+} from './knowledge-indexing';
 import type { RagConfiguration } from './rag-configuration';
 import type { HybridRetriever, RetrievalResult } from './retrieval';
 
@@ -55,23 +59,66 @@ export class DefaultCitationBuilder implements CitationBuilder {
     private readonly metadata: DocumentMetadataRepository,
     private readonly processing: DocumentProcessingRepository,
     private readonly maximumExcerptCharacters = 480,
+    private readonly knowledge: KnowledgeCitationResolver = new PostgreSQLKnowledgeCitationResolver(),
   ) {}
 
   async build(
-  tenant: DocumentTenantContext,
-  results: readonly RetrievalResult[],
-): Promise<Citation[]> {
-  const citations: Citation[] = [];
-  const seen = new Set<string>();
+    tenant: DocumentTenantContext,
+    results: readonly RetrievalResult[],
+  ): Promise<Citation[]> {
+    const citations: Citation[] = [];
+    const seen = new Set<string>();
 
-  for (const result of results) {
-    if (result.sourceType === 'ARTICLE') {
-      if (!result.articleId || !result.articleSlug) continue;
+    for (const result of results) {
+      if (result.sourceType === 'ARTICLE') {
+        if (!result.articleId || result.chunkId !== `${result.articleId}:article`) continue;
+        const article = await this.knowledge.resolve(result.articleId, {
+          kind: 'ORGANIZATION',
+          companyId: tenant.companyId,
+        });
+        if (!article || article.chunkId !== result.chunkId) continue;
 
-      const key = `ARTICLE:${result.articleId}:${result.chunkId}`;
+        const key = `ARTICLE:${article.articleId}:${article.chunkId}`;
+        if (seen.has(key)) continue;
+
+        const excerpt = article.excerpt.slice(0, this.maximumExcerptCharacters);
+
+        if (!excerpt) continue;
+
+        seen.add(key);
+
+        citations.push({
+          sourceId: `S${citations.length + 1}`,
+          sourceType: 'ARTICLE',
+          sourceTitle: article.title,
+
+          articleId: article.articleId,
+          articleSlug: article.slug,
+
+          chunkId: article.chunkId,
+          pageStart: null,
+          pageEnd: null,
+          excerpt,
+          retrievalScore: result.score,
+          link: `/portal/knowledge/${encodeURIComponent(article.slug)}`,
+        });
+
+        continue;
+      }
+
+      if (!result.documentId) continue;
+
+      const key = `DOCUMENT:${result.documentId}:${result.chunkId}`;
       if (seen.has(key)) continue;
 
-      const excerpt = result.preview
+      const document = await this.metadata.findById(tenant, result.documentId);
+      if (!document || document.status !== 'COMPLETED' || document.deletedAt) continue;
+
+      const chunks = await this.processing.readChunks(tenant, document.id);
+      const chunk = chunks.find((candidate) => candidate.id === result.chunkId);
+      if (!chunk) continue;
+
+      const excerpt = chunk.text
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, this.maximumExcerptCharacters);
@@ -82,63 +129,23 @@ export class DefaultCitationBuilder implements CitationBuilder {
 
       citations.push({
         sourceId: `S${citations.length + 1}`,
-        sourceType: 'ARTICLE',
-        sourceTitle: result.sourceTitle,
+        sourceType: 'DOCUMENT',
+        sourceTitle: document.originalName,
 
-        articleId: result.articleId,
-        articleSlug: result.articleSlug,
+        documentId: document.id,
+        documentTitle: document.originalName,
 
-        chunkId: result.chunkId,
-        pageStart: null,
-        pageEnd: null,
+        chunkId: chunk.id,
+        pageStart: result.pageStart,
+        pageEnd: result.pageEnd,
         excerpt,
         retrievalScore: result.score,
-        link: `/portal/knowledge/${encodeURIComponent(result.articleSlug)}`,
+        link: `/portal/documents/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(chunk.id)}`,
       });
-
-      continue;
     }
 
-    if (!result.documentId) continue;
-
-    const key = `DOCUMENT:${result.documentId}:${result.chunkId}`;
-    if (seen.has(key)) continue;
-
-    const document = await this.metadata.findById(tenant, result.documentId);
-    if (!document || document.status !== 'COMPLETED' || document.deletedAt) continue;
-
-    const chunks = await this.processing.readChunks(tenant, document.id);
-    const chunk = chunks.find((candidate) => candidate.id === result.chunkId);
-    if (!chunk) continue;
-
-    const excerpt = chunk.text
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, this.maximumExcerptCharacters);
-
-    if (!excerpt) continue;
-
-    seen.add(key);
-
-    citations.push({
-      sourceId: `S${citations.length + 1}`,
-      sourceType: 'DOCUMENT',
-      sourceTitle: document.originalName,
-
-      documentId: document.id,
-      documentTitle: document.originalName,
-
-      chunkId: chunk.id,
-      pageStart: result.pageStart,
-      pageEnd: result.pageEnd,
-      excerpt,
-      retrievalScore: result.score,
-      link: `/portal/documents/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(chunk.id)}`,
-    });
+    return citations;
   }
-
-  return citations;
-}
 }
 
 export function detectQuestionLanguage(question: string) {
@@ -146,7 +153,6 @@ export function detectQuestionLanguage(question: string) {
   if (/[āčēģīķļņšūž]/iu.test(question)) return 'lv';
   return 'en';
 }
-
 
 export function buildRagSystemInstructions(language: string) {
   return [
@@ -231,14 +237,14 @@ export class DefaultRagAnswerService implements RagAnswerService {
     }
     const language = detectQuestionLanguage(question);
     const sources: RagContextSource[] = selected.map((citation) => ({
-    sourceId: citation.sourceId,
-    sourceType: citation.sourceType,
-    documentId: citation.documentId,
-    articleId: citation.articleId,
-    chunkId: citation.chunkId,
-    title: citation.sourceTitle,
-    excerpt: citation.excerpt,
-  }));
+      sourceId: citation.sourceId,
+      sourceType: citation.sourceType,
+      documentId: citation.documentId,
+      articleId: citation.articleId,
+      chunkId: citation.chunkId,
+      title: citation.sourceTitle,
+      excerpt: citation.excerpt,
+    }));
     const generated = await this.gateway.generateRagAnswer({
       tenant: request.tenant,
       question,

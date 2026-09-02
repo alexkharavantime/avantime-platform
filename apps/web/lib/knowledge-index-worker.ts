@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { getPrisma } from '@avantime/database';
+import type { Prisma } from '@prisma/client';
 
 import { getDocumentServices } from './document-services';
 import {
@@ -59,6 +60,9 @@ export async function claimKnowledgeIndexBatch(input: {
   if (!Number.isSafeInteger(input.batchSize) || input.batchSize < 1 || input.batchSize > 100) {
     throw new Error('KNOWLEDGE_INDEX_BATCH_INVALID');
   }
+  if (!Number.isSafeInteger(input.leaseMs) || input.leaseMs < 1_000 || input.leaseMs > 600_000) {
+    throw new Error('KNOWLEDGE_INDEX_LEASE_INVALID');
+  }
   const articleId = input.articleId?.trim() || null;
   if (articleId && !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,199}$/u.test(articleId)) {
     throw new Error('KNOWLEDGE_INDEX_ARTICLE_ID_INVALID');
@@ -70,10 +74,21 @@ export async function claimKnowledgeIndexBatch(input: {
   const leaseToken = randomUUID();
   return prisma.$transaction(async (transaction: KnowledgeIndexTransaction) => {
     await transaction.$executeRaw`
-      UPDATE "KnowledgeIndexEvent"
-      SET "status" = 'DEAD_LETTER', "lastFailureCode" = 'LEASE_EXHAUSTED',
-          "leaseToken" = NULL, "leaseUntil" = NULL, "updatedAt" = ${now}
-      WHERE "status" = 'PROCESSING' AND "leaseUntil" <= ${now} AND "attempts" >= "maxAttempts"
+      WITH exhausted AS (
+        UPDATE "KnowledgeIndexEvent"
+        SET "status" = 'DEAD_LETTER', "lastFailureCode" = 'LEASE_EXHAUSTED',
+            "leaseToken" = NULL, "leaseUntil" = NULL, "updatedAt" = ${now}
+        WHERE "status" = 'PROCESSING'
+          AND "leaseUntil" <= ${now}
+          AND "attempts" >= "maxAttempts"
+        RETURNING "articleId", "sourceVersion"
+      )
+      UPDATE "KnowledgeArticle" AS article
+      SET "quarantinedAt" = ${now}, "updatedAt" = ${now}
+      FROM exhausted
+      WHERE article."id" = exhausted."articleId"
+        AND article."version" = exhausted."sourceVersion"
+        AND article."quarantinedAt" IS NULL
     `;
     return (await transaction.$queryRaw`
       WITH candidates AS (
@@ -127,17 +142,30 @@ export async function failKnowledgeIndexEvent(
   const prisma = await getPrisma();
   if (!prisma) throw new Error('KNOWLEDGE_INDEX_DATABASE_UNAVAILABLE');
   const exhausted = event.attempts >= event.maxAttempts;
-  const result = await prisma.knowledgeIndexEvent.updateMany({
-    where: { id: event.id, status: 'PROCESSING', leaseToken: event.leaseToken },
-    data: {
-      status: exhausted ? 'DEAD_LETTER' : 'FAILED',
-      nextAttemptAt: exhausted
-        ? now
-        : new Date(now.getTime() + knowledgeIndexBackoffMs(event.attempts)),
-      leaseToken: null,
-      leaseUntil: null,
-      lastFailureCode: failureCode,
-    },
+  const result = await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    const changed = await transaction.knowledgeIndexEvent.updateMany({
+      where: { id: event.id, status: 'PROCESSING', leaseToken: event.leaseToken },
+      data: {
+        status: exhausted ? 'DEAD_LETTER' : 'FAILED',
+        nextAttemptAt: exhausted
+          ? now
+          : new Date(now.getTime() + knowledgeIndexBackoffMs(event.attempts)),
+        leaseToken: null,
+        leaseUntil: null,
+        lastFailureCode: failureCode,
+      },
+    });
+    if (changed.count === 1 && exhausted) {
+      await transaction.knowledgeArticle.updateMany({
+        where: {
+          id: event.articleId,
+          version: event.sourceVersion,
+          quarantinedAt: null,
+        },
+        data: { quarantinedAt: now },
+      });
+    }
+    return changed;
   });
   if (result.count !== 1) throw new Error('KNOWLEDGE_INDEX_LEASE_LOST');
 }
@@ -169,7 +197,16 @@ export async function processKnowledgeIndexBatch(input: {
         ownerScope: event.ownerScope,
         companyId: event.companyId,
       });
-      if (!article || article.version !== event.sourceVersion) {
+      if (!article) {
+        await Promise.all([
+          search.remove(event.articleId, event.sourceVersion),
+          vectors.remove(event.articleId, event.sourceVersion),
+        ]);
+        await completeKnowledgeIndexEvent(event, input.now);
+        completed += 1;
+        continue;
+      }
+      if (article.version !== event.sourceVersion) {
         await completeKnowledgeIndexEvent(event, input.now);
         completed += 1;
         continue;

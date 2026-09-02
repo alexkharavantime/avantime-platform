@@ -5,15 +5,13 @@ import type {
   RetrievalResult,
 } from './retrieval';
 
+import type { RagConfiguration } from './rag-configuration';
 import {
   PostgreSQLKnowledgeSearchAdapter,
   PostgreSQLKnowledgeVectorAdapter,
   type KnowledgeIndexAudience,
   type KnowledgeIndexDocument,
 } from './knowledge-indexing';
-
-
-import type { RagConfiguration } from './rag-configuration';
 
 function toAudience(request: RetrievalRequest): KnowledgeIndexAudience {
   return {
@@ -26,54 +24,39 @@ function preview(
     searchText?: string;
   },
 ): string {
-
-  const value =
-    document.summary ||
-    document.searchText ||
-    document.title;
+  const value = document.summary || document.searchText || document.title;
 
   return value.replace(/\s+/g, ' ').trim().slice(0, 500);
 }
 
 export class KnowledgeLexicalRetriever implements LexicalRetriever {
-  constructor(
-    private readonly search: PostgreSQLKnowledgeSearchAdapter,
-  ) {}
+  constructor(private readonly search: PostgreSQLKnowledgeSearchAdapter) {}
 
-  async retrieve(
-    request: RetrievalRequest,
-  ): Promise<RetrievalResult[]> {
-    const documents = await this.search.search(
-      request.query,
-      toAudience(request),
-    );
+  async retrieve(request: RetrievalRequest): Promise<RetrievalResult[]> {
+    const documents = await this.search.search(request.query, toAudience(request));
 
-    return documents
-      .slice(0, request.topK)
-      .map((document, index) => ({
-        sourceType: 'ARTICLE',
-        sourceId: document.articleId,
-        sourceTitle: document.title,
+    return documents.slice(0, request.topK).map((document, index) => ({
+      sourceType: 'ARTICLE',
+      sourceId: document.articleId,
+      sourceTitle: document.title,
+      articleId: document.articleId,
+      articleSlug: document.slug,
 
-        articleId: document.articleId,
-
-        chunkId: `${document.articleId}:article`,
-        chunkIndex: index,
-        pageStart: null,
-        pageEnd: null,
-        preview: preview(document),
-        score: 1,
-        scoreComponents: {
-          lexical: 1,
-          semantic: 0,
-          hybrid: 1,
-        },
-      }));
+      chunkId: `${document.articleId}:article`,
+      chunkIndex: index,
+      pageStart: null,
+      pageEnd: null,
+      preview: preview(document),
+      score: document.score,
+      scoreComponents: {
+        lexical: document.score,
+        semantic: 0,
+        hybrid: document.score,
+      },
+    }));
   }
 }
-export class KnowledgeSemanticRetriever
-  implements AdditionalSemanticSource
-{
+export class KnowledgeSemanticRetriever implements AdditionalSemanticSource {
   constructor(
     private readonly vectors: PostgreSQLKnowledgeVectorAdapter,
     private readonly configuration: RagConfiguration,
@@ -93,9 +76,7 @@ export class KnowledgeSemanticRetriever
       embedding.dimensions !== this.configuration.embedding.dimensions ||
       embedding.version !== this.configuration.embedding.version
     ) {
-      throw new Error(
-        'Query embedding is incompatible with the active knowledge vector index.',
-      );
+      throw new Error('Query embedding is incompatible with the active knowledge vector index.');
     }
 
     const results = await this.vectors.search({
@@ -104,14 +85,11 @@ export class KnowledgeSemanticRetriever
       embeddingModel: embedding.model,
       embeddingVersion: embedding.version,
       topK: request.topK ?? this.configuration.hybrid.topK,
-      minimumSimilarity:
-        this.configuration.hybrid.semanticSimilarityThreshold,
+      minimumSimilarity: this.configuration.hybrid.semanticSimilarityThreshold,
     });
 
     return results.map((result, index) => {
-      const score = Number(
-        Math.max(0, Math.min(1, result.score)).toFixed(6),
-      );
+      const score = Number(Math.max(0, Math.min(1, result.score)).toFixed(6));
 
       return {
         sourceType: 'ARTICLE',
@@ -135,10 +113,10 @@ export class KnowledgeSemanticRetriever
       };
     });
   }
-}export class CompositeLexicalRetriever implements LexicalRetriever {
-  constructor(
-    private readonly retrievers: readonly LexicalRetriever[],
-  ) {}
+}
+
+export class CompositeLexicalRetriever implements LexicalRetriever {
+  constructor(private readonly retrievers: readonly LexicalRetriever[]) {}
 
   async retrieve(request: RetrievalRequest): Promise<RetrievalResult[]> {
     const batches = await Promise.all(

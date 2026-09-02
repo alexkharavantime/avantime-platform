@@ -234,9 +234,29 @@ test('knowledge audience fencing denies foreign tenants, private and archived ve
   );
   assert.equal(canReadKnowledgeIndex(article, { kind: 'PUBLIC' }), false);
   assert.equal(
+    canReadKnowledgeIndex(
+      { ...article, ownerScope: 'PLATFORM', companyId: null, visibility: 'PLATFORM' },
+      { kind: 'ORGANIZATION', companyId: 'tenant-b' },
+    ),
+    true,
+  );
+  assert.equal(
+    canReadKnowledgeIndex({ ...article, visibility: 'PUBLIC' }, { kind: 'PUBLIC' }),
+    true,
+  );
+  assert.equal(
     canReadKnowledgeIndex({ ...article, visibility: 'PRIVATE' }, { kind: 'PLATFORM' }),
     false,
   );
+  for (const lifecycleStatus of ['DRAFT', 'REVIEW', 'ARCHIVED'] as const) {
+    assert.equal(
+      canReadKnowledgeIndex(
+        { ...article, lifecycleStatus },
+        { kind: 'ORGANIZATION', companyId: 'tenant-a' },
+      ),
+      false,
+    );
+  }
   assert.equal(
     canReadKnowledgeIndex(
       { ...article, lifecycleStatus: 'ARCHIVED' },

@@ -10,8 +10,9 @@
 
 ### 🎯 Текущая цель проекта
 
-Развернуть завершённые TASK-015/TASK-016 repository artifacts в безопасном managed staging и
-проверить Jira Cloud только в разрешённом test tenant без production readiness claim.
+Закрыть superseded PR #24 и подтвердить завершённые repository artifacts TASK-015–TASK-018 в
+managed staging без production readiness claim до получения provider, capacity, PITR и
+human-review evidence.
 
 ### 📈 Общий процент готовности
 
@@ -19,26 +20,26 @@
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-015 добавила typed staging contract, Compose topology и normalized health/readiness;
-2. TASK-016 заменила синхронный Jira вызов атомарной tenant-aware durable operation;
-3. Jira test adapters, outbound/inbound workers, retry/DLQ, safe status/comments и notifications
-   реализованы без real Jira credentials; Docker-backed TASK-017 gates ещё требуют запуска.
+1. TASK-018 объединила DOCUMENT и ARTICLE в существующем lexical/semantic/hybrid RAG pipeline;
+2. Knowledge lifecycle теперь подтверждён publish/update/archive/delete/quarantine integration tests;
+3. client AI citations/history и Admin Knowledge Center поддерживают ARTICLE без client-trusted tenant
+   или source metadata; PR #24 признан superseded.
 
 ### 🚧 Три главных риска
 
 1. Reference production architecture не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
-3. Outbox/index/Jira Cloud adapters ещё не проверены в managed staging; оставшиеся
-   `AR-DEP-2026-002/003` истекают 2026-08-12.
+3. Outbox/index/Jira Cloud adapters ещё не проверены в managed staging; прежние временные
+   dependency exceptions с датой 2026-08-12 требуют повторной authoritative проверки.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
+1. Закрыть PR #24 как superseded без merge diverged branch.
+2. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
-2. Развернуть TASK-015/TASK-016 artifacts, провести ceremonies и Jira Cloud test-tenant validation.
-3. Завершить Docker-backed TASK-017 validation и подтвердить secure webhook/JSM в разрешённом Jira
-   Cloud test tenant.
+3. Развернуть TASK-015–TASK-018 artifacts и подтвердить AI/Jira providers, backup/PITR,
+   observability, accessibility и reviewer ceremonies в разрешённых средах.
 
 ---
 
@@ -47,16 +48,17 @@
 | Поле                             | Значение                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------- |
 | Проект                           | Avantime Platform                                                                         |
-| Версия документа                 | 1.26                                                                                      |
-| Дата последнего обновления       | 2026-08-02                                                                                |
+| Версия документа                 | 1.27                                                                                      |
+| Дата последнего обновления       | 2026-09-02                                                                                |
 | Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения |
-| Текущая ветка Git                | `feature/task-017-jira-sync`                                                              |
-| Базовый commit рабочей ветки     | `932f745`                                                                                 |
+| Текущая ветка Git                | `main`                                                                                    |
+| Базовый commit рабочей ветки     | Parent `006b742`; TASK-018 reconciliation фиксируется текущим `HEAD`                      |
 | Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                |
 | Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                    |
 | Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                          |
 
-Снимок сделан по рабочему дереву, содержащему незакоммиченные изменения и новые документы. Поэтому наличие файла или прототипа не означает готовность функции к production.
+Снимок TASK-018 соответствует reconciliation commit в `main`. Локальные зелёные gates не означают
+managed-staging или production readiness.
 
 ---
 
@@ -133,7 +135,17 @@ PostgreSQL/MinIO integration environment фактически запущен. Mi
 
 [TASK-004](./tasks/TASK-004.md) завершена: добавлены единый AI Gateway, отдельная embedding queue/worker, tenant-aware versioned document chunk embeddings, PostgreSQL/pgvector, lexical/semantic/hybrid retrieval, server-generated citations, safe no-answer/prompt boundary, single-document reindex и synthetic evaluation. Core, OCR, embedding/vector и RAG readiness разделены; production requirements сохранены.
 
-TASK-004 завершает AI-001 для текущих AI routes. Более широкие AI-002/AI-003 provider policies, AI-007 для статей/клиентских ролей, AI-008 для статей, AI-009 production capacity/backup и DOC-002 external processing queue остаются `In Progress`.
+TASK-004 завершает AI-001 для текущих AI routes. До TASK-018 расширение AI-007/AI-008 на статьи и
+клиентские роли оставалось открытым; AI-002/AI-003 provider policies, AI-009 production
+capacity/backup и DOC-002 external processing queue остаются отдельным scope.
+
+[TASK-018](./tasks/TASK-018.md) завершила AI-007 в repository/application scope: DOCUMENT и ARTICLE
+используют единый lexical/semantic/hybrid и answer pipeline, один query embedding, active-version
+и tenant/visibility/lifecycle fencing, server-resolved citations, safe no-answer и общий client AI
+flow. ARTICLE history/UI и Admin Knowledge Center показывают безопасные ссылки и operational index
+state; controlled reindex имеет permission и audit boundary. PostgreSQL/pgvector integration
+подтвердила publish/update/archive/delete и stale-version fencing; exhausted retries quarantines
+current article. PR #24 (`a5546fb`) полностью superseded и не должен merge-иться.
 
 [TASK-005](./tasks/TASK-005.md) завершена в application/code/documentation scope:
 реализованы Redis queues/fencing, distributed AI limits, PostgreSQL cost/budget
@@ -224,9 +236,10 @@ bounded retry/DLQ и idempotency marker; portal показывает safe pendin
 
 [TASK-017](./tasks/TASK-017.md) реализована в repository boundary: secure-admin HMAC webhook,
 durable inbound queue/worker, stale/terminal status fencing, strict public-comment policy, safe ADF
-projection и transactional outbound customer comments. Pure unit/security contracts пройдены;
-Docker-backed integration/browser/migration/staging gates и actual Jira Cloud delivery пока не
-выполнены, поэтому задача остаётся `In Progress` и production readiness не заявляется.
+projection и transactional outbound customer comments. Unit/security, full PostgreSQL integration
+31/31, migration rehearsal и Chromium suite 77/77 пройдены локально. Local/managed staging smoke и
+actual Jira Cloud delivery не выполнены, поэтому задача остаётся `In Progress` и production
+readiness не заявляется.
 
 Проверки четвёртой итерации TASK-002:
 
@@ -272,17 +285,17 @@ Docker-backed integration/browser/migration/staging gates и actual Jira Cloud d
 | Публичный сайт          | In Progress |        65% | Основные страницы существуют, главная перерабатывается; нет завершённых новостей, вебинаров и мультиязычности                                     |
 | Личный кабинет          | Review      |        85% | TASK-007 завершена: единый `/portal`, compatibility redirects, client documents/RAG, notifications и безопасный portal audit прошли gates         |
 | Административная панель | In Progress |        55% | Есть обращения, знания, Email, события и настройки; нет полного управления пользователями, компаниями и AI                                        |
-| AI Platform             | In Progress |        48% | AI Gateway, document embeddings, pgvector, hybrid RAG и durable cost controls готовы; articles, agents и managed provider rollout остаются        |
-| База знаний             | In Progress |        45% | Есть управляемые статьи и прототип документов; реализации не объединены                                                                           |
+| AI Platform             | In Progress |        52% | AI Gateway, DOCUMENT/ARTICLE hybrid RAG и durable cost controls готовы; agents и managed provider rollout остаются                                |
+| База знаний             | In Progress |        55% | Статьи и документы объединены в защищённом retrieval; расширенный content domain и managed operations остаются                                    |
 | Интеграции              | In Progress |        25% | Нет Integration Hub, общих очередей и контракта коннекторов                                                                                       |
-| Jira                    | In Progress |        65% | TASK-017 добавила repository status/public-comment sync; Docker gates и actual Jira Cloud webhook/JSM validation остаются pending                 |
+| Jira                    | In Progress |        68% | TASK-017 repository sync и локальные Docker/browser gates пройдены; actual Jira Cloud webhook/JSM validation остаётся pending                     |
 | 1С                      | Planned     |        10% | Есть продуктовая экспертиза и целевая архитектура; production-коннектор не реализован                                                             |
 | Agent+                  | Planned     |        15% | Есть публичная страница и продуктовая концепция; интеграционный модуль не реализован                                                              |
 | API                     | In Progress |        58% | Client read document/RAG API отделён от ADMIN mutations и выводит tenant из session; внешняя версионируемая API Platform отсутствует              |
 | Безопасность            | In Progress |        82% | Central organization RBAC и OWNER governance локально проверены; staging ceremonies и legacy platform-role separation остаются                    |
 | UI/UX                   | In Progress |        50% | Идёт редизайн и перенос компонентов; дизайн-система ещё не стабилизирована                                                                        |
 | Инфраструктура          | In Progress |        40% | Добавлены Redis queues, guarded backup/restore, telemetry contracts и reference production topology; managed rollout и PITR ещё не подтверждены   |
-| Тестирование            | In Progress |        80% | Проходят 147 unit/security, 22 integration и 60 Playwright/Chrome tests; manual governance и assistive-technology review остаются                 |
+| Тестирование            | In Progress |        84% | Текущее дерево прошло 193 unit, 31 integration и 77 browser tests; managed staging и manual assistive review остаются                             |
 | Развёртывание           | In Progress |        15% | Добавлены hardened image targets, reference Compose и deployment/rollback runbook; staging rollout и owners ещё не подтверждены                   |
 
 ---
@@ -291,9 +304,10 @@ Docker-backed integration/browser/migration/staging gates и actual Jira Cloud d
 
 На дату снимка AI-001 завершена в границе текущих AI routes. Статус `Done` не распространяется на production infrastructure, расширенную provider policy, статьи, клиентский RAG или AI Agents.
 
-| ID     | Название          | Версия      | Дата завершения | Краткое описание результата                                                            |
-| ------ | ----------------- | ----------- | --------------- | -------------------------------------------------------------------------------------- |
-| AI-001 | Единый AI Gateway | Version 2.0 | 2026-07-28      | Общий fake/OpenAI/Gemini boundary, limits, usage events, readiness и безопасные ошибки |
+| ID     | Название          | Версия      | Дата завершения | Краткое описание результата                                                                                                        |
+| ------ | ----------------- | ----------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| AI-001 | Единый AI Gateway | Version 2.0 | 2026-07-28      | Общий fake/OpenAI/Gemini boundary, limits, usage events, readiness и безопасные ошибки                                             |
+| AI-007 | Защищённый RAG    | Version 2.0 | 2026-09-02      | Client-safe DOCUMENT/ARTICLE lexical, semantic и hybrid retrieval, server-side citations, tenant/lifecycle policy и safe no-answer |
 
 Исторически в проекте реализованы рабочие основы сайта, портала, административной панели, PostgreSQL/Prisma, Jira, Email, вложений и базы знаний. Они учитываются в готовности направлений, но не задним числом объявляются завершёнными задачами нового backlog.
 
@@ -310,8 +324,7 @@ Docker-backed integration/browser/migration/staging gates и actual Jira Cloud d
 | PORTAL-003        | Документы                                            | P0        |        78% | Client-safe list/detail/preview/download готовы; upload и processing controls остаются в admin boundary            |
 | AI-002            | Адаптер OpenAI                                       | P0        |        65% | Adapter готов; streaming и production validation остаются                                                          |
 | AI-003            | Адаптер Gemini                                       | P1        |        60% | Adapter готов; fallback policy и production validation остаются                                                    |
-| AI-007            | Защищённый RAG                                       | P0        |        75% | Tenant client RAG и citations доступны в portal; единая article/document permission model остаётся                 |
-| KB-001            | Объединение двух баз знаний                          | P0        |        42% | Explicit article ownership/visibility готовы; единый article/document index остаётся                               |
+| KB-001            | Объединение двух баз знаний                          | P0        |        42% | Retrieval boundary объединён; единый content domain, категории и lifecycle UI остаются                             |
 | DOC-001           | Единое файловое хранилище                            | P0        |        65% | Local/S3 adapters, PostgreSQL metadata и migration готовы; infrastructure, signed URLs, backup и вложения остаются |
 | DOC-002           | Конвейер обработки документов                        | P0        |        88% | Processing/OCR/embedding workers и indexing готовы; external processing queue и production monitoring остаются     |
 | UX-001            | Единая дизайн-система                                | P1        |        45% | Общие tokens и интерфейсные паттерны                                                                               |
@@ -571,6 +584,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
 | ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-02 | 1.27   | Codex, по поручению владельца проекта | TASK-018 repository reconciliation: unified DOCUMENT/ARTICLE RAG, lifecycle/citations/client/Admin fixes, PR #24 superseded, local validation evidence                                                 |
 | 2026-07-31 | 1.21   | Codex, по поручению владельца проекта | TASK-011 central tenant permissions, system roles, OWNER governance, lifecycle, audit/navigation/API и migration; 147 unit, 22 integration и 60 browser tests, build и security gates passed           |
 | 2026-07-31 | 1.20   | Codex, по поручению владельца проекта | TASK-010 repository OIDC callback/lifecycle, tenant mapping, SSO policy, ADMIN UI, rollout/evidence docs; local unit/integration/build/browser/security gates passed, real tenant validation pending   |
 | 2026-07-30 | 1.19   | Codex, по поручению владельца проекта | Полная TASK-009 gap analysis: verification/invitation/OIDC/key rotation/ceremony/CI/browser coverage; 133 unit, 19 integration, 6 identity и 11 accessibility tests passed; final tenant rerun pending |

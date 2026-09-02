@@ -70,6 +70,7 @@
 | [TASK-015](TASK-015.md) | Staging infrastructure baseline                          | Done        |
 | [TASK-016](TASK-016.md) | Create Jira ticket from customer portal                  | Done        |
 | [TASK-017](TASK-017.md) | Jira status and comment synchronization                  | In Progress |
+| [TASK-018](TASK-018.md) | Unified Knowledge Hub и клиентский AI-консультант        | Done        |
 
 ## Связанные документы
 

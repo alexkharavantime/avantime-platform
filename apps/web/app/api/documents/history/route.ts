@@ -5,7 +5,7 @@ import { getDocumentTenantContext } from '../../../../lib/document-model';
 import type { DocumentHistoryItem } from '../../../../lib/document-repositories';
 import { getDocumentServices } from '../../../../lib/document-services';
 import {
-  resolveDocumentSources,
+  resolveKnowledgeSources,
   type DocumentSourceReference,
 } from '../../../../lib/document-sources';
 
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const resolvedSources = await resolveDocumentSources(
+    const resolvedSources = await resolveKnowledgeSources(
       tenant,
       Array.isArray(body.sources) ? body.sources : [],
     );
@@ -62,10 +62,16 @@ export async function POST(request: Request) {
       answer,
       sources: resolvedSources.map((source, index) => ({
         number: index + 1,
+        sourceType: source.sourceType,
+        sourceId: source.sourceId,
+        sourceTitle: source.sourceTitle,
         documentId: source.documentId,
         documentName: source.documentName,
+        articleId: source.articleId,
+        articleSlug: source.articleSlug,
         chunkId: source.chunkId,
         score: 0,
+        link: source.link,
       })),
       createdAt: new Date().toISOString(),
     };

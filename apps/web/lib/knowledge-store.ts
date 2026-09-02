@@ -16,6 +16,7 @@ export type KnowledgeArticle = Article & {
   ownerScope: KnowledgeOwnerScope;
   visibility: KnowledgeVisibility;
   version: number;
+  quarantinedAt?: string;
 };
 
 const demoArticles: KnowledgeArticle[] = staticArticles.map((article, index) => ({
@@ -57,6 +58,7 @@ function mapDbArticle(item: any): KnowledgeArticle {
     ownerScope: item.ownerScope,
     visibility: item.visibility,
     version: item.version,
+    quarantinedAt: item.quarantinedAt?.toISOString(),
   };
 }
 
@@ -66,6 +68,7 @@ export type KnowledgeAudience =
 export async function listKnowledgeArticles(
   options: {
     includeDrafts?: boolean;
+    includeQuarantined?: boolean;
     query?: string;
     category?: string;
     audience?: KnowledgeAudience;
@@ -73,6 +76,7 @@ export async function listKnowledgeArticles(
 ) {
   const {
     includeDrafts = false,
+    includeQuarantined = false,
     query = '',
     category = '',
     audience = { kind: 'PUBLIC' },
@@ -84,7 +88,7 @@ export async function listKnowledgeArticles(
       if (!prisma) throw new Error('Prisma unavailable');
       const rows = await prisma.knowledgeArticle.findMany({
         where: {
-          quarantinedAt: null,
+          ...(!includeQuarantined || audience.kind !== 'PLATFORM' ? { quarantinedAt: null } : {}),
           ...(audience.kind === 'PUBLIC'
             ? { status: 'PUBLISHED', visibility: 'PUBLIC' }
             : audience.kind === 'PLATFORM'

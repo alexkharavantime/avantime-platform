@@ -456,8 +456,8 @@ Product Backlog — основной управляемый перечень п�
 - **Эпик:** EPIC-004 AI Platform
 - **Приоритет:** P0
 - **Версия:** Version 2.0
-- **Статус:** In Progress
-- **Описание:** TASK-004 реализовала ADMIN-only tenant-aware document RAG, hybrid retrieval, context limits и server-generated citations. Расширение на статьи, клиентские роли и единую permission model остаётся.
+- **Статус:** Done
+- **Описание:** TASK-004 реализовала document RAG, а TASK-018 завершила единый client-safe DOCUMENT/ARTICLE lexical, semantic и hybrid pipeline, shared query embedding, permission/lifecycle filtering, server-resolved citations и safe no-answer. Production provider capacity остаётся environment gate AI-009, а не competing RAG implementation.
 - **Критерии готовности:** права до поиска; гибридный retrieval; источники; ограниченный контекст; оценка ответа.
 - **Зависимости:** KB-001, AI-008, AI-009, SEC-002.
 
@@ -469,7 +469,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** TASK-004 реализовала асинхронные версионированные tenant-aware embeddings document chunks. Индексация статей и production distributed supervision остаются.
+- **Описание:** TASK-004 реализовала document embeddings, TASK-015 — durable Knowledge index worker, а TASK-018 подтвердила versioned ARTICLE embeddings, retry/quarantine/reindex/delete lifecycle и shared query embedding. Реальная production capacity и managed supervision остаются environment gates.
 - **Критерии готовности:** модель и версия сохранены; tenant-контекст; контрольная сумма; повторная индексация; очередь.
 - **Зависимости:** DOC-002, INFRA-003, AI-009.
 
@@ -493,7 +493,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Перенести локальную историю в PostgreSQL с правами и политикой хранения.
+- **Описание:** Существующая tenant-aware локальная история AI-консультанта сохраняет проверенные DOCUMENT/ARTICLE source links после TASK-018. Перенести историю в PostgreSQL с retention/consent, правами и политикой хранения.
 - **Критерии готовности:** диалоги и сообщения; источники; модель; удаление; tenant-изоляция; аудит инструментов.
 - **Зависимости:** AI-001, SEC-002, INFRA-001.
 
@@ -555,7 +555,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P0
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Объединить управляемые статьи и локальный документный Knowledge Center в один домен.
+- **Описание:** TASK-018 объединила статьи и документы в retrieval/answer/client UI boundary без второго RAG stack. Более широкий единый content domain, категории и lifecycle UI продолжаются отдельно.
 - **Критерии готовности:** единая модель; публичные и закрытые области; сохранены маршруты; нет дублирования хранилищ.
 - **Зависимости:** DOC-001, SEC-002, AI-007.
 
@@ -567,7 +567,7 @@ Product Backlog — основной управляемый перечень п�
 - **Приоритет:** P1
 - **Версия:** Version 2.0
 - **Статус:** In Progress
-- **Описание:** Объединить полнотекстовый и семантический поиск с фильтрами и ранжированием.
+- **Описание:** TASK-018 завершила защищённое смешивание DOCUMENT/ARTICLE lexical и semantic candidates с deterministic ranking. Подсветка, quality/latency metrics и расширенные фильтры остаются scope KB-002.
 - **Критерии готовности:** права; релевантность; подсветка; источники; метрики; время ответа соответствует цели.
 - **Зависимости:** KB-001, AI-008, AI-009.
 

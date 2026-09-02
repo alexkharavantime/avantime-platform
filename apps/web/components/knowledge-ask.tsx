@@ -5,10 +5,14 @@ import { FormEvent, useEffect, useState } from 'react';
 
 type AnswerSource = {
   number?: number;
+  sourceType?: 'DOCUMENT' | 'ARTICLE';
   sourceId?: string;
-  documentId: string;
+  sourceTitle?: string;
+  documentId?: string;
   documentName?: string;
   documentTitle?: string;
+  articleId?: string;
+  articleSlug?: string;
   chunkId: string;
   score?: number;
   retrievalScore?: number;
@@ -281,7 +285,11 @@ export function KnowledgeAsk() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5">
+          <label htmlFor="knowledge-question" className="sr-only">
+            Вопрос AI-консультанту
+          </label>
           <textarea
+            id="knowledge-question"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             rows={4}
@@ -312,7 +320,7 @@ export function KnowledgeAsk() {
         </form>
 
         {error ? (
-          <div className="mt-5 rounded-xl bg-red-50 p-4">
+          <div role="alert" className="mt-5 rounded-xl bg-red-50 p-4">
             <p className="font-semibold text-red-700">{error}</p>
           </div>
         ) : null}
@@ -332,9 +340,12 @@ export function KnowledgeAsk() {
                 <div className="mt-3 space-y-2">
                   {sources.map((source) => (
                     <Link
-                      key={`${source.documentId}-${source.chunkId}`}
+                      key={`${source.sourceType ?? 'DOCUMENT'}-${source.articleId ?? source.documentId}-${source.chunkId}`}
                       href={
-                        source.link ?? `/portal/documents/${encodeURIComponent(source.documentId)}`
+                        source.link ??
+                        (source.articleSlug
+                          ? `/portal/knowledge/${encodeURIComponent(source.articleSlug)}`
+                          : `/portal/documents/${encodeURIComponent(source.documentId ?? '')}`)
                       }
                       className="block rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm transition hover:border-blue-300"
                     >
@@ -343,7 +354,11 @@ export function KnowledgeAsk() {
                       </span>
 
                       <span className="ml-2 text-slate-700">
-                        {source.documentTitle ?? source.documentName}
+                        {source.sourceTitle ?? source.documentTitle ?? source.documentName}
+                      </span>
+
+                      <span className="ml-2 text-xs font-bold uppercase text-slate-400">
+                        {source.sourceType ?? 'DOCUMENT'}
                       </span>
 
                       {source.excerpt ? (

@@ -192,10 +192,16 @@ export interface DocumentProcessingRepository {
 
 export type DocumentHistorySource = {
   number: number;
-  documentId: string;
-  documentName: string;
+  sourceType?: 'DOCUMENT' | 'ARTICLE';
+  sourceId?: string;
+  sourceTitle?: string;
+  documentId?: string;
+  documentName?: string;
+  articleId?: string;
+  articleSlug?: string;
   chunkId: string;
   score: number;
+  link?: string;
 };
 
 export type DocumentHistoryItem = {

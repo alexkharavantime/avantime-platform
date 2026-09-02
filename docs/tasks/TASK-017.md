@@ -2,8 +2,8 @@
 
 ## Статус
 
-`In Progress` — repository implementation выполнена; PostgreSQL integration, browser, migration,
-staging smoke и actual Jira Cloud delivery ещё требуют фактического запуска/внешней среды.
+`In Progress` — repository implementation и доступные локальные PostgreSQL, migration и browser
+gates выполнены; local/managed staging smoke и actual Jira Cloud delivery требуют отдельной среды.
 
 ## Рабочая ветка
 
@@ -56,16 +56,17 @@ staging smoke и actual Jira Cloud delivery ещё требуют фактиче
 - [x] retries, DLQ, concurrent claim and lease recovery remain bounded;
 - [x] UI exposes only safe status/comment state;
 - [x] attachments remain out of scope;
-- [ ] full PostgreSQL integration suite twice — environment gate pending;
-- [ ] targeted Chromium flow — environment gate pending;
-- [ ] migration/staging smoke — environment gate pending;
+- [x] full PostgreSQL integration suite — PASS, 31/31 на текущем дереве;
+- [x] targeted Chromium flow — PASS в полном browser suite 77/77;
+- [x] migration rehearsal — PASS для empty/legacy/repeated deploy, 17 migrations;
+- [ ] local/managed staging smoke — отдельный environment gate, в TASK-018 не запускался;
 - [ ] actual Jira Cloud webhook registration/delivery — external `PENDING` gate.
 
 ## Результат выполнения
 
-Pure unit/security contracts have passed locally. Docker-backed checks cannot yet be marked passed;
-TASK-017 must remain `In Progress` until the recorded environment gates are actually executed.
-Repository success does not claim production readiness or real Jira Cloud validation.
+Pure unit/security contracts, Docker-backed PostgreSQL integration, migration rehearsal и Chromium
+flow прошли локально. TASK-017 остаётся `In Progress` до actual Jira Cloud webhook/JSM validation и
+разрешённых staging/observability gates. Эти локальные результаты не доказывают production readiness.
 
 ## Известные ограничения
 

@@ -7,8 +7,12 @@ import {
   PostgreSQLKnowledgeSearchAdapter,
   PostgreSQLKnowledgeVectorAdapter,
   RedisKnowledgeCacheAdapter,
+  requestPlatformKnowledgeReindex,
 } from '../../lib/knowledge-indexing';
-import { processKnowledgeIndexBatch } from '../../lib/knowledge-index-worker';
+import {
+  claimKnowledgeIndexBatch,
+  processKnowledgeIndexBatch,
+} from '../../lib/knowledge-index-worker';
 import {
   enqueueNotification,
   processNotificationBatch,
@@ -271,7 +275,7 @@ test('notification outbox claims concurrently without double delivery and reache
   }
 });
 
-test('knowledge invalidation updates PostgreSQL search/pgvector and removes archived tenant data', async () => {
+test('knowledge publish, update, archive and delete lifecycle fences PostgreSQL search/pgvector', async () => {
   const prisma = (await integrationDatabase()) as unknown as PrismaClient;
   const redis = await createRedisCommandClient(process.env.REDIS_URL!);
   const cache = new RedisKnowledgeCacheAdapter(redis, 'avantime:staging:integration', 60);
@@ -335,6 +339,28 @@ test('knowledge invalidation updates PostgreSQL search/pgvector and removes arch
 
     await prisma.knowledgeArticle.update({
       where: { id: articleId },
+      data: {
+        title: 'Updated staging indexing contract',
+        summary: 'Updated synthetic integration article',
+        content: [{ title: 'Updated', paragraphs: ['Updated synthetic content.'] }],
+        version: { increment: 1 },
+      },
+    });
+    await processKnowledgeIndexBatch({ batchSize: 100, leaseMs: 5_000, cache, articleId });
+    const updatedSearch = await prisma.knowledgeSearchIndex.findUnique({ where: { articleId } });
+    const updatedVector = await prisma.knowledgeVectorIndex.findUnique({ where: { articleId } });
+    assert.equal(updatedSearch?.sourceVersion, 2);
+    assert.equal(updatedVector?.sourceVersion, 2);
+    assert.equal(updatedVector?.generation, 2);
+    assert.ok(updatedVector?.embeddingModel);
+    assert.ok(updatedVector?.embeddingVersion);
+    assert.deepEqual(
+      await processKnowledgeIndexBatch({ batchSize: 100, leaseMs: 5_000, cache, articleId }),
+      { claimed: 0, completed: 0, failed: 0, deadLettered: 0 },
+    );
+
+    await prisma.knowledgeArticle.update({
+      where: { id: articleId },
       data: { status: 'ARCHIVED', version: { increment: 1 } },
     });
     await processKnowledgeIndexBatch({ batchSize: 100, leaseMs: 5_000, cache, articleId });
@@ -351,12 +377,226 @@ test('knowledge invalidation updates PostgreSQL search/pgvector and removes arch
       await vectors.getForAudience(articleId, { kind: 'ORGANIZATION', companyId }),
       null,
     );
+
+    await prisma.knowledgeArticle.update({
+      where: { id: articleId },
+      data: { status: 'PUBLISHED', version: { increment: 1 } },
+    });
+    await processKnowledgeIndexBatch({ batchSize: 100, leaseMs: 5_000, cache, articleId });
+    assert.ok(await prisma.knowledgeSearchIndex.findUnique({ where: { articleId } }));
+    await prisma.knowledgeArticle.delete({ where: { id: articleId } });
+    assert.ok(
+      await prisma.knowledgeIndexEvent.findUnique({
+        where: { idempotencyKey: `knowledge:${articleId}:4:delete` },
+      }),
+    );
+    await processKnowledgeIndexBatch({ batchSize: 100, leaseMs: 5_000, cache, articleId });
+    assert.equal(await prisma.knowledgeSearchIndex.findUnique({ where: { articleId } }), null);
+    assert.equal(await prisma.knowledgeVectorIndex.findUnique({ where: { articleId } }), null);
   } finally {
+    await prisma.knowledgeArticle.deleteMany({ where: { id: articleId } });
     await prisma.knowledgeIndexEvent.deleteMany({ where: { articleId } });
     await prisma.knowledgeSearchIndex.deleteMany({ where: { articleId } });
     await prisma.knowledgeVectorIndex.deleteMany({ where: { articleId } });
-    await prisma.knowledgeArticle.deleteMany({ where: { id: articleId } });
     await prisma.company.deleteMany({ where: { id: companyId } });
     await redis.close?.();
+  }
+});
+
+test('knowledge indexing dead letter quarantines the current article version', async () => {
+  const prisma = (await integrationDatabase()) as unknown as PrismaClient;
+  const redis = await createRedisCommandClient(process.env.REDIS_URL!);
+  const cache = new RedisKnowledgeCacheAdapter(redis, 'avantime:staging:integration', 60);
+  const companyId = `staging-quarantine-company-${crypto.randomUUID()}`;
+  const articleId = `staging-quarantine-article-${crypto.randomUUID()}`;
+  const search = new PostgreSQLKnowledgeSearchAdapter();
+  try {
+    await prisma.company.create({
+      data: { id: companyId, name: 'Staging quarantine integration' },
+    });
+    await prisma.knowledgeArticle.create({
+      data: {
+        id: articleId,
+        slug: articleId,
+        title: 'Quarantine indexing contract',
+        summary: 'Synthetic quarantine article',
+        category: 'integration',
+        content: [{ title: 'Synthetic', paragraphs: ['No customer content.'] }],
+        status: 'PUBLISHED',
+        ownerScope: 'ORGANIZATION',
+        companyId,
+        visibility: 'ORGANIZATION',
+        version: 1,
+        classificationEvidence: 'task-018-integration-v1',
+        publishedAt: new Date(),
+      },
+    });
+    await processKnowledgeIndexBatch({ batchSize: 100, leaseMs: 5_000, cache, articleId });
+    await prisma.knowledgeArticle.update({
+      where: { id: articleId },
+      data: { summary: 'Changed content that must be reindexed', version: { increment: 1 } },
+    });
+    await prisma.knowledgeIndexEvent.update({
+      where: { idempotencyKey: `knowledge:${articleId}:2` },
+      data: { maxAttempts: 1 },
+    });
+    const failed = await processKnowledgeIndexBatch({
+      batchSize: 100,
+      leaseMs: 5_000,
+      cache,
+      articleId,
+      search: {
+        upsert: async () => {
+          throw new Error('SYNTHETIC_INDEX_FAILURE');
+        },
+      } as unknown as PostgreSQLKnowledgeSearchAdapter,
+    });
+    assert.deepEqual(failed, { claimed: 1, completed: 0, failed: 0, deadLettered: 1 });
+    const article = await prisma.knowledgeArticle.findUnique({ where: { id: articleId } });
+    const event = await prisma.knowledgeIndexEvent.findUnique({
+      where: { idempotencyKey: `knowledge:${articleId}:2` },
+    });
+    assert.ok(article?.quarantinedAt);
+    assert.equal(event?.status, 'DEAD_LETTER');
+    assert.equal(event?.lastFailureCode, 'KNOWLEDGE_INDEX_OPERATION_FAILED');
+    assert.equal(
+      (
+        await search.search('Quarantine indexing contract', {
+          kind: 'ORGANIZATION',
+          companyId,
+        })
+      ).some((row) => row.articleId === articleId),
+      false,
+    );
+  } finally {
+    await prisma.knowledgeArticle.deleteMany({ where: { id: articleId } });
+    await prisma.knowledgeIndexEvent.deleteMany({ where: { articleId } });
+    await prisma.knowledgeSearchIndex.deleteMany({ where: { articleId } });
+    await prisma.knowledgeVectorIndex.deleteMany({ where: { articleId } });
+    await prisma.company.deleteMany({ where: { id: companyId } });
+    await redis.close?.();
+  }
+});
+
+test('manual platform reindex advances the source version without stealing an active lease', async () => {
+  const prisma = (await integrationDatabase()) as unknown as PrismaClient;
+  const articleId = `platform-reindex-article-${crypto.randomUUID()}`;
+  const correlationId = `platform-reindex-${crypto.randomUUID()}`;
+  try {
+    await prisma.knowledgeArticle.create({
+      data: {
+        id: articleId,
+        slug: articleId,
+        title: 'Platform reindex contract',
+        summary: 'Synthetic platform reindex article',
+        category: 'integration',
+        content: [{ title: 'Synthetic', paragraphs: ['No customer content.'] }],
+        status: 'PUBLISHED',
+        ownerScope: 'PLATFORM',
+        companyId: null,
+        visibility: 'PLATFORM',
+        version: 1,
+        classificationEvidence: 'task-018-reindex-v1',
+        publishedAt: new Date(),
+      },
+    });
+    const leaseUntil = new Date(Date.now() + 60_000);
+    await prisma.knowledgeIndexEvent.update({
+      where: { idempotencyKey: `knowledge:${articleId}:1` },
+      data: {
+        status: 'PROCESSING',
+        attempts: 1,
+        leaseToken: 'active-reindex-lease',
+        leaseUntil,
+      },
+    });
+
+    const result = await requestPlatformKnowledgeReindex({
+      articleId,
+      expectedVersion: 1,
+      actorId: 'synthetic-platform-owner',
+      correlationId,
+    });
+    assert.deepEqual(result, { articleId, sourceVersion: 2 });
+    assert.equal(
+      (await prisma.knowledgeArticle.findUnique({ where: { id: articleId } }))?.version,
+      2,
+    );
+    const activeEvent = await prisma.knowledgeIndexEvent.findUnique({
+      where: { idempotencyKey: `knowledge:${articleId}:1` },
+    });
+    assert.equal(activeEvent?.status, 'PROCESSING');
+    assert.equal(activeEvent?.leaseToken, 'active-reindex-lease');
+    assert.equal(activeEvent?.leaseUntil?.getTime(), leaseUntil.getTime());
+    assert.equal(
+      (
+        await prisma.knowledgeIndexEvent.findUnique({
+          where: { idempotencyKey: `knowledge:${articleId}:2` },
+        })
+      )?.status,
+      'PENDING',
+    );
+    assert.equal(
+      (
+        await prisma.productionAuditEvent.findFirst({
+          where: { correlationId, action: 'knowledge.reindex.requested' },
+        })
+      )?.targetId,
+      articleId,
+    );
+  } finally {
+    await prisma.knowledgeArticle.deleteMany({ where: { id: articleId } });
+    await prisma.knowledgeIndexEvent.deleteMany({ where: { articleId } });
+    await prisma.productionAuditEvent.deleteMany({ where: { correlationId } });
+  }
+});
+
+test('expired final knowledge lease dead-letters the event and quarantines its current article', async () => {
+  const prisma = (await integrationDatabase()) as unknown as PrismaClient;
+  const articleId = `expired-lease-article-${crypto.randomUUID()}`;
+  try {
+    await prisma.knowledgeArticle.create({
+      data: {
+        id: articleId,
+        slug: articleId,
+        title: 'Expired lease contract',
+        summary: 'Synthetic expired lease article',
+        category: 'integration',
+        content: [{ title: 'Synthetic', paragraphs: ['No customer content.'] }],
+        status: 'PUBLISHED',
+        ownerScope: 'PLATFORM',
+        companyId: null,
+        visibility: 'PLATFORM',
+        version: 1,
+        classificationEvidence: 'task-018-expired-lease-v1',
+        publishedAt: new Date(),
+      },
+    });
+    const now = new Date();
+    await prisma.knowledgeIndexEvent.update({
+      where: { idempotencyKey: `knowledge:${articleId}:1` },
+      data: {
+        status: 'PROCESSING',
+        attempts: 1,
+        maxAttempts: 1,
+        leaseToken: 'expired-final-lease',
+        leaseUntil: new Date(now.getTime() - 1),
+      },
+    });
+
+    assert.deepEqual(
+      await claimKnowledgeIndexBatch({ batchSize: 1, leaseMs: 5_000, now, articleId }),
+      [],
+    );
+    const event = await prisma.knowledgeIndexEvent.findUnique({
+      where: { idempotencyKey: `knowledge:${articleId}:1` },
+    });
+    const article = await prisma.knowledgeArticle.findUnique({ where: { id: articleId } });
+    assert.equal(event?.status, 'DEAD_LETTER');
+    assert.equal(event?.lastFailureCode, 'LEASE_EXHAUSTED');
+    assert.ok(article?.quarantinedAt);
+  } finally {
+    await prisma.knowledgeArticle.deleteMany({ where: { id: articleId } });
+    await prisma.knowledgeIndexEvent.deleteMany({ where: { articleId } });
   }
 });

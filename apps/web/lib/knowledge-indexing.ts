@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { getPrisma } from '@avantime/database';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 import type { RedisCommandClient } from './redis-lease-queue';
 import { stagingRedisKey } from './staging-redis';
@@ -21,6 +22,10 @@ export type KnowledgeIndexDocument = {
   summary: string;
   tags: string[];
   searchText: string;
+};
+
+export type KnowledgeSearchResult = KnowledgeIndexDocument & {
+  score: number;
 };
 
 function tenantKey(document: Pick<KnowledgeIndexDocument, 'ownerScope' | 'companyId'>) {
@@ -179,30 +184,278 @@ export class PostgreSQLKnowledgeSearchAdapter {
     });
   }
 
-  async search(query: string, audience: KnowledgeIndexAudience) {
+  async search(query: string, audience: KnowledgeIndexAudience): Promise<KnowledgeSearchResult[]> {
     const prisma = await getPrisma();
     if (!prisma) throw new Error('KNOWLEDGE_SEARCH_DATABASE_UNAVAILABLE');
-    const rows = (await prisma.$queryRaw`
-      SELECT index.*
+    const audienceClause =
+      audience.kind === 'PLATFORM'
+        ? `index."ownerScope" = 'PLATFORM'`
+        : audience.kind === 'PUBLIC'
+          ? `index."visibility" = 'PUBLIC'`
+          : `(
+            (
+              index."ownerScope" = 'ORGANIZATION'
+              AND index."companyId" = $2
+              AND index."visibility" IN ('ORGANIZATION', 'PUBLIC')
+            )
+            OR
+            (
+              index."ownerScope" = 'PLATFORM'
+              AND index."visibility" IN ('PLATFORM', 'PUBLIC')
+            )
+          )`;
+    const values: unknown[] = [query];
+    if (audience.kind === 'ORGANIZATION') values.push(audience.companyId);
+
+    const rows = (await prisma.$queryRawUnsafe(
+      `
+      SELECT index.*, article."slug",
+        ts_rank_cd(
+          to_tsvector('simple', index."searchText"),
+          plainto_tsquery('simple', $1)
+        ) AS "score"
       FROM "KnowledgeSearchIndex" index
-      JOIN "KnowledgeArticle" article ON article."id" = index."articleId"
-      WHERE article."version" = index."sourceVersion"
+      JOIN "KnowledgeArticle" article
+        ON article."id" = index."articleId"
+       AND article."version" = index."sourceVersion"
+       AND index."generation" = article."version"
+       AND article."ownerScope" = index."ownerScope"
+       AND article."companyId" IS NOT DISTINCT FROM index."companyId"
+       AND article."visibility" = index."visibility"
+       AND article."status" = index."lifecycleStatus"
+      WHERE ${audienceClause}
+        AND article."status" = 'PUBLISHED'
         AND article."quarantinedAt" IS NULL
+        AND index."operationalStatus" = 'READY'
         AND index."lifecycleStatus" = 'PUBLISHED'
         AND index."visibility" <> 'PRIVATE'
-        AND to_tsvector('simple', index."searchText") @@ plainto_tsquery('simple', ${query})
-      ORDER BY ts_rank(
-        to_tsvector('simple', index."searchText"), plainto_tsquery('simple', ${query})
-      ) DESC
+        AND to_tsvector('simple', index."searchText") @@ plainto_tsquery('simple', $1)
+      ORDER BY ts_rank_cd(
+        to_tsvector('simple', index."searchText"), plainto_tsquery('simple', $1)
+      ) DESC, index."articleId" ASC
       LIMIT 50
-    `) as KnowledgeIndexDocument[];
-    return rows.filter((row) => canReadKnowledgeIndex(row, audience));
+    `,
+      ...values,
+    )) as KnowledgeSearchResult[];
+    return rows
+      .filter((row) => canReadKnowledgeIndex(row, audience))
+      .map((row) => ({
+        ...row,
+        score: Number(Math.max(0, Math.min(1, Number(row.score))).toFixed(6)),
+      }));
   }
+}
+
+export type KnowledgeCitationSource = {
+  articleId: string;
+  slug: string;
+  title: string;
+  chunkId: string;
+  excerpt: string;
+};
+
+export interface KnowledgeCitationResolver {
+  resolve(
+    articleId: string,
+    audience: KnowledgeIndexAudience,
+  ): Promise<KnowledgeCitationSource | null>;
+}
+
+export class PostgreSQLKnowledgeCitationResolver implements KnowledgeCitationResolver {
+  async resolve(
+    articleId: string,
+    audience: KnowledgeIndexAudience,
+  ): Promise<KnowledgeCitationSource | null> {
+    const prisma = await getPrisma();
+    if (!prisma) throw new Error('KNOWLEDGE_CITATION_DATABASE_UNAVAILABLE');
+
+    const article = await prisma.knowledgeArticle.findUnique({
+      where: { id: articleId },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        version: true,
+        ownerScope: true,
+        companyId: true,
+        visibility: true,
+        status: true,
+        quarantinedAt: true,
+      },
+    });
+    if (!article || article.quarantinedAt) return null;
+
+    const index = await prisma.knowledgeSearchIndex.findUnique({ where: { articleId } });
+    if (
+      !index ||
+      article.status !== 'PUBLISHED' ||
+      article.visibility === 'PRIVATE' ||
+      index.sourceVersion !== article.version ||
+      index.generation !== article.version ||
+      index.ownerScope !== article.ownerScope ||
+      index.companyId !== article.companyId ||
+      index.visibility !== article.visibility ||
+      index.lifecycleStatus !== article.status ||
+      index.operationalStatus !== 'READY' ||
+      !canReadKnowledgeIndex(index, audience)
+    ) {
+      return null;
+    }
+
+    const excerpt = (index.summary || index.searchText || article.title)
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!excerpt) return null;
+
+    return {
+      articleId: article.id,
+      slug: article.slug,
+      title: article.title,
+      chunkId: `${article.id}:article`,
+      excerpt,
+    };
+  }
+}
+
+export type KnowledgeIndexDiagnostic = {
+  articleId: string;
+  sourceType: 'ARTICLE';
+  publicationStatus: KnowledgeIndexDocument['lifecycleStatus'];
+  searchStatus: string;
+  embeddingStatus: string;
+  chunkCount: number;
+  embeddingModel: string | null;
+  embeddingVersion: string | null;
+  sourceVersion: number;
+  indexedVersion: number | null;
+  indexedAt: string | null;
+  indexingError: string | null;
+  quarantinedAt: string | null;
+};
+
+export async function getPlatformKnowledgeIndexDiagnostics(
+  articleIds: readonly string[],
+): Promise<Map<string, KnowledgeIndexDiagnostic>> {
+  const ids = [...new Set(articleIds)]
+    .filter((id) => id.length > 0 && id.length <= 200)
+    .slice(0, 500);
+  if (ids.length === 0) return new Map();
+  const prisma = (await getPrisma()) as PrismaClient | null;
+  if (!prisma) return new Map();
+
+  const [articles, searchRows, vectorRows, events] = await Promise.all([
+    prisma.knowledgeArticle.findMany({
+      where: { id: { in: ids }, ownerScope: 'PLATFORM' },
+      select: { id: true, version: true, status: true, quarantinedAt: true },
+    }),
+    prisma.knowledgeSearchIndex.findMany({ where: { articleId: { in: ids } } }),
+    prisma.knowledgeVectorIndex.findMany({ where: { articleId: { in: ids } } }),
+    prisma.knowledgeIndexEvent.findMany({
+      where: { articleId: { in: ids } },
+      orderBy: [{ articleId: 'asc' }, { createdAt: 'desc' }],
+    }),
+  ]);
+  const searchByArticle = new Map(searchRows.map((row) => [row.articleId, row]));
+  const vectorByArticle = new Map(vectorRows.map((row) => [row.articleId, row]));
+  const eventByArticle = new Map<string, (typeof events)[number]>();
+  for (const event of events) {
+    if (!eventByArticle.has(event.articleId)) eventByArticle.set(event.articleId, event);
+  }
+
+  return new Map(
+    articles.map((article) => {
+      const search = searchByArticle.get(article.id);
+      const vector = vectorByArticle.get(article.id);
+      const event = eventByArticle.get(article.id);
+      const searchCurrent = search?.sourceVersion === article.version;
+      const vectorCurrent = vector?.sourceVersion === article.version;
+      const indexedTimes = [
+        searchCurrent ? search?.indexedAt : null,
+        vectorCurrent ? vector?.indexedAt : null,
+      ].filter((value): value is Date => value instanceof Date);
+      const indexedAt = indexedTimes.sort((first, second) => second.getTime() - first.getTime())[0];
+      const diagnostic: KnowledgeIndexDiagnostic = {
+        articleId: article.id,
+        sourceType: 'ARTICLE',
+        publicationStatus: article.status,
+        searchStatus: searchCurrent ? search.operationalStatus : 'NOT_INDEXED',
+        embeddingStatus: vectorCurrent
+          ? vector.operationalStatus
+          : (event?.status ?? 'NOT_INDEXED'),
+        chunkCount: searchCurrent && search.operationalStatus === 'READY' ? 1 : 0,
+        embeddingModel: vectorCurrent ? vector.embeddingModel : null,
+        embeddingVersion: vectorCurrent ? vector.embeddingVersion : null,
+        sourceVersion: article.version,
+        indexedVersion: vectorCurrent
+          ? vector.sourceVersion
+          : searchCurrent
+            ? search.sourceVersion
+            : null,
+        indexedAt: indexedAt?.toISOString() ?? null,
+        indexingError:
+          event && ['FAILED', 'DEAD_LETTER'].includes(event.status) ? event.lastFailureCode : null,
+        quarantinedAt: article.quarantinedAt?.toISOString() ?? null,
+      };
+      return [article.id, diagnostic];
+    }),
+  );
+}
+
+export async function requestPlatformKnowledgeReindex(input: {
+  articleId: string;
+  expectedVersion: number;
+  actorId: string;
+  correlationId: string;
+}) {
+  if (
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,199}$/u.test(input.articleId) ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1
+  ) {
+    throw new Error('KNOWLEDGE_REINDEX_INPUT_INVALID');
+  }
+  const prisma = (await getPrisma()) as PrismaClient | null;
+  if (!prisma) throw new Error('KNOWLEDGE_REINDEX_DATABASE_UNAVAILABLE');
+
+  return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    const article = await transaction.knowledgeArticle.findUnique({
+      where: { id: input.articleId },
+    });
+    if (
+      !article ||
+      article.ownerScope !== 'PLATFORM' ||
+      article.version !== input.expectedVersion
+    ) {
+      return null;
+    }
+
+    const updated = await transaction.knowledgeArticle.updateMany({
+      where: { id: article.id, ownerScope: 'PLATFORM', version: article.version },
+      data: { quarantinedAt: null, version: { increment: 1 } },
+    });
+    if (updated.count !== 1) return null;
+    const queuedVersion = article.version + 1;
+
+    await transaction.productionAuditEvent.create({
+      data: {
+        id: randomUUID(),
+        companyId: article.companyId,
+        actorId: input.actorId,
+        action: 'knowledge.reindex.requested',
+        targetType: 'knowledge-article',
+        targetId: article.id,
+        result: 'SUCCEEDED',
+        correlationId: input.correlationId,
+        safeMetadata: { sourceVersion: queuedVersion },
+      },
+    });
+    return { articleId: article.id, sourceVersion: queuedVersion };
+  });
 }
 export type KnowledgeVectorSearchResult = Pick<
   KnowledgeIndexDocument,
   | 'articleId'
-  |'slug'
+  | 'slug'
   | 'sourceVersion'
   | 'generation'
   | 'ownerScope'
@@ -223,7 +476,6 @@ export type KnowledgeVectorSearchRequest = {
   topK: number;
   minimumSimilarity: number;
 };
-
 
 export class PostgreSQLKnowledgeVectorAdapter {
   async upsert(input: {
@@ -263,37 +515,37 @@ export class PostgreSQLKnowledgeVectorAdapter {
     `;
   }
 
-  async search(
-  request: KnowledgeVectorSearchRequest,
-): Promise<KnowledgeVectorSearchResult[]> {
-  if (
-    request.vector.length === 0 ||
-    request.vector.some((value) => !Number.isFinite(value))
-  ) {
-    throw new Error('KNOWLEDGE_VECTOR_INVALID');
-  }
+  async search(request: KnowledgeVectorSearchRequest): Promise<KnowledgeVectorSearchResult[]> {
+    if (request.vector.length === 0 || request.vector.some((value) => !Number.isFinite(value))) {
+      throw new Error('KNOWLEDGE_VECTOR_INVALID');
+    }
 
-  if (
-    !Number.isInteger(request.topK) ||
-    request.topK <= 0 ||
-    !Number.isFinite(request.minimumSimilarity)
-  ) {
-    throw new Error('KNOWLEDGE_VECTOR_SEARCH_INVALID');
-  }
+    if (
+      !Number.isSafeInteger(request.topK) ||
+      request.topK <= 0 ||
+      request.topK > 100 ||
+      !Number.isFinite(request.minimumSimilarity) ||
+      request.minimumSimilarity < 0 ||
+      request.minimumSimilarity > 1 ||
+      !request.embeddingModel.trim() ||
+      !request.embeddingVersion.trim()
+    ) {
+      throw new Error('KNOWLEDGE_VECTOR_SEARCH_INVALID');
+    }
 
-  const prisma = await getPrisma();
-  if (!prisma) {
-    throw new Error('KNOWLEDGE_VECTOR_DATABASE_UNAVAILABLE');
-  }
+    const prisma = await getPrisma();
+    if (!prisma) {
+      throw new Error('KNOWLEDGE_VECTOR_DATABASE_UNAVAILABLE');
+    }
 
-  const vector = `[${request.vector.join(',')}]`;
+    const vector = `[${request.vector.join(',')}]`;
 
-  const audienceClause =
-    request.audience.kind === 'PLATFORM'
-      ? `v."ownerScope" = 'PLATFORM'`
-      : request.audience.kind === 'PUBLIC'
-        ? `v."visibility" = 'PUBLIC'`
-        : `(
+    const audienceClause =
+      request.audience.kind === 'PLATFORM'
+        ? `v."ownerScope" = 'PLATFORM'`
+        : request.audience.kind === 'PUBLIC'
+          ? `v."visibility" = 'PUBLIC'`
+          : `(
             (
               v."ownerScope" = 'ORGANIZATION'
               AND v."companyId" = $5
@@ -306,23 +558,23 @@ export class PostgreSQLKnowledgeVectorAdapter {
             )
           )`;
 
-  const values: unknown[] = [
-    vector,
-    request.embeddingModel,
-    request.embeddingVersion,
-    request.minimumSimilarity,
-  ];
+    const values: unknown[] = [
+      vector,
+      request.embeddingModel,
+      request.embeddingVersion,
+      request.minimumSimilarity,
+    ];
 
-  if (request.audience.kind === 'ORGANIZATION') {
-    values.push(request.audience.companyId);
-  }
+    if (request.audience.kind === 'ORGANIZATION') {
+      values.push(request.audience.companyId);
+    }
 
-  values.push(request.topK);
+    values.push(request.topK);
 
-  const limitParameter = `$${values.length}`;
+    const limitParameter = `$${values.length}`;
 
-  const rows = (await prisma.$queryRawUnsafe(
-    `
+    const rows = (await prisma.$queryRawUnsafe(
+      `
       SELECT
         v."articleId",
         v."sourceVersion",
@@ -340,6 +592,11 @@ export class PostgreSQLKnowledgeVectorAdapter {
       INNER JOIN "KnowledgeArticle" a
         ON a."id" = v."articleId"
        AND a."version" = v."sourceVersion"
+       AND v."generation" = a."version"
+       AND a."ownerScope" = v."ownerScope"
+       AND a."companyId" IS NOT DISTINCT FROM v."companyId"
+       AND a."visibility" = v."visibility"
+       AND a."status" = v."lifecycleStatus"
       WHERE
         v."embeddingModel" = $2
         AND v."embeddingVersion" = $3
@@ -355,13 +612,13 @@ export class PostgreSQLKnowledgeVectorAdapter {
         v."articleId" ASC
       LIMIT ${limitParameter}
     `,
-    ...values,
-  )) as KnowledgeVectorSearchResult[];
+      ...values,
+    )) as KnowledgeVectorSearchResult[];
 
-  return rows.filter((row) =>
-    canReadKnowledgeIndex(row, request.audience),
-  );
-}
+    return rows
+      .filter((row) => canReadKnowledgeIndex(row, request.audience))
+      .map((row) => ({ ...row, score: Number(row.score) }));
+  }
 
   async remove(articleId: string, maximumVersion: number) {
     const prisma = await getPrisma();
@@ -378,9 +635,28 @@ export class PostgreSQLKnowledgeVectorAdapter {
     if (!row) return null;
     const article = await prisma.knowledgeArticle.findUnique({
       where: { id: articleId },
-      select: { version: true, quarantinedAt: true },
+      select: {
+        version: true,
+        ownerScope: true,
+        companyId: true,
+        visibility: true,
+        status: true,
+        quarantinedAt: true,
+      },
     });
-    if (!article || article.quarantinedAt || article.version !== row.sourceVersion) return null;
+    if (
+      !article ||
+      article.quarantinedAt ||
+      article.version !== row.sourceVersion ||
+      row.generation !== article.version ||
+      row.ownerScope !== article.ownerScope ||
+      row.companyId !== article.companyId ||
+      row.visibility !== article.visibility ||
+      row.lifecycleStatus !== article.status ||
+      row.operationalStatus !== 'READY'
+    ) {
+      return null;
+    }
     return canReadKnowledgeIndex(row, audience) ? row : null;
   }
 }
