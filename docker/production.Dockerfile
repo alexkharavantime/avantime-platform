@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:22.23.1-alpine3.23 AS dependencies
+FROM node:22.23.2-alpine3.23 AS dependencies
 WORKDIR /workspace
 COPY package.json package-lock.json turbo.json ./
 COPY apps/web/package.json apps/web/package.json
@@ -12,6 +12,18 @@ FROM dependencies AS migration
 ENV NODE_ENV=production
 COPY --chown=node:node packages/database/prisma ./packages/database/prisma
 COPY --chmod=0555 docker/run-staging-migrations.sh /usr/local/bin/run-staging-migrations
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+    && rm -rf /usr/local/lib/node_modules/npm \
+              /usr/local/lib/node_modules/corepack \
+              /opt/yarn-v1.22.22 \
+              /workspace/node_modules/nanoid \
+              /workspace/node_modules/postcss \
+              /workspace/node_modules/next/node_modules/postcss \
+              /workspace/node_modules/sharp \
+              /workspace/node_modules/@img \
+              /workspace/node_modules/esbuild \
+              /workspace/node_modules/@esbuild \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 USER node
 CMD ["run-staging-migrations"]
 
@@ -27,7 +39,7 @@ RUN mkdir -p apps/web/public \
 # Keep the runtime dependency graph pinned to the application lockfile. Rebuild each
 # esbuild executable with the current patched Go toolchain so Trivy does not surface
 # vulnerabilities inherited from the upstream prebuilt Go binaries.
-FROM golang:1.26.5-alpine AS worker-esbuild-toolchain
+FROM golang:1.26.6-alpine AS worker-esbuild-toolchain
 
 FROM dependencies AS worker-dependencies
 COPY --from=worker-esbuild-toolchain /usr/local/go /usr/local/go
@@ -59,28 +71,41 @@ RUN npm prune --omit=dev \
               /workspace/node_modules/nanoid \
               /workspace/node_modules/postcss \
               /workspace/node_modules/next/node_modules/postcss \
-              /workspace/node_modules/sharp
+              /workspace/node_modules/sharp \
+              /workspace/node_modules/@img
 
-FROM node:22.23.1-alpine3.23 AS web
+FROM node:22.23.2-alpine3.23 AS web
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 WORKDIR /app
-RUN addgroup -S -g 10001 avantime && adduser -S -u 10001 -G avantime avantime
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+    && addgroup -S -g 10001 avantime \
+    && adduser -S -u 10001 -G avantime avantime \
+    && rm -rf /usr/local/lib/node_modules/npm \
+              /usr/local/lib/node_modules/corepack \
+              /opt/yarn-v1.22.22 \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
 COPY --from=builder --chown=avantime:avantime /workspace/apps/web/.next/standalone ./
 COPY --from=builder --chown=avantime:avantime /workspace/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=avantime:avantime /workspace/apps/web/public ./apps/web/public
+RUN rm -rf /app/node_modules/nanoid \
+              /app/node_modules/postcss \
+              /app/node_modules/next/node_modules/postcss \
+              /app/node_modules/sharp \
+              /app/node_modules/@img
 USER 10001:10001
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health/documents || exit 1
 CMD ["node", "apps/web/server.js"]
 
-FROM node:22.23.1-alpine3.23 AS worker-base
+FROM node:22.23.2-alpine3.23 AS worker-base
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /workspace
-RUN apk add --no-cache poppler-utils tesseract-ocr tesseract-ocr-data-eng \
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+    && apk add --no-cache poppler-utils tesseract-ocr tesseract-ocr-data-eng \
       tesseract-ocr-data-rus tesseract-ocr-data-lav \
     && addgroup -S -g 10001 avantime \
     && adduser -S -u 10001 -G avantime avantime \

@@ -67,7 +67,27 @@ risks with owner, expiry and compensating control.
 For release images, generate SBOM and scan OS/npm layers. OCR packages and language
 data are part of the document-worker image and must be included in the scan.
 
-### Current TASK-005 review status
+### Current dependency and container status — 2026-09-03
+
+The official `npm audit --omit=optional` result is `0 vulnerabilities`. Compatible lockfile and
+override updates removed the previously classified Next/PostCSS, Sharp, js-yaml and Nano ID paths;
+the dependency risk acceptance list is now empty. The detailed before/after record is in
+[Dependency Security Review](./DEPENDENCY_SECURITY_REVIEW.md).
+
+Fresh release-class container validation used Grype `0.112.0` sequentially with
+`--only-fixed --fail-on high`. Web and migration report no vulnerabilities. The canonical worker
+RootFS, operations and OCR integration images report no Critical or High findings and one Low
+`golang.org/x/sys` finding each. All six worker targets inherit the same `worker-base` filesystem
+and add only a distinct `CMD`, so one freshly rebuilt worker is the canonical worker scan target.
+
+Alpine runtime images contain `libcrypto3` and `libssl3 3.5.8-r0`. Worker and OCR `esbuild`
+binaries are rebuilt with Go `1.26.6` in build-only stages. The OCR Debian 12 scan warns that distro
+vulnerability data may be incomplete because Grype treats the end of regular support as EOL.
+Debian's official lifecycle keeps Bookworm amd64 under
+[LTS through 2028-06-30](https://www.debian.org/releases/bookworm/); scanner LTS-feed coverage and a
+future Debian release migration remain release follow-ups.
+
+### Historical TASK-005 review status
 
 The authoritative 2026-07-29 npm audit against the official npm registry reports
 12 high records and no critical records for the full dependency tree. The
@@ -133,6 +153,8 @@ OIDC OWNER mapping и permissive fallback. Исключение ограниче
 - Use separate least-privilege DB/Redis/S3 identities per process.
 - Add signed provenance/audit export only after key-management design.
 - Schedule dependency and container scans on every release digest.
+- Validate scanner coverage for Debian LTS advisories and plan the OCR image migration before
+  Bookworm LTS ends on 2028-06-30.
 
 ## Связанные документы
 

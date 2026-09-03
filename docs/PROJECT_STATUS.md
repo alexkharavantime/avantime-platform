@@ -12,7 +12,7 @@
 
 Локальный/Docker gate синхронизированной после TASK-018 runtime topology завершён. Следующий этап —
 отдельный managed-staging preflight и rollout без production readiness claim до получения provider,
-capacity, PITR, dependency и human-review evidence.
+capacity, PITR и human-review evidence.
 
 ### 📈 Общий процент готовности
 
@@ -23,16 +23,16 @@ capacity, PITR, dependency и human-review evidence.
 1. TASK-018 объединила DOCUMENT и ARTICLE в существующем lexical/semantic/hybrid RAG pipeline;
 2. staging/reference-production manifests теперь отражают document, embedding, knowledge,
    notification и Jira outbound/inbound workers;
-3. staging readiness различает runtime heartbeat и active-job lease, а local smoke отделён от
-   managed preflight.
+3. dependency audit закрыт без findings, а web/worker/migration/operations/OCR images не содержат
+   fixable Critical/High findings по последовательным Grype scans.
 
 ### 🚧 Три главных риска
 
 1. Локальный/Docker gate не заменяет managed staging rollout, provider capacity/PITR и назначение operational owners;
 2. Production identity/OIDC и organization role ceremonies, реальные Entra/Google/generic tenant
    connections, manual governance и assistive-technology review ещё не выполнены;
-3. Outbox/index/Jira Cloud adapters ещё не проверены в managed staging; прежние временные
-   dependency exceptions с датой 2026-08-12 требуют повторной authoritative проверки.
+3. Outbox/index/Jira Cloud adapters ещё не проверены в managed staging; Grype предупреждает о
+   неполном Debian 12 feed, хотя Bookworm amd64 поддерживается Debian LTS до 2028-06-30.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
@@ -45,17 +45,17 @@ capacity, PITR, dependency и human-review evidence.
 
 # Общая информация
 
-| Поле                             | Значение                                                                                                               |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Проект                           | Avantime Platform                                                                                                      |
-| Версия документа                 | 1.28                                                                                                                   |
-| Дата последнего обновления       | 2026-09-02                                                                                                             |
-| Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения                              |
-| Текущая ветка Git                | `main`                                                                                                                 |
-| Базовый commit рабочей ветки     | TASK-018 baseline `41660fab465df75f32c32658187e79a55f643511`; topology remediation пока в незакоммиченном working tree |
-| Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                                             |
-| Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                                                 |
-| Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                                                       |
+| Поле                             | Значение                                                                                             |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Проект                           | Avantime Platform                                                                                    |
+| Версия документа                 | 1.29                                                                                                 |
+| Дата последнего обновления       | 2026-09-03                                                                                           |
+| Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения            |
+| Текущая ветка Git                | `main`                                                                                               |
+| Базовый commit рабочей ветки     | `0e569d3c6890746a6f4b9f4141d2566ad65bd700`; security remediation пока в незакоммиченном working tree |
+| Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                           |
+| Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                               |
+| Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                                     |
 
 Снимок TASK-018 соответствует reconciliation commit в `main`. Локальные зелёные gates не означают
 managed-staging или production readiness.
@@ -592,6 +592,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
 | ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-03 | 1.29   | Codex, по поручению владельца проекта | Dependency/container remediation: npm audit без findings, patched Node/OpenSSL/Go-esbuild images, sequential web/worker/migration/operations/OCR scans и regression validation пройдены                |
 | 2026-09-02 | 1.28   | Codex, по поручению владельца проекта | TASK-018 topology remediation: шесть workers в staging/production reference, fail-closed heartbeat readiness, local/managed command split, local smoke и restore evidence; managed validation pending  |
 | 2026-09-02 | 1.27   | Codex, по поручению владельца проекта | TASK-018 repository reconciliation: unified DOCUMENT/ARTICLE RAG, lifecycle/citations/client/Admin fixes, PR #24 superseded, local validation evidence                                                 |
 | 2026-07-31 | 1.21   | Codex, по поручению владельца проекта | TASK-011 central tenant permissions, system roles, OWNER governance, lifecycle, audit/navigation/API и migration; 147 unit, 22 integration и 60 browser tests, build и security gates passed           |

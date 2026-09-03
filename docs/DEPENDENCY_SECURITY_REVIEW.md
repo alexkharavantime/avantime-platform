@@ -1,5 +1,35 @@
 # Dependency Security Review
 
+## Dependency and container remediation refresh — 2026-09-03
+
+The authoritative `npm audit --omit=optional` request against the official npm registry now reports
+`0 vulnerabilities`. Before this remediation, the 2026-08-02 report for the same scope contained
+one high `postcss` record and one moderate aggregate `next` record; the full tree contained three
+high records and no critical records.
+
+Compatible dependency resolution updates moved Next to `15.5.25`, PostCSS to `8.5.26`, Sharp to
+`0.35.4`, Nano ID to `3.3.18`, js-yaml to `4.3.2` and the Prisma configuration path to
+`deepmerge-ts 8.0.2`. No forced audit fix or automatic major application-framework migration was
+used. The previous findings no longer require risk acceptance, so the machine-readable acceptance
+list is empty.
+
+Release-class images were rebuilt with Node `22.23.2`; Alpine runtime stages upgrade
+`libcrypto3`/`libssl3` to `3.5.8-r0`. Unused vulnerable packages and package managers are removed
+from final images. Worker and OCR `esbuild 0.26.0` binaries are rebuilt with Go `1.26.6` in isolated
+build stages. Fresh sequential Grype `0.112.0` scans using `--only-fixed --fail-on high` report no
+Critical or High findings for web, the canonical worker RootFS, migration, operations or the OCR
+integration image. Worker, operations and OCR each retain one Low `golang.org/x/sys` finding. The
+OCR scan also warns that its Debian 12 vulnerability data may be incomplete because Grype marks the
+regular-support period as EOL. Debian's official lifecycle keeps Bookworm amd64 under
+[LTS through 2028-06-30](https://www.debian.org/releases/bookworm/); the warning is retained as a
+scanner-data limitation, and the Debian/Node runtime architecture was not changed in this targeted
+remediation.
+
+Regression evidence includes successful production image builds, Prisma CLI availability in the
+stripped migration image, lint, typecheck, 199 unit tests and the real containerized Tesseract OCR
+test. This section supersedes the current-risk conclusions below; the older sections are retained
+as historical review records.
+
 ## TASK-014 refresh — 2026-08-02
 
 The current authoritative full `npm audit --json` report is

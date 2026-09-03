@@ -5,15 +5,17 @@ package nodes and fails on critical or unclassified moderate/high findings. Risk
 reviewed JSON policy with ID, packages, exposure, controls, owner, expiry and remediation trigger.
 Expired, malformed or duplicate acceptance fails. The existing critical CI audit gate is unchanged.
 
-TASK-014 applied only a compatible lock refresh: `brace-expansion 1.1.16 -> 1.1.18` within the
-parent's `1.x` range. This removes GHSA-mh99-v99m-4gvg without force, override or major update.
-The remaining nested `next 15.5.21 -> postcss 8.4.31` build path and optional
-`next -> sharp 0.34.5` unused image path cannot be safely fixed by npm's proposed Next `9.3.3`
-downgrade. Build risk `AR-DEP-2026-002` and runtime-unreachable optional image risk
-`AR-DEP-2026-003` expire on 2026-08-12 and are invalidated earlier by an upstream compatible fix or
-introduction of untrusted CSS/source-map/image processing.
+On 2026-09-03 a compatible refresh resolved the previously accepted Next/PostCSS, Sharp, js-yaml
+and Nano ID findings. The authoritative `npm audit --omit=optional` result is now
+`0 vulnerabilities`, and [`dependency-risk-acceptances.json`](./security/dependency-risk-acceptances.json)
+contains no active acceptances. No `npm audit fix --force` or framework downgrade was used.
 
-Raw current evidence is
+The 2026-08-02 TASK-014 record remains historical evidence: it applied a compatible
+`brace-expansion 1.1.16 -> 1.1.18` refresh and temporarily classified the remaining nested
+`next 15.5.21 -> postcss 8.4.31` and optional `next -> sharp 0.34.5` paths under
+`AR-DEP-2026-002` and `AR-DEP-2026-003`. Those paths are no longer present in the current lockfile.
+
+Historical raw evidence is
 [`npm-audit-2026-08-02.json`](./security/npm-audit-2026-08-02.json); policy is
 [`dependency-risk-acceptances.json`](./security/dependency-risk-acceptances.json). Do not use
 `npm audit fix --force`, suppress advisories, weaken CI severity or treat an aggregate package as a
