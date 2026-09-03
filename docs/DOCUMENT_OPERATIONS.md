@@ -186,16 +186,37 @@ npm run restore:rehearsal:integration
 npm run pgvector:load-test -- --integration --smoke
 ```
 
+Полный quality run выполняется без `--smoke` и сравнивает exact, IVFFlat и HNSW:
+
+```bash
+npm run pgvector:load-test -- --integration
+```
+
+Machine-readable policy считает active production strategy только `exact`: Recall@K должен быть
+`1.0`, timeout count и tenant leakage count — `0`; sequential scans разрешены на измеренном
+масштабе. Для IVFFlat/HNSW применяются informational thresholds из ADR-0024: Recall@K не ниже
+`0.95`, улучшение p95 относительно exact минимум `30%`, zero timeouts/leakage и zero sequential
+scans. Непрошедший ANN получает `ANN NOT APPROVED / INFORMATIONAL` и не ломает gate при прошедшем
+exact. Абсолютный latency budget не задан без production-scale SLO evidence.
+
 Concrete managed providers, capacity, owners and SLO evidence remain environment
 decisions. Application contracts, Redis adapter, fencing, backup/restore guards,
 telemetry, ledger and reference deployment are implemented by TASK-005.
 
-Локальный OCR завершённой TASK-003 проверяется отдельными `documents:ocr-check`, `test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; real OCR test не входит в обычные unit или PostgreSQL/MinIO integration tests.
+Локальный OCR завершённой TASK-003 проверяется отдельными `documents:ocr-check`,
+`test:ocr-integration` и воспроизводимым `test:ocr-integration:docker`; Docker suite покрывает PNG,
+scanned/text-layer PDF, controlled failure, timeout и cleanup. Real OCR test не входит в обычные
+unit или PostgreSQL/MinIO integration tests.
 
 Полный local staging smoke запускается как `npm run staging:smoke:local` и использует synthetic PDF,
 реальные Redis queues, отдельные document/embedding processes, PostgreSQL/pgvector и MinIO. Он не
 является managed staging evidence. Managed contract требует enabled production-like OCR и approved
 AI provider, но внешние providers в repository gate не вызываются.
+
+Canonical root-команды `staging:up:local`, `staging:smoke:local` и
+`staging:restore-rehearsal` вычисляют текущий Git HEAD и передают полный `COMMIT_SHA` через
+существующий environment contract. Compose явно использует это значение и для labels, и внутри
+containers; runtime/backup evidence отклоняет local marker или другой не-40-символьный SHA.
 
 ## Связанные документы
 

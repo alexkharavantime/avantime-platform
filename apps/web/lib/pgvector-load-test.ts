@@ -22,6 +22,41 @@ export type PgvectorStrategyMetrics = {
   indexBytes: number;
   sequentialScans: number;
   timeoutCount: number;
+  tenantLeakageCount: number;
+};
+
+export const PGVECTOR_QUALITY_THRESHOLDS = {
+  activeProductionStrategy: 'exact',
+  exact: {
+    minimumRecall: 1,
+    maximumTimeoutCount: 0,
+    maximumTenantLeakageCount: 0,
+    maximumSequentialScans: null,
+    sequentialScanPolicy: 'ALLOWED_AT_MEASURED_SCALE',
+    maximumP95Ms: null,
+  },
+  ann: {
+    minimumRecall: 0.95,
+    maximumTimeoutCount: 0,
+    maximumTenantLeakageCount: 0,
+    maximumSequentialScans: 0,
+    sequentialScanPolicy: 'REJECT_FOR_APPROVAL',
+    minimumP95ImprovementRatio: 0.3,
+  },
+} as const;
+
+export type PgvectorQualityEvaluation = {
+  status: 'PASS' | 'FAIL';
+  activeProductionStrategy: 'exact';
+  thresholds: typeof PGVECTOR_QUALITY_THRESHOLDS;
+  strategies: Array<{
+    strategy: PgvectorStrategyMetrics['strategy'];
+    classification: 'ACTIVE_PRODUCTION' | 'INFORMATIONAL';
+    approval: 'APPROVED' | 'NOT_APPROVED';
+    message: string;
+    p95ImprovementRatio: number | null;
+    failures: string[];
+  }>;
 };
 
 const TABLE = '"Task005VectorLoadSample"';
@@ -48,6 +83,60 @@ export function validatePgvectorLoadConfiguration(configuration: PgvectorLoadCon
   ) {
     throw new Error('At least one supported pgvector strategy is required.');
   }
+}
+
+export function evaluatePgvectorQuality(
+  metrics: readonly PgvectorStrategyMetrics[],
+): PgvectorQualityEvaluation {
+  const exactMetric = metrics.find((metric) => metric.strategy === 'exact');
+  const strategies = metrics.map((metric) => {
+    const active = metric.strategy === PGVECTOR_QUALITY_THRESHOLDS.activeProductionStrategy;
+    const threshold = active ? PGVECTOR_QUALITY_THRESHOLDS.exact : PGVECTOR_QUALITY_THRESHOLDS.ann;
+    const failures: string[] = [];
+    if (metric.recall < threshold.minimumRecall) failures.push('RECALL_BELOW_THRESHOLD');
+    if (metric.timeoutCount > threshold.maximumTimeoutCount) {
+      failures.push('TIMEOUT_THRESHOLD_EXCEEDED');
+    }
+    if (metric.tenantLeakageCount > threshold.maximumTenantLeakageCount) {
+      failures.push('TENANT_LEAKAGE_THRESHOLD_EXCEEDED');
+    }
+    if (
+      threshold.maximumSequentialScans !== null &&
+      metric.sequentialScans > threshold.maximumSequentialScans
+    ) {
+      failures.push('SEQUENTIAL_SCAN_POLICY_VIOLATION');
+    }
+    const p95ImprovementRatio =
+      active || !exactMetric || exactMetric.p95Ms <= 0
+        ? null
+        : (exactMetric.p95Ms - metric.p95Ms) / exactMetric.p95Ms;
+    if (
+      !active &&
+      (p95ImprovementRatio === null ||
+        p95ImprovementRatio < PGVECTOR_QUALITY_THRESHOLDS.ann.minimumP95ImprovementRatio)
+    ) {
+      failures.push('P95_IMPROVEMENT_BELOW_THRESHOLD');
+    }
+    const approval: 'APPROVED' | 'NOT_APPROVED' =
+      failures.length === 0 ? 'APPROVED' : 'NOT_APPROVED';
+    return {
+      strategy: metric.strategy,
+      classification: active ? ('ACTIVE_PRODUCTION' as const) : ('INFORMATIONAL' as const),
+      approval,
+      message: active
+        ? `EXACT ACTIVE / ${approval === 'APPROVED' ? 'PASS' : 'FAIL'}`
+        : `ANN ${approval === 'APPROVED' ? 'APPROVED' : 'NOT APPROVED'} / INFORMATIONAL`,
+      p95ImprovementRatio,
+      failures,
+    };
+  });
+  const exact = strategies.find((strategy) => strategy.strategy === 'exact');
+  return {
+    status: exact?.approval === 'APPROVED' ? 'PASS' : 'FAIL',
+    activeProductionStrategy: PGVECTOR_QUALITY_THRESHOLDS.activeProductionStrategy,
+    thresholds: PGVECTOR_QUALITY_THRESHOLDS,
+    strategies,
+  };
 }
 
 function generator(seed: number) {
@@ -154,10 +243,16 @@ export async function runPgvectorLoadTest(
         await database.$executeRawUnsafe(`SET hnsw.ef_search = 40`);
       }
       await database.$executeRawUnsafe(`ANALYZE ${TABLE}`);
+      const statsBefore = await database.$queryRawUnsafe<Array<{ sequentialScans: bigint }>>(
+        `SELECT COALESCE("seq_scan", 0)::bigint AS "sequentialScans"
+         FROM pg_stat_user_tables WHERE "relname" = $1`,
+        TABLE.replaceAll('"', ''),
+      );
       const startedAt = performance.now();
       const latencies: number[] = [];
       const recalls: number[] = [];
       let timeoutCount = 0;
+      let tenantLeakageCount = 0;
       for (let offset = 0; offset < queries.length; offset += configuration.concurrentQueries) {
         await Promise.all(
           queries
@@ -165,8 +260,10 @@ export async function runPgvectorLoadTest(
             .map(async (query, batchIndex) => {
               const queryStartedAt = performance.now();
               try {
-                const rows = await database.$queryRawUnsafe<Array<{ id: string }>>(
-                  `SELECT "id" FROM ${TABLE}
+                const rows = await database.$queryRawUnsafe<
+                  Array<{ id: string; companyId: string }>
+                >(
+                  `SELECT "id", "companyId" FROM ${TABLE}
                    WHERE "companyId" = $1
                    ORDER BY "embedding" <=> $2::vector LIMIT $3`,
                   query.tenant,
@@ -179,6 +276,7 @@ export async function runPgvectorLoadTest(
                     rows.map((row) => row.id),
                   ),
                 );
+                tenantLeakageCount += rows.filter((row) => row.companyId !== query.tenant).length;
               } catch {
                 timeoutCount += 1;
               } finally {
@@ -207,9 +305,13 @@ export async function runPgvectorLoadTest(
           recalls.length > 0
             ? Number((recalls.reduce((sum, value) => sum + value, 0) / recalls.length).toFixed(4))
             : 0,
-        sequentialScans: Number(stats[0]?.sequentialScans ?? 0),
+        sequentialScans: Math.max(
+          0,
+          Number(stats[0]?.sequentialScans ?? 0) - Number(statsBefore[0]?.sequentialScans ?? 0),
+        ),
         indexBytes: Number(stats[0]?.indexBytes ?? 0),
         timeoutCount,
+        tenantLeakageCount,
       });
     }
     return metrics;

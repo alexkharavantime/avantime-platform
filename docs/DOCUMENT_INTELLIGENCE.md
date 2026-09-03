@@ -46,6 +46,11 @@ npm run documents:ocr-check
 npm run test:ocr-integration:docker
 ```
 
+Suite выполняется в реальном container runtime и проверяет PNG OCR, image-only scanned PDF через
+`pdfinfo`/`pdftoppm` и Tesseract, обход OCR для качественного text-layer PDF, controlled failure
+для повреждённого PDF и timeout. После success, failure и timeout дополнительно проверяется
+отсутствие оставшихся каталогов `avantime-ocr-*`. На 2026-09-03 все пять Docker cases прошли.
+
 Нужные language packs задаются allowlist `eng,rus,lav` (`lav` — код Latvian в Tesseract). Конкретная установка должна содержать все выбранные языки. Бинарные файлы и trained data не хранятся в репозитории.
 
 ## Конфигурация
@@ -86,7 +91,9 @@ npm run test
 npm run test:ocr-integration
 ```
 
-`npm test` использует fake provider и не требует Tesseract/Docker. OCR integration запускается отдельно и требует явного runtime.
+`npm test` использует fake provider и не требует Tesseract/Docker. OCR integration запускается
+отдельно и требует явного runtime; host-run без opt-in пропускает эти cases, поэтому release
+evidence создаёт именно `test:ocr-integration:docker`.
 
 Document health возвращает отдельные `core` и `documentIntelligence` component groups. OCR имеет явные состояния runtime, language data и PDF support. Статус `disabled` или `unavailable` остаётся видимым в diagnostics, но влияет на overall readiness только при `DOCUMENT_OCR_REQUIRED_FOR_READINESS=true`.
 

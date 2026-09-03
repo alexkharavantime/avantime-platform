@@ -10,9 +10,10 @@
 
 ### 🎯 Текущая цель проекта
 
-Локальный/Docker gate синхронизированной после TASK-018 runtime topology завершён. Следующий этап —
-отдельный managed-staging preflight и rollout без production readiness claim до получения provider,
-capacity, PITR и human-review evidence.
+Подтверждённые repository quality/release blockers после TASK-018 устранены в working tree и прошли
+targeted local/Docker validation. Следующий этап — review/commit этих изменений и повторный Full
+Local/Docker Release Gate; managed-staging preflight и rollout остаются отдельными последующими
+этапами без production readiness claim.
 
 ### 📈 Общий процент готовности
 
@@ -20,11 +21,11 @@ capacity, PITR и human-review evidence.
 
 ### ✅ Три главных достижения с прошлого обновления
 
-1. TASK-018 объединила DOCUMENT и ARTICLE в существующем lexical/semantic/hybrid RAG pipeline;
-2. staging/reference-production manifests теперь отражают document, embedding, knowledge,
-   notification и Jira outbound/inbound workers;
-3. dependency audit закрыт без findings, а web/worker/migration/operations/OCR images не содержат
-   fixable Critical/High findings по последовательным Grype scans.
+1. Dependency audit закрыт без findings, а release images не содержат fixable Critical/High findings;
+2. repository formatting gate закрыт, artifact SHA evidence согласован между labels/runtime/backup,
+   а Next.js root больше не зависит от внешнего lockfile;
+3. OCR Docker suite покрывает пять runtime paths, а pgvector runner формально отделяет blocking exact
+   strategy от непринятых informational ANN.
 
 ### 🚧 Три главных риска
 
@@ -36,8 +37,8 @@ capacity, PITR и human-review evidence.
 
 ### ▶️ Три самые важные задачи на следующий этап
 
-1. Обеспечить устойчивый запас места Docker VM перед следующей полной image build/release rehearsal.
-2. Закрыть PR #24 как superseded без merge diverged branch.
+1. Провести review/commit quality remediation и повторить Full Local/Docker Release Gate.
+2. Обеспечить устойчивый запас места Docker VM перед следующей полной image build/release rehearsal.
 3. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
 
@@ -45,17 +46,17 @@ capacity, PITR и human-review evidence.
 
 # Общая информация
 
-| Поле                             | Значение                                                                                             |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Проект                           | Avantime Platform                                                                                    |
-| Версия документа                 | 1.29                                                                                                 |
-| Дата последнего обновления       | 2026-09-03                                                                                           |
-| Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения            |
-| Текущая ветка Git                | `main`                                                                                               |
-| Базовый commit рабочей ветки     | `0e569d3c6890746a6f4b9f4141d2566ad65bd700`; security remediation пока в незакоммиченном working tree |
-| Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                           |
-| Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                               |
-| Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                                     |
+| Поле                             | Значение                                                                                            |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Проект                           | Avantime Platform                                                                                   |
+| Версия документа                 | 1.30                                                                                                |
+| Дата последнего обновления       | 2026-09-03                                                                                          |
+| Ответственный                    | Владелец продукта и ведущий архитектор Avantime; персональный владелец требует назначения           |
+| Текущая ветка Git                | `main`                                                                                              |
+| Базовый commit рабочей ветки     | `2dcdbde0fc824088ffb4dd29b6783db9939c3667`; quality remediation пока в незакоммиченном working tree |
+| Последний стабильный релиз       | Version 1.5 по истории проекта; Git tag релиза отсутствует                                          |
+| Текущая версия разработки        | Version 2.0, подготовка и консолидация                                                              |
+| Общий процент готовности проекта | 35% — экспертная оценка относительно целевого объёма Version 4.0                                    |
 
 Снимок TASK-018 соответствует reconciliation commit в `main`. Локальные зелёные gates не означают
 managed-staging или production readiness.
@@ -154,6 +155,16 @@ embedding, hybrid retrieval/citation, notification, Jira outbound/inbound и kno
 restore rehearsal подтвердил 17 migrations и 50 tables. Из-за исчерпания Docker VM перед проверкой
 был очищен только неиспользуемый build cache старше часа; PostgreSQL успешно завершил WAL recovery.
 Свободный запас остаётся операционным риском, а local evidence не заменяет managed staging.
+
+Final quality/release remediation закрыла пять подтверждённых repository blockers: Prettier drift
+сокращён с 35 файлов до нуля; canonical local staging commands передают реальный Git SHA в Compose
+labels, runtime и backup evidence; OCR Docker suite прошла 5/5 PNG/PDF/failure/timeout/cleanup paths;
+pgvector exact получил Recall@K `1.0`, zero timeouts/leakage, а IVFFlat `0.1172` и HNSW `0.6448`
+остались `ANN NOT APPROVED / INFORMATIONAL`; Next.js production build на 106 routes больше не
+определяет workspace root по внешнему home-directory `package-lock.json`. Targeted validation также подтвердила
+202/202 unit/security tests, Prisma generate/validate, typecheck, lint и restore rehearsal с 17
+migrations/50 tables. Full Release Gate, managed staging и production providers в этой remediation
+не запускались и не считаются validated.
 
 [TASK-005](./tasks/TASK-005.md) завершена в application/code/documentation scope:
 реализованы Redis queues/fencing, distributed AI limits, PostgreSQL cost/budget
@@ -511,7 +522,9 @@ Tenant выводится из session; client document projection скрыва�
 
 **Оценка:** 5/10.
 
-**Комментарий:** Next.js и PostgreSQL создают хорошую основу, а PDF вынесен в отдельный worker. Однако нет зафиксированных нагрузочных показателей, external queue, кэша, heartbeat и трассировки.
+**Комментарий:** Next.js и PostgreSQL создают хорошую основу, а PDF вынесен в отдельный worker.
+Synthetic pgvector runner теперь имеет blocking exact thresholds и фиксирует latency/recall, но эти
+локальные показатели не заменяют production-scale capacity, SLO, provider и tracing evidence.
 
 **Рекомендации:** определить SLO, вынести тяжёлые операции, внедрить метрики и провести базовые нагрузочные тесты.
 
@@ -519,7 +532,10 @@ Tenant выводится из session; client document projection скрыва�
 
 **Оценка:** 4/10.
 
-**Комментарий:** 73 unit/security tests проверяют авторизацию, tenant isolation, persistence, lifecycle, retries/quarantine, migration ordering, раздельные core/OCR health guards, graceful shutdown и production fail-fast. Дополнительно 16 PostgreSQL/MinIO/end-to-end integration tests, migration rehearsal и отдельный real OCR Docker test успешно выполнены локально.
+**Комментарий:** актуальный repository suite прошёл 202/202 unit/security tests. Дополнительно
+успешно выполнены real OCR Docker 5/5, полный pgvector load/evaluation, restore rehearsal и
+production build. Full Local/Docker Release Gate и managed staging в рамках последней targeted
+remediation не выполнялись.
 
 **Рекомендации:** начать с auth/RBAC, обращений, документов, RAG permissions, Jira idempotency и migration tests.
 
@@ -592,6 +608,7 @@ Version 2.0 не готова к production-релизу. Процент отр�
 
 | Дата       | Версия | Автор                                 | Изменения                                                                                                                                                                                              |
 | ---------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-09-03 | 1.30   | Codex, по поручению владельца проекта | Final quality remediation: formatting 35→0, immutable SHA evidence, OCR Docker 5/5, blocking exact/informational ANN policy, explicit Next.js root и targeted validation                               |
 | 2026-09-03 | 1.29   | Codex, по поручению владельца проекта | Dependency/container remediation: npm audit без findings, patched Node/OpenSSL/Go-esbuild images, sequential web/worker/migration/operations/OCR scans и regression validation пройдены                |
 | 2026-09-02 | 1.28   | Codex, по поручению владельца проекта | TASK-018 topology remediation: шесть workers в staging/production reference, fail-closed heartbeat readiness, local/managed command split, local smoke и restore evidence; managed validation pending  |
 | 2026-09-02 | 1.27   | Codex, по поручению владельца проекта | TASK-018 repository reconciliation: unified DOCUMENT/ARTICLE RAG, lifecycle/citations/client/Admin fixes, PR #24 superseded, local validation evidence                                                 |

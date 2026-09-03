@@ -49,9 +49,7 @@ export function DocumentUpload({ onUploaded }: DocumentUploadProps) {
       onUploaded?.(result.document);
     } catch (uploadError) {
       setError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : 'Не удалось загрузить документ.',
+        uploadError instanceof Error ? uploadError.message : 'Не удалось загрузить документ.',
       );
     } finally {
       setUploading(false);
@@ -81,11 +79,7 @@ export function DocumentUpload({ onUploaded }: DocumentUploadProps) {
         {uploading ? 'Загрузка…' : 'Загрузить документ'}
       </button>
 
-      {error ? (
-        <p className="mt-2 max-w-sm text-sm font-semibold text-red-600">
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className="mt-2 max-w-sm text-sm font-semibold text-red-600">{error}</p> : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { isIP } from 'node:net';
 
+import { isImmutableGitCommitSha } from './artifact-metadata';
 import { loadDocumentConfiguration } from './document-configuration';
 import { loadJiraConfiguration, type JiraConfiguration } from './jira-configuration';
 import {
@@ -308,7 +309,7 @@ export function loadStagingConfiguration(
     throw new Error('STAGING_CONFIG_APP_VERSION_STALE');
   }
   const commitSha = assertReference(required(environment, 'COMMIT_SHA'), 'COMMIT_SHA');
-  if (mode === 'managed' && !/^[a-f0-9]{40}$/u.test(commitSha)) {
+  if (!isImmutableGitCommitSha(commitSha)) {
     throw new Error('STAGING_CONFIG_COMMIT_SHA_INVALID');
   }
   const migrationVersion = assertReference(

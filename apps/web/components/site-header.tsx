@@ -42,7 +42,10 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
-          <Link href="/portal" className="text-sm font-bold text-slate-600 transition hover:text-blue-600">
+          <Link
+            href="/portal"
+            className="text-sm font-bold text-slate-600 transition hover:text-blue-600"
+          >
             Кабинет
           </Link>
           <Link

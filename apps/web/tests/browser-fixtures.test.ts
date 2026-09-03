@@ -5,10 +5,7 @@ import {
   createBrowserTestClientIp,
   type BrowserTestClientIdentity,
 } from './browser/test-client-ip';
-import {
-  loginIdentifierRateLimitSubject,
-  requestRateLimitSubject,
-} from '../lib/identity-route';
+import { loginIdentifierRateLimitSubject, requestRateLimitSubject } from '../lib/identity-route';
 
 const baseIdentity: BrowserTestClientIdentity = {
   project: 'chromium-tablet',

@@ -56,14 +56,20 @@ TASK-005 сохраняет `sourcePageStart`, `sourcePageEnd`, segment index, e
 
 ## pgvector production strategy
 
-Controlled comparison exact/IVFFlat/HNSW не обосновал ANN rollout: IVFFlat
-получил Recall@K `0.2667`, HNSW сохранил recall `1.0`, но был медленнее exact и
-создал больший индекс на проверенном малом dataset. Exact search остаётся default.
-ANN разрешён отдельной additive migration только после representative test с
-Recall@K не ниже `0.95` и улучшением p95 не менее `30%`.
+Blocking policy закрепляет `exact` как active production strategy: Recall@K должен быть `1.0`,
+timeout count и tenant leakage count — `0`; sequential scans допускаются на измеренном масштабе.
+IVFFlat/HNSW остаются informational и по ADR-0024 требуют Recall@K не ниже `0.95`, улучшение p95
+относительно exact минимум `30%`, zero timeouts/leakage и zero sequential scans для approval.
+Абсолютный latency budget не задан без production-scale SLO evidence.
+
+Полный controlled run 2026-09-03 получил exact Recall@K `1.0`, IVFFlat `0.1172`, HNSW `0.6448`,
+zero timeouts/leakage и zero measured sequential-scan deltas. Exact gate прошёл; обе ANN-стратегии
+явно получили `ANN NOT APPROVED / INFORMATIONAL`. Низкий ANN recall не переключает retrieval и не
+ломает gate прошедшей active exact strategy.
 
 ```bash
 npm run pgvector:load-test -- --integration --smoke
+npm run pgvector:load-test -- --integration
 ```
 
 ## Безопасный reindex

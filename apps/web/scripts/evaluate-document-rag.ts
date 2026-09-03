@@ -101,7 +101,7 @@ async function main() {
           result.sourceType === 'DOCUMENT' &&
           typeof result.documentId === 'string' &&
           forbidden.has(result.documentId),
-        ).length;
+      ).length;
       if (expected.size > 0) {
         relevantCases += 1;
         const found = new Set(

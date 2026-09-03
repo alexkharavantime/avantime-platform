@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: avantime
       POSTGRES_PASSWORD: avantime
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - avantime_postgres_data:/var/lib/postgresql/data
 

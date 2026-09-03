@@ -1,6 +1,6 @@
 import { getPrisma } from '@avantime/database';
 
-import { runPgvectorLoadTest } from '../lib/pgvector-load-test';
+import { evaluatePgvectorQuality, runPgvectorLoadTest } from '../lib/pgvector-load-test';
 import { loadDocumentIntegrationEnvironment } from './document-integration-environment';
 
 async function main() {
@@ -31,7 +31,19 @@ async function main() {
       seed: Number(process.env.PGVECTOR_LOAD_SEED || 42),
       strategies: smoke ? ['exact'] : ['exact', 'ivfflat', 'hnsw'],
     });
-    console.log(JSON.stringify({ status: 'completed', metrics }, null, 2));
+    const quality = evaluatePgvectorQuality(metrics);
+    console.log(
+      JSON.stringify(
+        {
+          status: quality.status === 'PASS' ? 'completed' : 'failed',
+          metrics,
+          quality,
+        },
+        null,
+        2,
+      ),
+    );
+    if (quality.status === 'FAIL') process.exitCode = 1;
   } catch (error) {
     console.error(
       JSON.stringify({

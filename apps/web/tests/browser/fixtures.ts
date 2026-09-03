@@ -3,11 +3,7 @@ import { expect, test as base, type Response, type TestInfo } from '@playwright/
 import path from 'node:path';
 
 import { browserIdentities } from './environment';
-import {
-  createBrowserTestClientIp,
-  browserTestRun,
-  browserTestShard,
-} from './test-client-ip';
+import { createBrowserTestClientIp, browserTestRun, browserTestShard } from './test-client-ip';
 
 type BrowserIdentity = keyof typeof browserIdentities;
 

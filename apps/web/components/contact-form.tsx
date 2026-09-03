@@ -20,7 +20,8 @@ export function ContactForm() {
     if (!contact.includes('@') && contact.replace(/\D/g, '').length < 7) {
       nextErrors.contact = 'Укажите корректный email или номер телефона.';
     }
-    if (task.length < 20) nextErrors.task = 'Опишите задачу немного подробнее — минимум 20 символов.';
+    if (task.length < 20)
+      nextErrors.task = 'Опишите задачу немного подробнее — минимум 20 символов.';
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) setSubmitted(true);
@@ -47,7 +48,10 @@ export function ContactForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-5 rounded-3xl bg-white p-6 shadow-2xl shadow-slate-950/10 md:p-8">
+    <form
+      onSubmit={handleSubmit}
+      className="grid gap-5 rounded-3xl bg-white p-6 shadow-2xl shadow-slate-950/10 md:p-8"
+    >
       <div>
         <label htmlFor="name" className="mb-2 block text-sm font-bold text-slate-700">
           Ваше имя

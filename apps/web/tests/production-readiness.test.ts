@@ -9,10 +9,15 @@ import {
   createBackupPlan,
   decryptBackupPayload,
   encryptBackupPayload,
+  resolveBackupArtifactMetadata,
   validateRestoreRehearsalEnvironment,
 } from '../lib/backup-restore';
 import { LocalDocumentProcessingQueue } from '../lib/document-processing-queue';
-import { validatePgvectorLoadConfiguration } from '../lib/pgvector-load-test';
+import {
+  evaluatePgvectorQuality,
+  PGVECTOR_QUALITY_THRESHOLDS,
+  validatePgvectorLoadConfiguration,
+} from '../lib/pgvector-load-test';
 import { splitPagesIntoChunks } from '../lib/pdf-extractor';
 import { validateProductionConfiguration } from '../lib/production-configuration';
 import { ConsoleProductionTelemetry, createTenantReference } from '../lib/production-observability';
@@ -294,6 +299,33 @@ test('backup and restore guards restrict output and isolated target', () => {
   assert.throws(() =>
     decryptBackupPayload(encrypted, 'wrong-backup-encryption-secret-with-more-than-32-characters'),
   );
+  assert.deepEqual(
+    resolveBackupArtifactMetadata(
+      {
+        APP_VERSION: '2.0-test',
+        COMMIT_SHA: 'a'.repeat(40),
+        MIGRATION_VERSION: '20260902120000_task_018_knowledge_delete_lifecycle',
+      },
+      'staging',
+    ),
+    {
+      applicationVersion: '2.0-test',
+      commitSha: 'a'.repeat(40),
+      schemaVersion: '20260902120000_task_018_knowledge_delete_lifecycle',
+    },
+  );
+  assert.throws(
+    () =>
+      resolveBackupArtifactMetadata(
+        {
+          APP_VERSION: '2.0-test',
+          COMMIT_SHA: 'local-validation',
+          MIGRATION_VERSION: '20260902120000_task_018_knowledge_delete_lifecycle',
+        },
+        'staging',
+      ),
+    /BACKUP_COMMIT_SHA_INVALID/u,
+  );
 });
 
 test('page provenance maps PDF/OCR chunks and validates ANN load configuration', () => {
@@ -331,6 +363,46 @@ test('page provenance maps PDF/OCR chunks and validates ANN load configuration',
       strategies: ['exact'],
     }),
   );
+});
+
+test('pgvector quality gate blocks exact regressions but keeps unapproved ANN informational', () => {
+  const metric = {
+    p50Ms: 1,
+    p95Ms: 2,
+    p99Ms: 3,
+    qps: 100,
+    indexBytes: 0,
+    timeoutCount: 0,
+    tenantLeakageCount: 0,
+  };
+  const evaluation = evaluatePgvectorQuality([
+    { ...metric, strategy: 'exact', recall: 1, sequentialScans: 10 },
+    { ...metric, strategy: 'ivfflat', recall: 0.1376, sequentialScans: 10 },
+    { ...metric, strategy: 'hnsw', recall: 0.648, sequentialScans: 10 },
+  ]);
+  assert.equal(PGVECTOR_QUALITY_THRESHOLDS.activeProductionStrategy, 'exact');
+  assert.equal(PGVECTOR_QUALITY_THRESHOLDS.exact.minimumRecall, 1);
+  assert.equal(PGVECTOR_QUALITY_THRESHOLDS.ann.minimumRecall, 0.95);
+  assert.equal(PGVECTOR_QUALITY_THRESHOLDS.ann.minimumP95ImprovementRatio, 0.3);
+  assert.equal(evaluation.status, 'PASS');
+  assert.deepEqual(
+    evaluation.strategies.map(({ strategy, classification, approval }) => ({
+      strategy,
+      classification,
+      approval,
+    })),
+    [
+      { strategy: 'exact', classification: 'ACTIVE_PRODUCTION', approval: 'APPROVED' },
+      { strategy: 'ivfflat', classification: 'INFORMATIONAL', approval: 'NOT_APPROVED' },
+      { strategy: 'hnsw', classification: 'INFORMATIONAL', approval: 'NOT_APPROVED' },
+    ],
+  );
+
+  const exactRegression = evaluatePgvectorQuality([
+    { ...metric, strategy: 'exact', recall: 0.99, sequentialScans: 0 },
+  ]);
+  assert.equal(exactRegression.status, 'FAIL');
+  assert.deepEqual(exactRegression.strategies[0]?.failures, ['RECALL_BELOW_THRESHOLD']);
 });
 
 test('telemetry hashes tenant IDs and rejects content-bearing attributes', () => {

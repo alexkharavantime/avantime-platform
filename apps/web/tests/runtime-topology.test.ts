@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import nextConfig, { repositoryRoot as configuredRepositoryRoot } from '../next.config';
 
 const repositoryRoot = new URL('../../..', import.meta.url);
 
@@ -38,10 +42,12 @@ test('staging and production reference manifests contain the canonical worker to
 });
 
 test('local smoke and managed preflight are separate fail-closed commands', async () => {
-  const [rootPackage, webPackage, smoke] = await Promise.all([
+  const [rootPackage, webPackage, smoke, staging, localEnvironment] = await Promise.all([
     repositoryFile('package.json'),
     repositoryFile('apps/web/package.json'),
     repositoryFile('apps/web/scripts/run-staging-smoke.ts'),
+    repositoryFile('docker-compose.staging.yml'),
+    repositoryFile('.env.staging.local.example'),
   ]);
 
   for (const source of [rootPackage, webPackage]) {
@@ -52,6 +58,9 @@ test('local smoke and managed preflight are separate fail-closed commands', asyn
   assert.match(smoke, /LOCAL_STAGING_SMOKE_TEST_PROVIDERS_REQUIRED/u);
   assert.match(smoke, /document-upload/u);
   assert.match(smoke, /document-retrieval-citation/u);
+  assert.match(rootPackage, /run-with-git-commit-sha\.ts/u);
+  assert.match(staging, /COMMIT_SHA: \$\{COMMIT_SHA:\?COMMIT_SHA is required\}/u);
+  assert.doesNotMatch(localEnvironment, /COMMIT_SHA="local-validation"/u);
 });
 
 test('tracked staging templates use the current migration and no stale task release marker', async () => {
@@ -70,4 +79,12 @@ test('document worker exits immediately after a fatal runtime failure', async ()
 
   assert.match(source, /void main\(\)\.catch\(\(\) => \{[\s\S]*process\.exit\(1\);[\s\S]*\}\);/u);
   assert.doesNotMatch(source, /process\.exitCode\s*=/u);
+});
+
+test('Next.js tracing and Turbopack roots are pinned to the repository', async () => {
+  const expectedRepositoryRoot = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
+  assert.equal(configuredRepositoryRoot, expectedRepositoryRoot);
+  assert.equal(nextConfig.outputFileTracingRoot, expectedRepositoryRoot);
+  assert.equal(nextConfig.turbopack?.root, expectedRepositoryRoot);
+  assert.doesNotMatch(await repositoryFile('apps/web/next.config.ts'), /\/Users\//u);
 });

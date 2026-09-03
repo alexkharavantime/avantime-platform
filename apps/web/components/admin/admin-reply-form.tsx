@@ -39,7 +39,10 @@ export function AdminReplyForm({ requestId }: { requestId: string }) {
         placeholder="Напишите уточнение, решение или запрос дополнительной информации…"
         className="mt-4 w-full rounded-2xl border border-slate-200 p-4 leading-7 outline-none focus:border-blue-600"
       />
-      <button disabled={pending || !body.trim()} className="mt-4 rounded-full bg-blue-600 px-6 py-3 font-black text-white disabled:opacity-50">
+      <button
+        disabled={pending || !body.trim()}
+        className="mt-4 rounded-full bg-blue-600 px-6 py-3 font-black text-white disabled:opacity-50"
+      >
         {pending ? 'Отправляем…' : 'Добавить ответ'}
       </button>
       {message && <p className="mt-3 text-sm font-bold text-slate-600">{message}</p>}

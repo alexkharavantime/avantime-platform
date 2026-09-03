@@ -85,7 +85,7 @@ function validEnvironment(): Record<string, string> {
     JIRA_INBOUND_RETENTION_DAYS: '30',
     JIRA_INBOUND_WORKER_ID: 'jira-inbound-staging-test',
     APP_VERSION: '2.0-test',
-    COMMIT_SHA: 'abcdef1234567',
+    COMMIT_SHA: 'a'.repeat(40),
     MIGRATION_VERSION: CURRENT_STAGING_MIGRATION,
     DEPLOYMENT_GENERATION: 'staging-test-1',
     BACKUP_DESTINATION_REFERENCE: 'test:isolated-backup',
@@ -195,6 +195,12 @@ test('managed staging rejects fake AI, disabled OCR, stale versions and non-immu
   environment.APP_VERSION = 'task-016-local';
   environment.WORKER_VERSION = 'task-016-local';
   assert.throws(() => loadStagingConfiguration(environment), /APP_VERSION_STALE/u);
+});
+
+test('local staging artifact evidence also requires an immutable commit SHA', () => {
+  const environment = validEnvironment();
+  environment.COMMIT_SHA = 'local-validation';
+  assert.throws(() => loadStagingConfiguration(environment), /COMMIT_SHA_INVALID/u);
 });
 
 test('critical staging worker heartbeat is versioned, expiring and fail-closed', async () => {

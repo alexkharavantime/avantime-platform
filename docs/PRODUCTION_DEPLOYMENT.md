@@ -11,6 +11,11 @@
 Use `.env.example` only as a list of placeholders. Do not commit environment files,
 provider keys or production credentials.
 
+Deployment environment must inject `APP_VERSION`, the full 40-character `COMMIT_SHA` and
+`MIGRATION_VERSION` from the immutable artifact pipeline. Container labels, runtime readiness and
+backup manifests must report the same values. Managed staging and production backup evidence fail
+closed for a missing, local-marker or otherwise non-immutable commit SHA.
+
 ## Images and processes
 
 `docker/production.Dockerfile` contains `web`, `migration`, `document-worker`,
@@ -48,9 +53,12 @@ vulnerability scan.
 ```bash
 npm run production:config-check
 npm run db:generate
+npx prettier --check .
 npm run typecheck
 npm run lint
 npm run test
+npm run test:ocr-integration:docker
+npm run pgvector:load-test -- --integration
 npm run build
 npm run backup:dry-run
 npm run production:readiness
@@ -58,6 +66,10 @@ npm run production:readiness
 
 Provider connectivity checks must be minimal and explicit. Paid generation calls
 are prohibited without separate approval.
+
+The Next.js monorepo root is resolved relative to the repository config through
+`outputFileTracingRoot`/`turbopack.root`; builds must not infer their trace boundary from unrelated
+lockfiles in a developer home directory.
 
 ## Rolling deployment
 

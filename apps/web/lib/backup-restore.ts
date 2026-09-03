@@ -4,6 +4,8 @@ import { access, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { isImmutableGitCommitSha } from './artifact-metadata';
+
 export type BackupPlan = {
   environment: string;
   databaseHost: string;
@@ -25,6 +27,11 @@ export type CompletedBackup = BackupPlan & {
   schemaVersion: string;
 };
 
+export type BackupArtifactMetadata = Pick<
+  CompletedBackup,
+  'applicationVersion' | 'commitSha' | 'schemaVersion'
+>;
+
 const SAFE_ENVIRONMENT = /^[a-z0-9][a-z0-9-]{1,49}$/;
 const REHEARSAL_DATABASE = /(?:^|[_-])restore[_-]rehearsal$/i;
 const ENCRYPTED_ARCHIVE_MAGIC = Buffer.from('AVANTIME1');
@@ -33,6 +40,26 @@ function requireValue(environment: Record<string, string | undefined>, name: str
   const value = environment[name]?.trim();
   if (!value) throw new Error(`${name} is required.`);
   return value;
+}
+
+export function resolveBackupArtifactMetadata(
+  environment: Record<string, string | undefined>,
+  backupEnvironment: string,
+): BackupArtifactMetadata {
+  const attested = backupEnvironment === 'staging' || backupEnvironment === 'production';
+  const applicationVersion =
+    environment.APP_VERSION?.trim() ||
+    (attested ? requireValue(environment, 'APP_VERSION') : 'unknown');
+  const commitSha =
+    environment.COMMIT_SHA?.trim() ||
+    (attested ? requireValue(environment, 'COMMIT_SHA') : 'unknown');
+  const schemaVersion =
+    environment.MIGRATION_VERSION?.trim() ||
+    (attested ? requireValue(environment, 'MIGRATION_VERSION') : 'unknown');
+  if (attested && !isImmutableGitCommitSha(commitSha)) {
+    throw new Error('BACKUP_COMMIT_SHA_INVALID');
+  }
+  return { applicationVersion, commitSha, schemaVersion };
 }
 
 function parsePostgresUrl(environment: Record<string, string | undefined>, name: string) {
@@ -156,6 +183,7 @@ export async function createPostgreSQLBackup(
     throw new Error('BACKUP_CONFIRMATION does not match the selected environment.');
   }
   if (!plan.encrypted) throw new Error('Production backups require encryption at rest.');
+  const artifactMetadata = resolveBackupArtifactMetadata(environment, plan.environment);
   await mkdir(plan.outputDirectory, { recursive: true, mode: 0o700 });
   const database = parsePostgresUrl(environment, 'DATABASE_URL');
   const plaintextArchive = `${plan.databaseArchive}.plaintext`;
@@ -177,17 +205,7 @@ export async function createPostgreSQLBackup(
       bytes: encrypted.length,
       sha256: createHash('sha256').update(encrypted).digest('hex'),
       sourceSha256: createHash('sha256').update(plaintext).digest('hex'),
-      applicationVersion:
-        environment.APP_VERSION?.trim() ||
-        (plan.environment === 'staging' ? requireValue(environment, 'APP_VERSION') : 'unknown'),
-      commitSha:
-        environment.COMMIT_SHA?.trim() ||
-        (plan.environment === 'staging' ? requireValue(environment, 'COMMIT_SHA') : 'unknown'),
-      schemaVersion:
-        environment.MIGRATION_VERSION?.trim() ||
-        (plan.environment === 'staging'
-          ? requireValue(environment, 'MIGRATION_VERSION')
-          : 'unknown'),
+      ...artifactMetadata,
     };
     await writeFile(
       plan.manifestFile,

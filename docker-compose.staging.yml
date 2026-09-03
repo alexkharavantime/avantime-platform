@@ -15,6 +15,7 @@ x-staging-runtime: &staging-runtime
     - ${STAGING_ENV_FILE:-.env.staging}
   environment:
     HOSTNAME: 0.0.0.0
+    COMMIT_SHA: ${COMMIT_SHA:?COMMIT_SHA is required}
   networks:
     - application
     - egress

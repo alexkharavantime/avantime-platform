@@ -2,8 +2,7 @@
 
 import { FormEvent, useRef, useState } from 'react';
 
-const INITIAL_ANSWER =
-  'Опишите задачу — я предложу первый практический шаг.';
+const INITIAL_ANSWER = 'Опишите задачу — я предложу первый практический шаг.';
 
 export function AIDemo() {
   const [question, setQuestion] = useState('');
@@ -50,19 +49,14 @@ export function AIDemo() {
 
       setAnswer(data.text || 'AI не вернул текстовый ответ.');
     } catch (requestError) {
-      if (
-        requestError instanceof DOMException &&
-        requestError.name === 'AbortError'
-      ) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') {
         setAnswer('Работа AI остановлена пользователем.');
         setError('');
         return;
       }
 
       setError(
-        requestError instanceof Error
-          ? requestError.message
-          : 'Произошла неизвестная ошибка.',
+        requestError instanceof Error ? requestError.message : 'Произошла неизвестная ошибка.',
       );
     } finally {
       abortControllerRef.current = null;
@@ -106,9 +100,7 @@ export function AIDemo() {
 
         <span
           className={`rounded-full px-3 py-1 text-xs font-bold ${
-            isLoading
-              ? 'bg-amber-400/10 text-amber-300'
-              : 'bg-emerald-400/10 text-emerald-300'
+            isLoading ? 'bg-amber-400/10 text-amber-300' : 'bg-emerald-400/10 text-emerald-300'
           }`}
         >
           {isLoading ? 'работает' : 'online'}
@@ -154,9 +146,7 @@ export function AIDemo() {
         </div>
 
         {error ? (
-          <div className="rounded-2xl bg-red-500/10 p-4 text-sm text-red-300">
-            {error}
-          </div>
+          <div className="rounded-2xl bg-red-500/10 p-4 text-sm text-red-300">{error}</div>
         ) : (
           <div className="whitespace-pre-wrap rounded-2xl bg-white/10 p-4 text-sm leading-6 text-slate-200">
             {answer}

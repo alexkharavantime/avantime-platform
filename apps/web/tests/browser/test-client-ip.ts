@@ -37,8 +37,5 @@ export function browserTestShard(environment: NodeJS.ProcessEnv = process.env) {
 }
 
 export function browserTestRun(environment: NodeJS.ProcessEnv = process.env) {
-  return [
-    environment.GITHUB_RUN_ID ?? 'local',
-    environment.GITHUB_RUN_ATTEMPT ?? '1',
-  ].join(':');
+  return [environment.GITHUB_RUN_ID ?? 'local', environment.GITHUB_RUN_ATTEMPT ?? '1'].join(':');
 }

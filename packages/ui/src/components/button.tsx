@@ -13,8 +13,7 @@ const variants: Record<ButtonVariant, string> = {
     'bg-[var(--primary)] text-white shadow-lg shadow-blue-600/20 hover:bg-[var(--primary-dark)]',
   secondary:
     'border border-[var(--border)] bg-white text-[var(--foreground)] hover:border-[var(--primary)]',
-  ghost:
-    'border border-transparent bg-transparent text-[var(--primary-dark)] hover:bg-white/70',
+  ghost: 'border border-transparent bg-transparent text-[var(--primary-dark)] hover:bg-white/70',
 };
 
 export default function Button({ children, href, variant = 'primary' }: ButtonProps) {
