@@ -1,0 +1,160 @@
+{
+  "accounting": {
+    "name": "Uzņēmuma grāmatvedība",
+    "headline": "Sakārtoti dokumenti. Pārskatāmi skaitļi.",
+    "lead": "Kuri rēķini vēl nav apmaksāti? Kāpēc atšķiras norēķinu atlikumi? Vai viss ir gatavs mēneša slēgšanai? Uzņēmuma grāmatvedības risinājums apvieno ikdienas uzskaiti vienā sistēmā. Avantime pielāgo dokumentu apstrādi un datu apriti, lai grāmatvedim būtu ērtāk pārbaudīt darījumus, atrast neatbilstības un sagatavot vajadzīgos pārskatus.",
+    "cardText": "Dokumenti, maksājumi un norēķini vienā sistēmā. Uzskaites un datu apmaiņas pielāgošana jūsu uzņēmuma darbam.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Dokumenti vienmēr atrodami",
+        "text": "Reģistrējiet saimnieciskos darījumus un atrodiet vajadzīgos dokumentus uzskaites sistēmā. Skaidra ievades kārtība palīdz izvairīties no izlaistiem vai atkārtoti ievadītiem darījumiem."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Pārskatāmi norēķini",
+        "text": "Pārbaudiet norēķinus ar pircējiem un piegādātājiem, salīdziniet dokumentus ar maksājumiem. Tā ir vieglāk noskaidrot parādu izcelsmi un sagatavot datus atlikumu salīdzināšanai."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Mazāk atkārtotas datu ievades",
+        "text": "Saskaņota datu apmaiņa ar tirdzniecības sistēmu ļauj nodot grāmatvedībai vajadzīgo informāciju. Datu sastāvu un nodošanas noteikumus pielāgojam jūsu uzskaites kārtībai."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Pārskati uzskaites pārbaudei",
+        "text": "Izmantojiet grāmatvedības pārskatus atlikumu un apgrozījuma kontrolei. Palīdzēsim izveidot ērtu datu attēlojumu un noskaidrot neatbilstības pirms perioda slēgšanas."
+      }
+    ],
+    "approachTitle": "Sākam ar jūsu uzskaites kārtību",
+    "approachText": "Izpētām izmantoto konfigurāciju, dokumentus un datu apmaiņu. Nosakām, ko var atrisināt ar iestatījumiem un kur nepieciešami pielāgojumi. Pirms izmaiņām vienojamies par datu pārbaudēm. Pārskatu prasības, banku formātus un lokalizācijas vajadzības precizējam konkrētajai risinājuma versijai.",
+    "ctaText": "Pastāstiet, kuri darbi grāmatvedim aizņem visvairāk laika. Palīdzēsim atrast, ko var vienkāršot.",
+    "ctaButton": "Pārrunāt grāmatvedības vajadzības",
+    "seo": {
+      "title": "Uzņēmuma grāmatvedība | Avantime",
+      "description": "Uzņēmuma grāmatvedība: dokumenti, maksājumi, norēķini un pārskati. Avantime veic iestatīšanu, pielāgošanu un datu apmaiņas izveidi."
+    },
+    "imageId": "accounting"
+  },
+  "manufacturing": {
+    "name": "Ražošanas uzņēmuma vadība (UPP)",
+    "headline": "Pārskatāma ražošana — no materiāliem līdz pašizmaksai.",
+    "lead": "Pasūtījums ir pieņemts, bet vai pietiks materiālu? Kas jau saražots un kāda ir partijas pašizmaksa? Ja iepirkumi, noliktava un ražošana katrs strādā savā tabulā, atbildes jāsaliek kopā manuāli. UPP palīdz apvienot šos procesus vienā sistēmā. Avantime palīdz uzņēmumiem, kas jau izmanto UPP, sakārtot un attīstīt esošo uzskaiti.",
+    "cardText": "Materiāli, saražotā produkcija un izmaksas savstarpēji saistītā uzskaites sistēmā. Jūsu UPP iestatīšana un pilnveidošana.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Materiālu vajadzības redzamas laikus",
+        "text": "Saistiet ražošanas plānus ar izejvielu un iepirkumu vajadzībām. Tas palīdz iepirkumu speciālistiem sagatavot materiālus plānotajai ražošanai."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Produkcija saistīta ar materiālu kustību",
+        "text": "Atspoguļojiet materiālu nodošanu un saražoto produkciju kopīgā uzskaitē. Vadītājam ir vieglāk salīdzināt ražošanas gaitu ar noliktavas datiem."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Saprotama pašizmaksas veidošanās",
+        "text": "Apkopojiet ražošanas izmaksas un analizējiet to sadalījumu. Palīdzēsim pārbaudīt aprēķina iestatījumus un noskaidrot, kuri dati ietekmē rezultātu."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Mazāk atsevišķu tabulu",
+        "text": "Izmantojiet savstarpēji saistītus iepirkumu, noliktavas, ražošanas un finanšu datus. Papildu pārskatus un datu apmaiņu izstrādājam atbilstoši saskaņotām uzņēmuma vajadzībām."
+      }
+    ],
+    "approachTitle": "Pilnveidojam sistēmu atbilstoši jūsu darbam",
+    "approachText": "Vispirms izpētām UPP versiju, veiktos pielāgojumus un faktisko darījumu uzskaiti. Nosakām problemātiskos posmus, vienojamies par izmaiņām un pārbaudām rezultātu ar kontrolpiemēriem. Jaunam projektam atsevišķi izvērtējam piemērotāko konfigurāciju un tās uzturēšanas nosacījumus.",
+    "ctaText": "Parādiet, kur dati nesakrīt vai pārskats vēl jāveido manuāli. Sāksim ar konkrēto uzdevumu.",
+    "ctaButton": "Pārrunāt UPP darbību",
+    "seo": {
+      "title": "Ražošanas uzņēmuma vadība (UPP) | Avantime",
+      "description": "UPP: materiāli, ražošana, izmaksas un pašizmaksa. Esošās sistēmas iestatīšana, problēmu analīze un pilnveidošana ar Avantime."
+    },
+    "imageId": "manufacturing"
+  },
+  "addressed-warehouse": {
+    "name": "Noliktavas adrešu uzskaite",
+    "headline": "Katrai precei sava vieta. Katram pasūtījumam skaidra komplektēšanas kārtība.",
+    "lead": "Prece ir noliktavā, bet tā vēl jāatrod. Ja īsto plauktu zina tikai pieredzējis kolēģis, atvaļinājums vai jauna maiņa var sarežģīt darbu. Adrešu uzskaite sasaista preci ar konkrētu vietu: zonu, plauktu un šūnu. Noliktavā kļūst vieglāk orientēties gan pieredzējušiem, gan jauniem darbiniekiem.",
+    "cardText": "Atrodiet preces pēc glabāšanas vietas un sakārtojiet izvietošanu un komplektēšanu. Pielāgosim adrešu uzskaiti jūsu noliktavai.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Skaidrs, kur meklēt",
+        "text": "Vienota glabāšanas vietu struktūra palīdz atrast vajadzīgo preci. Pilnvērtīga adrešu uzskaite seko atlikumiem katrā šūnā, nevis tikai noliktavā kopumā."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Kārtība no saņemšanas līdz nosūtīšanai",
+        "text": "Nosakiet, kā izvietot saņemtās preces, reģistrēt pārvietošanu un komplektēt pasūtījumus. Vienoti noteikumi palīdz darbiniekiem veikt darbības secīgi."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Vieglāk noskaidrot neatbilstības",
+        "text": "Uzskaite pa glabāšanas vietām ļauj salīdzināt faktiskos krājumus ar sistēmas datiem. Inventarizācijā var pārbaudīt konkrētas šūnas."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Svītrkodi tur, kur tie palīdz",
+        "text": "Skeneri un datu savākšanas termināļi var palīdzēt identificēt preces un šūnas. Darba kārtību izvēlamies pēc konfigurācijas iespēju un iekārtu saderības pārbaudes."
+      }
+    ],
+    "approachTitle": "Risinājums jūsu reālajai noliktavai",
+    "approachText": "Izpētām plānojumu, preču sortimentu un komplektēšanas kārtību. Nosakām adrešu struktūru, darbību noteikumus un vajadzīgās iekārtas. Var sākt ar izvēlētu zonu un pēc pārbaudes paplašināt risinājumu. Automatizācijas apjomu saskaņojam konkrētajai konfigurācijai.",
+    "ctaText": "Pastāstiet, kur noliktava zaudē laiku: preču meklēšanā, izvietošanā, pārskaitīšanā vai komplektēšanā.",
+    "ctaButton": "Pārrunāt noliktavas automatizāciju",
+    "seo": {
+      "title": "Noliktavas adrešu uzskaite | Avantime",
+      "description": "Noliktavas adrešu uzskaite: šūnas, izvietošana, komplektēšana un inventarizācija. Darba procesu un iekārtu pielāgošana ar Avantime."
+    },
+    "imageId": "addressed-warehouse"
+  },
+  "platform": {
+    "name": "1C:Enterprise platforma",
+    "headline": "Pamats biznesa uzskaitei, kuru var attīstīt.",
+    "lead": "Šodien uzņēmumam vajadzīga grāmatvedība un noliktava. Rīt — jauns pārskats, savienojums ar interneta veikalu vai darba vietas vēl vienai nodaļai. 1C:Enterprise platforma nodrošina tehnoloģisko pamatu šādiem uzdevumiem. Uz tās darbojas lietojumprogrammas jeb konfigurācijas, kurās darbinieki apstrādā dokumentus un veic uzskaiti.",
+    "cardText": "Elastīgs tehnoloģiskais pamats biznesa lietotnēm: pielāgošana, integrācijas un attīstība līdz ar uzņēmumu.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Atbilstoši jūsu procesiem",
+        "text": "Formas, pārskatus un risinājuma loģiku var pielāgot uzņēmuma darbam. Pielāgošanas veidu izvēlas, ņemot vērā konfigurāciju, saderību un turpmāko uzturēšanu."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Iespēja augt",
+        "text": "Platforma atbalsta failu un klienta–servera režīmu. Pieaugot slodzei, var pārskatīt infrastruktūru; veiktspēja ir atkarīga arī no iekārtām un risinājuma kvalitātes."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Saikne ar citām sistēmām",
+        "text": "Datu apmaiņas līdzekļi un programmēšanas saskarnes ļauj veidot integrācijas ar vietnēm un ārējiem pakalpojumiem. Katrs savienojums ir jāiestata un jāpārbauda."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Piemērots piekļuves veids",
+        "text": "Saderīgiem risinājumiem ir pieejamas dažādas klienta lietotnes un piekļuve pārlūkā. Izvēle ir atkarīga no konfigurācijas, licencēm un infrastruktūras."
+      },
+      {
+        "id": "benefit-5",
+        "title": "Piekļuve atbilstoši pienākumiem",
+        "text": "Piekļuves tiesību mehānismi ļauj ierobežot darbiniekiem pieejamos datus un darbības. Lomas un tiesības pielāgo lietotāju uzdevumiem."
+      },
+      {
+        "id": "benefit-6",
+        "title": "Pārskati jūsu jautājumiem",
+        "text": "Platformas rīki ļauj veidot pārskatus un datu attēlojumu konkrētām biznesa vajadzībām. To saturu nosaka lietojumprogramma un uzskaites datu kvalitāte."
+      }
+    ],
+    "approachTitle": "Platforma ir pamats. Konfigurācija — darba rīks.",
+    "approachText": "Platformas iespēja nenozīmē, ka tā jau ir ieviesta katrā 1C programmā. Avantime palīdz sasaistīt biznesa vajadzības, piemērotu konfigurāciju un tehnisko vidi — no iestatīšanas un integrācijām līdz esošā risinājuma attīstīšanai.",
+    "ctaText": "Pastāstiet, kuru uzdevumu jūsu sistēma vēl neatrisina. Pārrunāsim, kā to īstenot ar 1C.",
+    "ctaButton": "Pārrunāt 1C iespējas",
+    "seo": {
+      "title": "1C:Enterprise platforma | Avantime",
+      "description": "1C:Enterprise platforma: biznesa lietotņu pielāgošana, mērogošana, integrācijas, piekļuves tiesības un pārskati ar Avantime."
+    },
+    "imageId": "platform"
+  }
+}

@@ -1,0 +1,59 @@
+import type { Locale } from './i18n';
+import type { Solution } from './content';
+import { getLocalizedCapabilities } from './solution-capabilities';
+
+type Translation = Pick<Solution, 'title' | 'shortTitle' | 'summary' | 'description' | 'tags' | 'outcomes'> &
+  Partial<Pick<Solution, 'capabilities'>>;
+
+const translations: Record<'lv' | 'en', Record<string, Translation>> = {
+  en: {
+    '1c': { title: '1C implementation and development', shortTitle: '1C', summary: 'Accounting and management processes that match how your company really works.', description: 'We design accounting architecture, implement 1C solutions, develop existing configurations and organise reliable user support.', tags: ['Implementation', 'Customisation', 'Support'], outcomes: ['Transparent accounting', 'Less manual work', 'Controlled system development'], capabilities: [{ title: 'Process assessment', text: 'We review document flows, user roles, data and problem areas.' }, { title: 'Implementation and development', text: 'We configure standard solutions and create the extensions the business needs.' }, { title: 'Data exchange and migration', text: 'We migrate data and connect 1C with websites, warehouses, services and external systems.' }, { title: 'Support', text: 'We organise support, change management and a clear task priority.' }] },
+    'ut-1-3': { title: 'Trade Management 1.3', shortTitle: 'Trade Management', summary: 'Sales, purchasing, inventory and balances in one system, from the first order to shipment.', description: 'We adapt Trade Management 1.3 to your sales, purchasing, inventory, pricing and accounting exchange processes.', tags: ['Sales', 'Purchasing', 'Inventory'], outcomes: ['Faster customer answers', 'Inventory control', 'Less duplicate data entry'], capabilities: [{ title: 'Sales and orders', text: 'Managers see stock, prices, reservations and orders while speaking with a customer.' }, { title: 'Purchasing and stock', text: 'Plan replenishment using customer orders, current stock and expected deliveries.' }, { title: 'Warehouse and pricing', text: 'Track stock movements, multiple warehouses, price types and discounts in one system.' }, { title: 'Exchange and reports', text: 'Connect accounting, online stores and EDI while analysing sales and assortment.' }] },
+    ai: { title: 'AI for business processes', shortTitle: 'AI', summary: 'AI assistants and agents for documents, knowledge, requests and daily operations.', description: 'We create secure AI solutions that use company data, help employees and fit existing processes.', tags: ['AI assistants', 'RAG', 'Agents'], outcomes: ['Faster knowledge search', 'Automatic classification', '24/7 employee support'] },
+    'agent-plus': { title: 'Agent+ and mobile sales', shortTitle: 'Agent+', summary: 'Mobile work for sales representatives with data exchange and execution control.', description: 'We organise orders, routes, stock, prices, tasks and data exchange between mobile employees and the accounting system.', tags: ['Mobile sales', 'Routes', 'Exchange'], outcomes: ['Orders at the customer', 'Current prices and stock', 'Route and task control'] },
+    integrations: { title: 'Integrations and EDI', shortTitle: 'Integrations', summary: 'One digital flow between 1C, websites, Jira, APIs and electronic documents.', description: 'We connect systems so data is entered once, responsibilities are clear and failures can be controlled.', tags: ['API', 'Jira', 'EDI'], outcomes: ['No duplicate entry', 'Controlled exchange', 'Unified process statuses'] },
+    cloud: { title: 'Cloud infrastructure', shortTitle: 'Cloud', summary: 'Reliable infrastructure, backup, monitoring and secure access.', description: 'We help choose hosting, operate services and prepare infrastructure for platform growth.', tags: ['Cloud', 'Monitoring', 'Security'], outcomes: ['Predictable availability', 'Backups', 'Service status control'] },
+    portals: { title: 'Client portals and corporate platforms', shortTitle: 'Portals', summary: 'One window for clients, employees, requests, documents and knowledge.', description: 'We create client portals, knowledge bases and service platforms integrated with accounting and service systems.', tags: ['Client portal', 'Knowledge base', 'Service desk'], outcomes: ['Convenient self-service', 'Transparent requests', 'Access to documents and knowledge'] },
+    'buhgalteriya-predpriyatiya': { title: 'Enterprise Accounting', shortTitle: 'Accounting', summary: 'A 1C solution for enterprise accounting and tax accounting.', description: 'We help configure Enterprise Accounting within the company’s existing accounting environment.', tags: ['1C', 'Accounting', 'Tax accounting'], outcomes: ['Clear accounting environment', 'Agreed data', 'User support'] },
+    'upravlenie-proizvodstvennym-predpriyatiem': { title: 'Manufacturing Enterprise Management', shortTitle: 'Manufacturing', summary: 'A 1C solution for manufacturing operations and management accounting.', description: 'We assess enterprise processes and define how the configuration can work as part of one operating environment.', tags: ['1C', 'Manufacturing', 'Management accounting'], outcomes: ['Connected processes', 'Unified data', 'Planned development'] },
+    'adresny-sklad': { title: 'Address Warehouse', shortTitle: 'Address Warehouse', summary: 'Organised storage and movement of goods by warehouse location.', description: 'We review warehouse processes and define an approach to address-based storage and employee workflows.', tags: ['1C', 'Warehouse', 'Location-based storage'], outcomes: ['Clear storage organisation', 'Movement control', 'Coordinated warehouse work'] },
+  },
+  lv: {
+    '1c': { title: '1C ieviešana un attīstība', shortTitle: '1C', summary: 'Uzskaites un vadības procesi, kas atbilst jūsu uzņēmuma faktiskajam darbam.', description: 'Projektējam uzskaites arhitektūru, ieviešam 1C risinājumus, attīstām konfigurācijas un organizējam lietotāju atbalstu.', tags: ['Ieviešana', 'Pielāgošana', 'Atbalsts'], outcomes: ['Pārskatāma uzskaite', 'Mazāk manuāla darba', 'Kontrolēta sistēmas attīstība'], capabilities: [{ title: 'Procesu izpēte', text: 'Analizējam dokumentu apriti, lietotāju lomas, datus un problēmu vietas.' }, { title: 'Ieviešana un izstrāde', text: 'Konfigurējam tipveida risinājumus un veidojam nepieciešamos paplašinājumus.' }, { title: 'Datu apmaiņa un migrācija', text: 'Pārceļam datus un savienojam 1C ar vietnēm, noliktavām un ārējām sistēmām.' }, { title: 'Atbalsts', text: 'Organizējam atbalstu, izmaiņu pārvaldību un uzdevumu prioritāti.' }] },
+    'ut-1-3': { title: 'Tirdzniecības vadība 1.3', shortTitle: 'Tirdzniecības vadība', summary: 'Pārdošana, iepirkumi, noliktava un norēķini vienā sistēmā no pirmā pasūtījuma līdz nosūtīšanai.', description: 'Pielāgojam Tirdzniecības vadību 1.3 jūsu pārdošanas, iepirkumu, noliktavas, cenu un grāmatvedības apmaiņas procesiem.', tags: ['Pārdošana', 'Iepirkumi', 'Noliktava'], outcomes: ['Ātrākas atbildes klientiem', 'Krājumu kontrole', 'Mazāk dublētas ievades'], capabilities: [{ title: 'Pārdošana un pasūtījumi', text: 'Pārdevējs sarunas laikā redz atlikumus, cenas, rezervācijas un pasūtījumus.' }, { title: 'Iepirkumi un krājumi', text: 'Plānojiet papildināšanu pēc klientu pasūtījumiem un aktuālajiem atlikumiem.' }, { title: 'Noliktava un cenas', text: 'Vienā sistēmā pārvaldiet kustību, noliktavas, cenu veidus un atlaides.' }, { title: 'Apmaiņa un pārskati', text: 'Savienojiet grāmatvedību, interneta veikalu un EDI, analizējot sortimentu.' }] },
+    ai: { title: 'AI biznesa procesiem', shortTitle: 'AI', summary: 'AI asistenti un aģenti dokumentiem, zināšanām, pieprasījumiem un ikdienas darbam.', description: 'Veidojam drošus AI risinājumus, kas izmanto uzņēmuma datus un iekļaujas esošajos procesos.', tags: ['AI asistenti', 'RAG', 'Aģenti'], outcomes: ['Ātrāka zināšanu meklēšana', 'Automātiska klasifikācija', 'Atbalsts 24/7'] },
+    'agent-plus': { title: 'Agent+ un mobilā tirdzniecība', shortTitle: 'Agent+', summary: 'Tirdzniecības pārstāvju mobilais darbs ar datu apmaiņu un izpildes kontroli.', description: 'Organizējam pasūtījumus, maršrutus, atlikumus, cenas, uzdevumus un datu apmaiņu ar uzskaites sistēmu.', tags: ['Mobilā pārdošana', 'Maršruti', 'Apmaiņa'], outcomes: ['Pasūtījumi pie klienta', 'Aktuālas cenas un atlikumi', 'Maršrutu un uzdevumu kontrole'] },
+    integrations: { title: 'Integrācijas un EDI', shortTitle: 'Integrācijas', summary: 'Vienota digitālā plūsma starp 1C, vietnēm, Jira, API un elektroniskajiem dokumentiem.', description: 'Savienojam sistēmas, lai dati tiktu ievadīti vienreiz, atbildība būtu skaidra un kļūmes varētu kontrolēt.', tags: ['API', 'Jira', 'EDI'], outcomes: ['Nav dublētas ievades', 'Kontrolēta apmaiņa', 'Vienoti procesu statusi'] },
+    cloud: { title: 'Mākoņa infrastruktūra', shortTitle: 'Mākonis', summary: 'Uzticama infrastruktūra, rezerves kopijas, uzraudzība un droša piekļuve.', description: 'Palīdzam izvēlēties izvietošanu, ekspluatēt servisus un sagatavot infrastruktūru izaugsmei.', tags: ['Mākonis', 'Uzraudzība', 'Drošība'], outcomes: ['Prognozējama pieejamība', 'Rezerves kopijas', 'Servisu stāvokļa kontrole'] },
+    portals: { title: 'Klientu kabineti un korporatīvie portāli', shortTitle: 'Portāli', summary: 'Vienots logs klientiem, darbiniekiem, pieprasījumiem, dokumentiem un zināšanām.', description: 'Veidojam klientu kabinetus, zināšanu bāzes un servisa portālus ar integrāciju uzskaites un servisa sistēmās.', tags: ['Klienta kabinets', 'Zināšanu bāze', 'Servisa dienests'], outcomes: ['Ērta pašapkalpošanās', 'Pārskatāmi pieprasījumi', 'Piekļuve dokumentiem un zināšanām'] },
+    'buhgalteriya-predpriyatiya': { title: 'Uzņēmuma grāmatvedība', shortTitle: 'Grāmatvedība', summary: '1C risinājums uzņēmuma grāmatvedības un nodokļu uzskaitei.', description: 'Palīdzam konfigurēt Uzņēmuma grāmatvedību esošajā uzņēmuma uzskaites vidē.', tags: ['1C', 'Grāmatvedība', 'Nodokļu uzskaite'], outcomes: ['Skaidra uzskaites vide', 'Saskaņoti dati', 'Lietotāju atbalsts'] },
+    'upravlenie-proizvodstvennym-predpriyatiem': { title: 'Ražošanas uzņēmuma vadība', shortTitle: 'Ražošana', summary: '1C risinājums ražošanas procesiem un vadības uzskaitei.', description: 'Izvērtējam uzņēmuma procesus un nosakām, kā konfigurāciju izmantot vienotā darba vidē.', tags: ['1C', 'Ražošana', 'Vadības uzskaite'], outcomes: ['Saistīti procesi', 'Vienoti dati', 'Plānota attīstība'] },
+    'adresny-sklad': { title: 'Adresu noliktava', shortTitle: 'Adresu noliktava', summary: 'Preču glabāšanas un kustības organizēšana pēc noliktavas adresēm.', description: 'Analizējam noliktavas procesus un nosakām pieeju adresu glabāšanai un darbinieku darbam.', tags: ['1C', 'Noliktava', 'Adresu glabāšana'], outcomes: ['Skaidra glabāšanas organizācija', 'Kustības kontrole', 'Saskaņots noliktavas darbs'] },
+  },
+};
+
+export function getLocalizedSolution(solution: Solution, locale: Locale): Solution {
+  if (locale === 'ru') return removePublicVersion(solution);
+  const translation = translations[locale][solution.slug] ?? {};
+  return removePublicVersion({
+    ...solution,
+    ...translation,
+    capabilities: getLocalizedCapabilities(
+      solution.slug,
+      locale,
+      translation.capabilities ?? solution.capabilities,
+    ),
+    number: solution.number,
+  });
+}
+
+function removePublicVersion<T>(value: T): T {
+  if (typeof value === 'string') return value.replaceAll(' 1.3', '') as T;
+  if (Array.isArray(value)) return value.map((item) => removePublicVersion(item)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, removePublicVersion(item)]),
+    ) as T;
+  }
+  return value;
+}

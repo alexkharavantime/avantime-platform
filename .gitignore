@@ -25,3 +25,5 @@ coverage
 # Generated browser reports, traces, screenshots and isolated fixture data
 .artifacts/
 .tmp/
+
+incoming/

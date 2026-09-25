@@ -20,9 +20,6 @@ export default async function ArticlePage({ params }: Props) {
       <article>
         <header className="border-b border-slate-200 bg-slate-50">
           <div className="mx-auto max-w-4xl px-6 py-20 sm:py-28">
-            <Link href="/knowledge" className="text-sm font-bold text-blue-600">
-              ← База знаний
-            </Link>
             <p className="mt-10 text-xs font-black uppercase tracking-[0.18em] text-blue-600">
               {article.category} · {article.readingTime}
             </p>
@@ -62,7 +59,7 @@ export default async function ArticlePage({ params }: Props) {
               проект.
             </p>
             <Link
-              href="/contacts"
+              href={localePath(locale, '/contacts')}
               className="mt-6 inline-flex rounded-full bg-blue-600 px-6 py-3 font-black text-white"
             >
               Обсудить задачу

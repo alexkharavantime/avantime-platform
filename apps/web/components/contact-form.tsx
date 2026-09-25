@@ -1,12 +1,18 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { isLocale, sharedCopy, type Locale } from '../lib/i18n';
 
 type FormErrors = Partial<Record<'name' | 'contact' | 'task', string>>;
 
 export function ContactForm() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const pathname = usePathname();
+  const localeSegment = pathname.split('/')[1];
+  const locale: Locale = isLocale(localeSegment) ? localeSegment : 'lv';
+  const copy = sharedCopy[locale].contact;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -16,12 +22,11 @@ export function ContactForm() {
     const contact = String(form.get('contact') ?? '').trim();
     const task = String(form.get('task') ?? '').trim();
 
-    if (name.length < 2) nextErrors.name = 'Укажите имя минимум из двух символов.';
+    if (name.length < 2) nextErrors.name = copy.nameError;
     if (!contact.includes('@') && contact.replace(/\D/g, '').length < 7) {
-      nextErrors.contact = 'Укажите корректный email или номер телефона.';
+      nextErrors.contact = copy.contactError;
     }
-    if (task.length < 20)
-      nextErrors.task = 'Опишите задачу немного подробнее — минимум 20 символов.';
+    if (task.length < 20) nextErrors.task = copy.taskError;
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) setSubmitted(true);
@@ -30,8 +35,8 @@ export function ContactForm() {
   if (submitted) {
     return (
       <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-8">
-        <p className="text-sm font-bold uppercase tracking-[0.16em] text-emerald-700">Спасибо</p>
-        <h3 className="mt-3 text-2xl font-black text-slate-950">Запрос сохранен в демоверсии</h3>
+        <p className="text-sm font-bold uppercase tracking-[0.16em] text-emerald-700">{copy.thankYou}</p>
+        <h3 className="mt-3 text-2xl font-black text-slate-950">{copy.saved}</h3>
         <p className="mt-3 leading-7 text-slate-600">
           На следующем этапе подключим реальную отправку, защиту от спама и передачу обращения в
           Jira или CRM.
@@ -41,7 +46,7 @@ export function ContactForm() {
           className="mt-6 font-bold text-blue-600"
           onClick={() => setSubmitted(false)}
         >
-          Отправить еще один запрос
+          {copy.sendAnother}
         </button>
       </div>
     );
@@ -54,44 +59,44 @@ export function ContactForm() {
     >
       <div>
         <label htmlFor="name" className="mb-2 block text-sm font-bold text-slate-700">
-          Ваше имя
+          {copy.name}
         </label>
         <input
           id="name"
           name="name"
           aria-invalid={Boolean(errors.name)}
           className="min-h-12 w-full rounded-xl border border-slate-200 px-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          placeholder="Как к вам обращаться"
+          placeholder={copy.namePlaceholder}
         />
         {errors.name && <p className="mt-2 text-sm font-bold text-red-600">{errors.name}</p>}
       </div>
       <div>
         <label htmlFor="company" className="mb-2 block text-sm font-bold text-slate-700">
-          Компания
+          {copy.company}
         </label>
         <input
           id="company"
           name="company"
           className="min-h-12 w-full rounded-xl border border-slate-200 px-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          placeholder="Название компании"
+          placeholder={copy.companyPlaceholder}
         />
       </div>
       <div>
         <label htmlFor="contact" className="mb-2 block text-sm font-bold text-slate-700">
-          Телефон или email
+          {copy.contact}
         </label>
         <input
           id="contact"
           name="contact"
           aria-invalid={Boolean(errors.contact)}
           className="min-h-12 w-full rounded-xl border border-slate-200 px-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          placeholder="Как с вами связаться"
+          placeholder={copy.contactPlaceholder}
         />
         {errors.contact && <p className="mt-2 text-sm font-bold text-red-600">{errors.contact}</p>}
       </div>
       <div>
         <label htmlFor="task" className="mb-2 block text-sm font-bold text-slate-700">
-          Задача
+          {copy.task}
         </label>
         <textarea
           id="task"
@@ -99,7 +104,7 @@ export function ContactForm() {
           rows={4}
           aria-invalid={Boolean(errors.task)}
           className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          placeholder="Кратко опишите, что требуется автоматизировать"
+          placeholder={copy.taskPlaceholder}
         />
         {errors.task && <p className="mt-2 text-sm font-bold text-red-600">{errors.task}</p>}
       </div>
@@ -107,10 +112,10 @@ export function ContactForm() {
         type="submit"
         className="min-h-13 rounded-xl bg-blue-600 px-6 font-bold text-white transition hover:bg-blue-700"
       >
-        Отправить запрос
+        {copy.submit}
       </button>
       <p className="text-xs leading-5 text-slate-500">
-        Сейчас форма работает в демонстрационном режиме и не передает данные на сервер.
+        {copy.demoNotice}
       </p>
     </form>
   );

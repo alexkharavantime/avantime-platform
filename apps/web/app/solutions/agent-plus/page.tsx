@@ -1,5 +1,9 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { SiteHeader } from '../../../components/site-header';
+import { getLocale, getOriginalPath } from '../../../lib/i18n-server';
+import { localePath, stripLocale } from '../../../lib/i18n';
+import { getSectionImage } from '../../../lib/section-images';
 
 const capabilities = [
   [
@@ -50,10 +54,14 @@ function ArrowIcon() {
   );
 }
 
-export default function AgentPlusPage() {
+export default async function AgentPlusPage() {
+  const locale = await getLocale();
+  const currentPath = stripLocale(await getOriginalPath());
+  const sectionImage = getSectionImage('agent-plus', locale);
+
   return (
     <main className="overflow-hidden bg-white text-slate-950">
-      <SiteHeader />
+      <SiteHeader locale={locale} currentPath={currentPath} />
 
       <section className="relative border-b border-slate-200 bg-slate-950 text-white">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_30%,rgba(37,99,235,0.30),transparent_38%),radial-gradient(circle_at_25%_85%,rgba(34,211,238,0.16),transparent_32%)]" />
@@ -74,7 +82,7 @@ export default function AgentPlusPage() {
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="/#contact"
+                href={localePath(locale, '/#contact')}
                 className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-blue-600 px-7 font-black text-white transition hover:bg-blue-500"
               >
                 Обсудить внедрение <ArrowIcon />
@@ -120,6 +128,19 @@ export default function AgentPlusPage() {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="border-b border-slate-200 bg-white py-10 sm:py-14">
+        <div className="mx-auto max-w-7xl px-6">
+          <Image
+            src={sectionImage.src}
+            alt={sectionImage.alt}
+            width={1536}
+            height={1024}
+            sizes="(max-width: 1280px) 100vw, 1280px"
+            className="h-auto w-full rounded-3xl border border-slate-200 object-contain shadow-xl shadow-slate-950/10"
+          />
         </div>
       </section>
 
@@ -195,7 +216,7 @@ export default function AgentPlusPage() {
             Покажем, как Agent+ впишется в ваши процессы
           </h2>
           <Link
-            href="/#contact"
+            href={localePath(locale, '/#contact')}
             className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-white px-7 font-black text-blue-700"
           >
             Запросить консультацию <ArrowIcon />

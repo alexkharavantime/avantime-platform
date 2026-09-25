@@ -1,23 +1,32 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { localePath, sharedCopy, type Locale } from '../lib/i18n';
+import { BackLink } from './back-link';
 
-const navigation = [
-  { label: '1С', href: '/solutions/1c' },
-  { label: 'Решения', href: '/#solutions' },
-  { label: 'Подход', href: '/#approach' },
-  { label: 'База знаний', href: '/knowledge' },
-  { label: 'AI-консультант', href: '/assistant' },
-];
+type SiteHeaderProps = { locale: Locale; currentPath: string };
 
-export function SiteHeader() {
+export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const copy = sharedCopy[locale];
+  const navigation = [
+    { label: copy.navigation.oneC, href: localePath(locale, '/solutions/1c') },
+    { label: copy.navigation.solutions, href: localePath(locale, '/solutions') },
+    { label: copy.navigation.approach, href: localePath(locale, '/#approach') },
+    { label: copy.navigation.knowledge, href: localePath(locale, '/knowledge') },
+    { label: copy.navigation.assistant, href: localePath(locale, '/assistant') },
+  ];
+
+  useEffect(() => {
+    setCanGoBack(document.referrer.startsWith(window.location.origin));
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-3" aria-label="Avantime — на главную">
+        <Link href={localePath(locale)} className="flex items-center gap-3" aria-label="Avantime">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-lg font-black text-white shadow-lg shadow-blue-600/20">
             A
           </span>
@@ -29,12 +38,12 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-8 lg:flex" aria-label="Основная навигация">
+        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 rounded-full border border-slate-200 bg-white/80 p-1 shadow-sm lg:flex" aria-label={copy.navigation.solutions}>
           {navigation.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-sm font-semibold text-slate-600 transition hover:text-blue-600"
+              className="rounded-full px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"
             >
               {item.label}
             </Link>
@@ -42,40 +51,66 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label="Language">
+            {(['lv', 'ru', 'en'] as const).map((candidate) => (
+              <Link
+                key={candidate}
+                href={localePath(candidate, currentPath)}
+                aria-current={candidate === locale ? 'page' : undefined}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${candidate === locale ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-blue-600'}`}
+              >
+                {candidate.toUpperCase()}
+              </Link>
+            ))}
+          </div>
           <Link
             href="/portal"
             className="text-sm font-bold text-slate-600 transition hover:text-blue-600"
           >
-            Кабинет
+            {copy.navigation.portal}
           </Link>
           <Link
-            href="/#contact"
+            href={localePath(locale, '/#contact')}
             className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-blue-600"
           >
-            Обсудить задачу
+            {copy.navigation.contact}
           </Link>
         </div>
 
-        <button
-          type="button"
-          className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 lg:hidden"
-          aria-label={isOpen ? 'Закрыть меню' : 'Открыть меню'}
-          aria-expanded={isOpen}
-          onClick={() => setIsOpen((value) => !value)}
-        >
-          <span className="text-xl">{isOpen ? '×' : '☰'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label="Language selection">
+            {(['lv', 'ru', 'en'] as const).map((candidate) => (
+              <Link
+                key={candidate}
+                href={localePath(candidate, currentPath)}
+                aria-current={candidate === locale ? 'page' : undefined}
+                className={`rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px] ${candidate === locale ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-blue-600'}`}
+              >
+                {candidate.toUpperCase()}
+              </Link>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 lg:hidden"
+            aria-label={isOpen ? copy.navigation.menuClose : copy.navigation.menuOpen}
+            aria-expanded={isOpen}
+            onClick={() => setIsOpen((value) => !value)}
+          >
+            <span className="text-xl">{isOpen ? '×' : '☰'}</span>
+          </button>
+        </div>
       </div>
 
       {isOpen && (
-        <div className="border-t border-slate-200 bg-white px-6 py-5 lg:hidden">
-          <nav className="mx-auto flex max-w-7xl flex-col gap-1" aria-label="Мобильная навигация">
+        <div className="absolute left-3 right-3 top-full rounded-b-3xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/15 lg:hidden">
+          <nav className="mx-auto grid max-w-7xl gap-1" aria-label={copy.navigation.solutions}>
             {navigation.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsOpen(false)}
-                className="rounded-xl px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+                className="rounded-xl px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-blue-700"
               >
                 {item.label}
               </Link>
@@ -83,20 +118,34 @@ export function SiteHeader() {
             <Link
               href="/portal"
               onClick={() => setIsOpen(false)}
-              className="rounded-xl px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+              className="rounded-xl px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-blue-700"
             >
-              Кабинет клиента
+              {copy.navigation.portal}
             </Link>
             <Link
-              href="/#contact"
+              href={localePath(locale, '/#contact')}
               onClick={() => setIsOpen(false)}
               className="mt-3 rounded-xl bg-blue-600 px-4 py-3 text-center font-bold text-white"
             >
-              Обсудить задачу
+              {copy.navigation.contact}
             </Link>
           </nav>
         </div>
       )}
+
+      {canGoBack && (
+        <div className="border-t border-slate-200/70 bg-white/95 px-6 py-2">
+          <div className="mx-auto flex max-w-7xl items-center">
+            <BackLink
+              fallbackHref={localePath(locale)}
+              className="inline-flex min-h-10 items-center rounded-full border border-blue-200 bg-white px-5 text-sm font-bold text-blue-700 shadow-sm shadow-blue-950/5 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-100"
+            >
+              {copy.navigation.back}
+            </BackLink>
+          </div>
+        </div>
+      )}
+
     </header>
   );
 }
