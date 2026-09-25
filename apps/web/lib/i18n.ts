@@ -197,3 +197,200 @@ export const sharedCopy: Record<Locale, SharedCopy> = {
     },
   },
 };
+
+export type HomeCopy = {
+  hero: {
+    badge: string;
+    title: [string, string, string];
+    description: string;
+    primaryCta: string;
+    solutionsCta: string;
+    proofs: string[];
+  };
+  stripTitle: string;
+  stripLinks: { label: string; href: string }[];
+  capabilities: { number: string; title: string; text: string }[];
+  capabilitiesIntro: { eyebrow: string; title: string; text: string; link: string };
+  secondaryIntro: { eyebrow: string; title: string };
+  secondaryCards: { label: string; title: string; text: string }[];
+  approach: {
+    eyebrow: string;
+    title: string;
+    text: string;
+    outcomes: { title: string; text: string }[];
+  };
+  contact: {
+    eyebrow: string;
+    title: string;
+    text: string;
+    proofs: string[];
+  };
+  footer: {
+    description: string;
+    solutions: string;
+    implementation: string;
+    ai: string;
+    integrations: string;
+    company: string;
+    knowledge: string;
+    assistant: string;
+    portal: string;
+    location: string;
+    stack: string;
+  };
+};
+
+export const homeCopy: Record<Locale, HomeCopy> = {
+  ru: {
+    hero: {
+      badge: 'Avantime',
+      title: ['Бизнес-системы,', 'которые работают', 'вместе'],
+      description: 'Объединяем учёт, торговлю, склад и ваши цифровые сервисы в единую систему. Внедряем и развиваем решения на базе 1С, настраиваем обмен данными и помогаем сократить ручную работу.',
+      primaryCta: 'Обсудить задачу',
+      solutionsCta: 'Наши решения',
+      proofs: ['От первой консультации до поддержки', 'Интеграции без повторного ввода', 'Развитие автоматизации'],
+    },
+    stripTitle: 'Решения для вашей работы',
+    stripLinks: [
+      { label: 'Конфигурации 1С', href: '/solutions/1c/configurations' },
+      { label: 'Agent+', href: '/solutions/agent-plus' },
+      { label: 'AI', href: '/solutions/ai' },
+      { label: 'Cloud', href: '/solutions/cloud' },
+      { label: 'Интеграции и ЭДО', href: '/solutions/integrations' },
+    ],
+    capabilities: [
+      { number: '01', title: 'Разбираемся в задаче', text: 'Изучаем ваши процессы, программы и ограничения. Уточняем, какой результат нужен сотрудникам и руководителю.' },
+      { number: '02', title: 'Согласовываем решение', text: 'Определяем объём работ, этапы и критерии готовности. Объясняем, что изменится в повседневной работе.' },
+      { number: '03', title: 'Внедряем и проверяем', text: 'Настраиваем систему, тестируем рабочие сценарии и помогаем пользователям освоить изменения.' },
+      { number: '04', title: 'Поддерживаем и развиваем', text: 'Остаёмся на связи после запуска и адаптируем решение по мере изменения задач бизнеса.' },
+    ],
+    capabilitiesIntro: { eyebrow: '1С и автоматизация учёта', title: 'Решения для вашей работы', text: 'Настраиваем программы под реальные процессы компании: бухгалтерию, продажи, закупки, склад и производство. Сохраняем необходимые данные и функции, добавляя только нужные изменения.', link: 'Все конфигурации 1С' },
+    secondaryIntro: { eyebrow: 'Решения для вашей работы', title: 'От учёта и интеграций до поддержки и AI' },
+    secondaryCards: [
+      { label: '1С · Управление торговлей', title: '1С и автоматизация учёта', text: 'Настраиваем программы под бухгалтерию, продажи, закупки, склад и производство: внедряем, дорабатываем и обновляем системы с сохранением нужных данных.' },
+      { label: 'Интеграции', title: 'Интеграции и обмен данными', text: 'Связываем 1С с интернет-магазинами, банками, ЭДО и другими сервисами, чтобы сотрудники не вводили одну информацию несколько раз.' },
+      { label: 'Поддержка', title: 'Сопровождение и поддержка', text: 'Помогаем пользователям, разбираемся в ошибках, обновляем программы и дорабатываем отчёты с понятным планом решения.' },
+      { label: 'AI', title: 'Искусственный интеллект для бизнеса', text: 'Находим практичные сценарии для поиска информации, базы знаний, подготовки ответов и обработки типовых запросов.' },
+    ],
+    approach: {
+      eyebrow: 'Знакомые задачи — понятные решения', title: 'Помогаем убрать препятствия в ежедневной работе', text: 'Находим причину проблемы, предлагаем понятный порядок действий и проверяем результат на реальных рабочих сценариях.',
+      outcomes: [
+        { title: 'Данные приходится переносить вручную?', text: 'Настроим обмен между системами и сократим повторный ввод.' },
+        { title: 'Программа больше не соответствует процессам?', text: 'Изучим существующую настройку и предложим необходимые доработки.' },
+        { title: 'Сложно получить нужный отчёт?', text: 'Поможем собрать данные и представить их в удобном для работы виде.' },
+        { title: 'Ошибки мешают сотрудникам работать?', text: 'Найдём причину, исправим проблему и проверим затронутые сценарии.' },
+      ],
+    },
+    contact: { eyebrow: 'Обсудим вашу задачу?', title: 'Поможем определить следующий шаг', text: 'Расскажите, что хотите улучшить: учёт, обмен данными, отчётность или работу пользователей. Можно начать с описания проблемы — мы поможем определить следующий шаг.', proofs: ['Изучим текущий процесс и ограничения', 'Определим ожидаемый результат', 'Предложим понятный формат первого этапа'] },
+    footer: { description: 'Внедрение и развитие решений на базе 1С, интеграции и поддержка автоматизации бизнеса.', solutions: 'Решения', implementation: 'Внедрение 1С', ai: 'AI для бизнеса', integrations: 'Интеграции и ЭДО', company: 'Компания', knowledge: 'База знаний', assistant: 'AI-консультант', portal: 'Кабинет клиента', location: 'Рига, Латвия', stack: '1С · AI · Cloud · Integrations · Agent+' },
+  },
+  lv: {
+    hero: {
+      badge: 'Avantime',
+      title: ['Biznesa sistēmas,', 'kas darbojas', 'kopā'],
+      description: 'Apvienojam uzskaiti, tirdzniecību, noliktavu un jūsu digitālos pakalpojumus vienā sistēmā. Ieviešam un attīstām 1C risinājumus, iestatām datu apmaiņu un palīdzam samazināt manuālo darbu.',
+      primaryCta: 'Pārrunāt uzdevumu',
+      solutionsCta: 'Mūsu risinājumi',
+      proofs: ['No pirmās konsultācijas līdz atbalstam', 'Integrācijas bez atkārtotas ievades', 'Automatizācijas attīstība'],
+    },
+    stripTitle: 'Risinājumi jūsu darbam',
+    stripLinks: [
+      { label: '1C konfigurācijas', href: '/solutions/1c/configurations' },
+      { label: 'Agent+', href: '/solutions/agent-plus' },
+      { label: 'AI', href: '/solutions/ai' },
+      { label: 'Mākonis', href: '/solutions/cloud' },
+      { label: 'Integrācijas un EDI', href: '/solutions/integrations' },
+    ],
+    capabilities: [
+      { number: '01', title: 'Izprotam uzdevumu', text: 'Izpētām jūsu procesus, programmas un ierobežojumus. Precizējam, kāds rezultāts vajadzīgs darbiniekiem un vadībai.' },
+      { number: '02', title: 'Vienojamies par risinājumu', text: 'Nosakām darbu apjomu, posmus un gatavības kritērijus. Izskaidrojam, kas mainīsies ikdienas darbā.' },
+      { number: '03', title: 'Ieviešam un pārbaudām', text: 'Iestatām sistēmu, testējam darba scenārijus un palīdzam lietotājiem apgūt izmaiņas.' },
+      { number: '04', title: 'Atbalstām un attīstām', text: 'Esam sasniedzami arī pēc ieviešanas un pielāgojam risinājumu uzņēmuma vajadzībām.' },
+    ],
+    capabilitiesIntro: { eyebrow: '1C un uzskaites automatizācija', title: 'Risinājumi jūsu darbam', text: 'Pielāgojam programmas uzņēmuma faktiskajiem procesiem: grāmatvedībai, pārdošanai, iepirkumiem, noliktavai un ražošanai. Saglabājam vajadzīgos datus un funkcijas, pievienojot tikai nepieciešamās izmaiņas.', link: 'Visas 1C konfigurācijas' },
+    secondaryIntro: { eyebrow: 'Risinājumi jūsu darbam', title: 'No uzskaites un integrācijām līdz atbalstam un AI' },
+    secondaryCards: [
+      { label: '1C · Tirdzniecības vadība', title: '1C un uzskaites automatizācija', text: 'Iestatām programmas grāmatvedībai, pārdošanai, iepirkumiem, noliktavai un ražošanai: ieviešam, pielāgojam un atjaunojam sistēmas, saglabājot vajadzīgos datus.' },
+      { label: 'Integrācijas', title: 'Integrācijas un datu apmaiņa', text: 'Savienojam 1C ar interneta veikaliem, bankām, EDI un citiem servisiem, lai darbiniekiem nebūtu jāievada viena informācija atkārtoti.' },
+      { label: 'Atbalsts', title: 'Uzturēšana un atbalsts', text: 'Palīdzam lietotājiem, risinām kļūdas, atjaunojam programmas un pilnveidojam pārskatus ar skaidru rīcības plānu.' },
+      { label: 'AI', title: 'Mākslīgais intelekts uzņēmumam', text: 'Atrodam praktiskus scenārijus informācijas meklēšanai, zināšanu bāzei, atbilžu sagatavošanai un tipisku pieprasījumu apstrādei.' },
+    ],
+    approach: {
+      eyebrow: 'Pazīstami uzdevumi — saprotami risinājumi', title: 'Palīdzam novērst ikdienas darba šķēršļus', text: 'Atrodam problēmas cēloni, piedāvājam skaidru rīcības kārtību un pārbaudām rezultātu reālos darba scenārijos.',
+      outcomes: [
+        { title: 'Dati jāievada manuāli?', text: 'Iestatīsim sistēmu apmaiņu un samazināsim atkārtotu ievadi.' },
+        { title: 'Programma vairs neatbilst procesiem?', text: 'Izpētīsim esošos iestatījumus un piedāvāsim vajadzīgos uzlabojumus.' },
+        { title: 'Grūti iegūt vajadzīgo pārskatu?', text: 'Palīdzēsim apkopot datus un parādīt tos ērtā darba formā.' },
+        { title: 'Kļūdas traucē darbiniekiem?', text: 'Atradīsim cēloni, novērsīsim problēmu un pārbaudīsim skartos scenārijus.' },
+      ],
+    },
+    contact: { eyebrow: 'Pārrunāsim jūsu uzdevumu', title: 'Palīdzēsim noteikt nākamo soli', text: 'Pastāstiet, ko vēlaties uzlabot: uzskaiti, datu apmaiņu, pārskatus vai lietotāju darbu. Sāciet ar problēmas aprakstu — palīdzēsim noteikt nākamo soli.', proofs: ['Izpētīsim pašreizējo procesu un ierobežojumus', 'Noteiksim sagaidāmo rezultātu', 'Piedāvāsim saprotamu pirmo posmu'] },
+    footer: { description: '1C risinājumu ieviešana un attīstība, integrācijas un atbalsts praktiskai biznesa automatizācijai.', solutions: 'Risinājumi', implementation: '1C ieviešana', ai: 'AI uzņēmumam', integrations: 'Integrācijas un EDI', company: 'Uzņēmums', knowledge: 'Zināšanu bāze', assistant: 'AI konsultants', portal: 'Klienta kabinets', location: 'Rīga, Latvija', stack: '1C · AI · Mākonis · Integrācijas · Agent+' },
+  },
+  en: {
+    hero: {
+      badge: 'Avantime',
+      title: ['Business systems', 'that work', 'together'],
+      description: 'We bring accounting, trade, inventory and your digital services into one system. We implement and develop 1C solutions, configure data exchange and help reduce manual work.',
+      primaryCta: 'Discuss your task',
+      solutionsCta: 'Our solutions',
+      proofs: ['From first consultation to support', 'Integrations without duplicate entry', 'Automation that keeps developing'],
+    },
+    stripTitle: 'Solutions for your work',
+    stripLinks: [
+      { label: '1C configurations', href: '/solutions/1c/configurations' },
+      { label: 'Agent+', href: '/solutions/agent-plus' },
+      { label: 'AI', href: '/solutions/ai' },
+      { label: 'Cloud', href: '/solutions/cloud' },
+      { label: 'Integrations and EDI', href: '/solutions/integrations' },
+    ],
+    capabilities: [
+      { number: '01', title: 'Understand the task', text: 'We study your processes, systems and constraints, then clarify the outcome employees and managers need.' },
+      { number: '02', title: 'Agree the solution', text: 'We define the scope, stages and acceptance criteria, and explain what will change in everyday work.' },
+      { number: '03', title: 'Implement and check', text: 'We configure the system, test working scenarios and help users adopt the changes.' },
+      { number: '04', title: 'Support and develop', text: 'We stay available after launch and adapt the solution as your business needs change.' },
+    ],
+    capabilitiesIntro: { eyebrow: '1C and accounting automation', title: 'Solutions for your work', text: 'We configure applications around real business processes: accounting, sales, purchasing, inventory and production. We preserve the data and functions you need, adding only the right changes.', link: 'All 1C configurations' },
+    secondaryIntro: { eyebrow: 'Solutions for your work', title: 'From accounting and integrations to support and AI' },
+    secondaryCards: [
+      { label: '1C · Trade Management', title: '1C and accounting automation', text: 'We configure applications for accounting, sales, purchasing, inventory and production: implementation, customisation and upgrades with your data preserved.' },
+      { label: 'Integrations', title: 'Integrations and data exchange', text: 'We connect 1C with online stores, banks, EDI and other services so employees do not enter the same information twice.' },
+      { label: 'Support', title: 'Maintenance and support', text: 'We help users, investigate errors, update applications and improve reports with a clear plan of action.' },
+      { label: 'AI', title: 'Artificial intelligence for business', text: 'We find practical scenarios for information search, knowledge bases, answer preparation and routine requests.' },
+    ],
+    approach: {
+      eyebrow: 'Familiar tasks — practical solutions', title: 'Remove obstacles from everyday work', text: 'We find the cause of a problem, propose a clear sequence of actions and check the result in real working scenarios.',
+      outcomes: [
+        { title: 'Are you moving data manually?', text: 'We will configure system exchange and reduce duplicate entry.' },
+        { title: 'Does the application no longer fit your processes?', text: 'We will review the current setup and propose the right improvements.' },
+        { title: 'Is it difficult to get the report you need?', text: 'We will help assemble the data and present it in a useful working format.' },
+        { title: 'Are errors getting in the way?', text: 'We will find the cause, fix the problem and check the affected scenarios.' },
+      ],
+    },
+    contact: { eyebrow: 'Discuss your task', title: 'We will help define the next step', text: 'Tell us what you want to improve: accounting, data exchange, reporting or user workflows. Start with the problem and we will help define the next step.', proofs: ['Review the current process and constraints', 'Define the expected result', 'Suggest a practical first stage'] },
+    footer: { description: '1C implementation and development, integrations and support for practical business automation.', solutions: 'Solutions', implementation: '1C implementation', ai: 'AI for business', integrations: 'Integrations and EDI', company: 'Company', knowledge: 'Knowledge base', assistant: 'AI consultant', portal: 'Client portal', location: 'Riga, Latvia', stack: '1C · AI · Cloud · Integrations · Agent+' },
+  },
+};
+
+export const assistantWidgetCopy: Record<Locale, {
+  title: string;
+  demo: string;
+  initialMessage: string;
+  fallbackAnswer: string;
+  errorAnswer: string;
+  loading: string;
+  starters: string[];
+  inputLabel: string;
+  placeholder: string;
+  submit: string;
+}> = {
+  ru: {
+    title: 'Avantime AI-консультант', demo: 'Демонстрационная версия', initialMessage: 'Опишите процесс или проблему. Я предложу возможный первый этап автоматизации.', fallbackAnswer: 'Предлагаю начать с короткого обследования процесса.', errorAnswer: 'Не удалось получить ответ. Опишите задачу через форму контактов — мы разберем ее вручную.', loading: 'Анализирую задачу…', starters: ['Автоматизация обращений клиентов', 'Интеграция 1С и Jira', 'AI-помощник для сотрудников'], inputLabel: 'Сообщение AI-консультанту', placeholder: 'Например: хотим сократить ручной ввод заказов', submit: 'Отправить',
+  },
+  lv: {
+    title: 'Avantime AI konsultants', demo: 'Demonstrācijas versija', initialMessage: 'Aprakstiet procesu vai problēmu. Piedāvāšu iespējamu pirmo automatizācijas posmu.', fallbackAnswer: 'Iesaku sākt ar īsu procesa izpēti.', errorAnswer: 'Neizdevās saņemt atbildi. Aprakstiet uzdevumu kontaktu formā — mēs to izskatīsim manuāli.', loading: 'Analizēju uzdevumu…', starters: ['Klientu pieprasījumu automatizācija', '1C un Jira integrācija', 'AI palīgs darbiniekiem'], inputLabel: 'Ziņojums AI konsultantam', placeholder: 'Piemēram: vēlamies samazināt pasūtījumu manuālu ievadi', submit: 'Nosūtīt',
+  },
+  en: {
+    title: 'Avantime AI consultant', demo: 'Demonstration version', initialMessage: 'Describe your process or problem. I will suggest a possible first automation stage.', fallbackAnswer: 'I suggest starting with a short process assessment.', errorAnswer: 'We could not get an answer. Describe the task in the contact form and we will review it manually.', loading: 'Analysing the task…', starters: ['Automate customer requests', 'Integrate 1C and Jira', 'AI assistant for employees'], inputLabel: 'Message to the AI consultant', placeholder: 'For example: we want to reduce manual order entry', submit: 'Send',
+  },
+};

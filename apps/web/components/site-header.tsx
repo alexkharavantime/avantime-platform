@@ -38,7 +38,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
           </span>
         </Link>
 
-        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 rounded-full border border-slate-200 bg-white/80 p-1 shadow-sm lg:flex" aria-label={copy.navigation.solutions}>
+        <nav className="mx-4 hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden rounded-full border border-slate-200 bg-white/80 p-1 shadow-sm xl:flex" aria-label={copy.navigation.solutions}>
           {navigation.map((item) => (
             <Link
               key={item.href}
@@ -50,7 +50,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">
+        <div className="hidden items-center gap-3 xl:flex">
           <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label="Language">
             {(['lv', 'ru', 'en'] as const).map((candidate) => (
               <Link
@@ -77,7 +77,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 xl:hidden">
           <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label="Language selection">
             {(['lv', 'ru', 'en'] as const).map((candidate) => (
               <Link
@@ -92,7 +92,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
           </div>
           <button
             type="button"
-            className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 lg:hidden"
+            className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 xl:hidden"
             aria-label={isOpen ? copy.navigation.menuClose : copy.navigation.menuOpen}
             aria-expanded={isOpen}
             onClick={() => setIsOpen((value) => !value)}
@@ -103,7 +103,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
       </div>
 
       {isOpen && (
-        <div className="absolute left-3 right-3 top-full rounded-b-3xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/15 lg:hidden">
+        <div className="absolute left-3 right-3 top-full rounded-b-3xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/15 xl:hidden">
           <nav className="mx-auto grid max-w-7xl gap-1" aria-label={copy.navigation.solutions}>
             {navigation.map((item) => (
               <Link

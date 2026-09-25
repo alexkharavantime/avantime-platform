@@ -11,6 +11,11 @@ import { getSectionImage, type SectionImageId } from '../../../lib/section-image
 import { getProductContent } from '../../../lib/product-content';
 
 type Props = { params: Promise<{ slug: string }> };
+const pageCopy = {
+  lv: { result: 'Rezultāts', business: 'Ko iegūst uzņēmums', next: 'Nākamais solis', discuss: 'Pārrunāsim uzdevumu un pirmā posma robežas', contact: 'Sazināties ar Avantime' },
+  ru: { result: 'Результат', business: 'Что получает бизнес', next: 'Следующий шаг', discuss: 'Обсудим задачу и границы первого этапа', contact: 'Связаться с Avantime' },
+  en: { result: 'Outcome', business: 'What the business gets', next: 'Next step', discuss: 'Let’s discuss the task and the first stage', contact: 'Contact Avantime' },
+} as const;
 export function generateStaticParams() {
   return solutions.map(({ slug }) => ({ slug }));
 }
@@ -37,6 +42,7 @@ export default async function SolutionPage({ params }: Props) {
   const item = solutions.find((solution) => solution.slug === slug);
   if (!item) notFound();
   const locale = await getLocale();
+  const copy = pageCopy[locale];
   const localizedItem = getLocalizedSolution(item, locale);
   const productId = {
     'buhgalteriya-predpriyatiya': 'accounting',
@@ -86,8 +92,8 @@ export default async function SolutionPage({ params }: Props) {
       <section className="py-20">
         <div className="mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.75fr_1.25fr]">
           <div>
-            <p className="eyebrow">Результат</p>
-            <h2 className="section-title mt-4">Что получает бизнес</h2>
+            <p className="eyebrow">{copy.result}</p>
+            <h2 className="section-title mt-4">{copy.business}</h2>
             <div className="mt-8 space-y-3">
               {(prepared?.benefits.map((benefit) => benefit.title) ?? localizedItem.outcomes).map((outcome) => (
                 <div key={outcome} className="rounded-2xl bg-blue-50 p-5 font-black text-blue-950">
@@ -121,14 +127,14 @@ export default async function SolutionPage({ params }: Props) {
       <section className="bg-blue-600 py-16 text-white">
         <div className="mx-auto flex max-w-7xl flex-col gap-7 px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="font-black uppercase tracking-[0.18em] text-blue-100">{prepared ? prepared.ctaButton : 'Следующий шаг'}</p>
-            <h2 className="mt-3 text-3xl font-black">{prepared?.ctaText ?? 'Обсудим задачу и границы первого этапа'}</h2>
+            <p className="font-black uppercase tracking-[0.18em] text-blue-100">{prepared ? prepared.ctaButton : copy.next}</p>
+            <h2 className="mt-3 text-3xl font-black">{prepared?.ctaText ?? copy.discuss}</h2>
           </div>
           <Link
             href={localePath(locale, '/contacts')}
             className="inline-flex min-h-14 items-center justify-center rounded-full bg-white px-7 font-black text-blue-700"
           >
-            {prepared?.ctaButton ?? 'Связаться с Avantime'}
+            {prepared?.ctaButton ?? copy.contact}
           </Link>
         </div>
       </section>

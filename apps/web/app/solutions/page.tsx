@@ -27,10 +27,15 @@ const solutionOrder = [
   'platform-1c-predpriyatie',
 ] as const;
 
-export const metadata: Metadata = {
-  title: 'Решения — Avantime',
-  description: '1С, AI, Agent+, интеграции, облачная инфраструктура и клиентские порталы.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const metadata = {
+    lv: { title: 'Risinājumi — Avantime', description: '1C, AI, Agent+, integrācijas, mākoņa infrastruktūra un klientu portāli.' },
+    ru: { title: 'Решения — Avantime', description: '1С, AI, Agent+, интеграции, облачная инфраструктура и клиентские порталы.' },
+    en: { title: 'Solutions — Avantime', description: '1C, AI, Agent+, integrations, cloud infrastructure and client portals.' },
+  } as const;
+  return metadata[locale];
+}
 
 export default async function SolutionsPage() {
   const locale = await getLocale();
@@ -64,7 +69,7 @@ export default async function SolutionsPage() {
       </section>
       <section className="bg-slate-50 py-20">
         <div className="mx-auto grid max-w-7xl gap-6 px-6 md:grid-cols-2 lg:grid-cols-3">
-          {localizedSolutions.map((item) => (
+          {localizedSolutions.map((item, index) => (
             <a
               key={item.slug}
               href={localePath(locale, `/solutions/${item.slug}`)}
@@ -79,7 +84,7 @@ export default async function SolutionsPage() {
                 className="mb-7 h-36 w-full rounded-2xl border border-slate-200 object-cover"
               />
               <span className="text-sm font-black tracking-[0.2em] text-blue-600">
-                {item.number}
+                {String(index + 1).padStart(2, '0')}
               </span>
               <h2 className="mt-8 text-3xl font-black tracking-tight">{item.title}</h2>
               <p className="mt-5 flex-1 leading-7 text-slate-600">{item.summary}</p>

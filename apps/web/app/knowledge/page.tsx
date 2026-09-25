@@ -6,6 +6,7 @@ import { listKnowledgeArticles } from '../../lib/knowledge-store';
 import { getLocale } from '../../lib/i18n-server';
 import { localePath } from '../../lib/i18n';
 import { getSectionImage } from '../../lib/section-images';
+import { getLocalizedKnowledgeArticle } from '../../lib/knowledge-localization';
 
 const pageCopy = {
   lv: { eyebrow: 'Zināšanu bāze', title: 'Automatizācijas prakse bez liekas teorijas', description: 'Materiāli vadītājiem un speciālistiem par arhitektūru, ieviešanu, riskiem un praktisku pieeju.', search: 'Meklēt rakstos, tēmās un tagos', all: 'Visas kategorijas', find: 'Meklēt', found: 'Atrasti materiāli', empty: 'Materiāli nav atrasti', emptyText: 'Mainiet meklēšanas vaicājumu vai izvēlieties citu kategoriju.', read: 'Lasīt →' },
@@ -13,10 +14,15 @@ const pageCopy = {
   en: { eyebrow: 'Knowledge base', title: 'Automation practice without unnecessary theory', description: 'Materials for managers and specialists: architecture, implementation, risks and practical approaches.', search: 'Search articles, topics and tags', all: 'All categories', find: 'Search', found: 'Materials found', empty: 'No materials found', emptyText: 'Change your search query or choose another category.', read: 'Read →' },
 } as const;
 
-export const metadata: Metadata = {
-  title: 'База знаний — Avantime',
-  description: 'Практические материалы об автоматизации, 1С, AI и интеграциях.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const metadata = {
+    lv: { title: 'Zināšanu bāze — Avantime', description: 'Praktiski materiāli par automatizāciju, 1C, AI un integrācijām.' },
+    ru: { title: 'База знаний — Avantime', description: 'Практические материалы об автоматизации, 1С, AI и интеграциях.' },
+    en: { title: 'Knowledge base — Avantime', description: 'Practical materials about automation, 1C, AI and integrations.' },
+  } as const;
+  return metadata[locale];
+}
 export const dynamic = 'force-dynamic';
 
 export default async function KnowledgePage({
@@ -28,9 +34,9 @@ export default async function KnowledgePage({
   const locale = await getLocale();
   const copy = pageCopy[locale];
   const knowledgeImage = getSectionImage('knowledge', locale);
-  const all = await listKnowledgeArticles();
+  const all = (await listKnowledgeArticles()).map((article) => getLocalizedKnowledgeArticle(article, locale));
   const categories = [...new Set(all.map((article) => article.category))].sort();
-  const articles = await listKnowledgeArticles({ query: params.q, category: params.category });
+  const articles = (await listKnowledgeArticles({ query: params.q, category: params.category })).map((article) => getLocalizedKnowledgeArticle(article, locale));
   return (
     <PageShell>
       <section className="border-b border-slate-200 bg-slate-50">

@@ -3,18 +3,30 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageShell } from '../../../components/page-shell';
 import { getKnowledgeArticle } from '../../../lib/knowledge-store';
+import { getLocale } from '../../../lib/i18n-server';
+import { localePath } from '../../../lib/i18n';
+import { getLocalizedKnowledgeArticle } from '../../../lib/knowledge-localization';
 
 type Props = { params: Promise<{ slug: string }> };
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const article = await getKnowledgeArticle(slug);
+  const locale = await getLocale();
+  const rawArticle = await getKnowledgeArticle(slug);
+  const article = rawArticle ? getLocalizedKnowledgeArticle(rawArticle, locale) : null;
   return article ? { title: `${article.title} — Avantime`, description: article.summary } : {};
 }
 export default async function ArticlePage({ params }: Props) {
   const { slug } = await params;
-  const article = await getKnowledgeArticle(slug);
+  const locale = await getLocale();
+  const rawArticle = await getKnowledgeArticle(slug);
+  const article = rawArticle ? getLocalizedKnowledgeArticle(rawArticle, locale) : null;
   if (!article) notFound();
+  const copy = {
+    lv: { title: 'Nepieciešams jūsu situācijas izvērtējums?', text: 'Izpētīsim procesu un piedāvāsim praktisku pirmo posmu bez saistībām sākt lielu projektu.', button: 'Pārrunāt uzdevumu' },
+    ru: { title: 'Нужна оценка вашей ситуации?', text: 'Разберем процесс и предложим практичный первый этап без обязательства начинать большой проект.', button: 'Обсудить задачу' },
+    en: { title: 'Would you like an assessment of your situation?', text: 'We will review the process and suggest a practical first stage without requiring you to start a large project.', button: 'Discuss your task' },
+  }[locale];
   return (
     <PageShell>
       <article>
@@ -53,16 +65,13 @@ export default async function ArticlePage({ params }: Props) {
             </section>
           ))}
           <div className="rounded-3xl bg-blue-50 p-8">
-            <h2 className="text-2xl font-black">Нужна оценка вашей ситуации?</h2>
-            <p className="mt-3 leading-7 text-slate-600">
-              Разберем процесс и предложим практичный первый этап без обязательства начинать большой
-              проект.
-            </p>
+            <h2 className="text-2xl font-black">{copy.title}</h2>
+            <p className="mt-3 leading-7 text-slate-600">{copy.text}</p>
             <Link
               href={localePath(locale, '/contacts')}
               className="mt-6 inline-flex rounded-full bg-blue-600 px-6 py-3 font-black text-white"
             >
-              Обсудить задачу
+              {copy.button}
             </Link>
           </div>
         </div>

@@ -9,13 +9,19 @@ const pageCopy = {
   en: { eyebrow: 'Avantime AI', title: 'Describe your task in plain language', description: 'The consultant will help formulate a possible first step. Answers currently use demonstration rules.', next: 'What the next AI version will add', items: ['answers with sources', 'search across knowledge and services', 'request draft generation', 'handoff to a specialist'] },
 } as const;
 
-export const metadata: Metadata = {
-  title: 'AI-консультант — Avantime',
-  description: 'Демонстрационный AI-консультант по автоматизации бизнеса, 1С и интеграциям.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const metadata = {
+    lv: { title: 'AI konsultants — Avantime', description: 'Demonstrācijas AI konsultants par biznesa automatizāciju, 1C un integrācijām.' },
+    ru: { title: 'AI-консультант — Avantime', description: 'Демонстрационный AI-консультант по автоматизации бизнеса, 1С и интеграциям.' },
+    en: { title: 'AI consultant — Avantime', description: 'A demonstration AI consultant for business automation, 1C and integrations.' },
+  } as const;
+  return metadata[locale];
+}
 
 export default async function AssistantPage() {
-  const copy = pageCopy[await getLocale()];
+  const locale = await getLocale();
+  const copy = pageCopy[locale];
   return (
     <PageShell>
       <section className="bg-[linear-gradient(135deg,#eff6ff,#f0fdfa)] py-20 sm:py-28">
@@ -31,7 +37,7 @@ export default async function AssistantPage() {
               </ul>
             </div>
           </div>
-          <AiConsultant />
+          <AiConsultant locale={locale} />
         </div>
       </section>
     </PageShell>

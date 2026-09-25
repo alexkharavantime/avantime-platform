@@ -8,10 +8,15 @@ const pageCopy = {
   ru: { eyebrow: 'Контакты', title: 'Начнем с реальной задачи', description: 'Опишите текущий процесс, проблему или идею. Мы предложим разумный формат первого шага.', useful: 'Что полезно указать', items: ['Какая система используется сейчас', 'Где возникает ручная работа или ошибки', 'Кто участвует в процессе', 'Какой результат вы считаете успешным'] },
   en: { eyebrow: 'Contacts', title: 'Start with a real task', description: 'Describe your current process, problem or idea. We will suggest a practical first step.', useful: 'Useful details', items: ['Which system you use today', 'Where manual work or errors occur', 'Who is involved in the process', 'What result would be successful'] },
 } as const;
-export const metadata: Metadata = {
-  title: 'Контакты — Avantime',
-  description: 'Связаться с Avantime и обсудить задачу автоматизации.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const metadata = {
+    lv: { title: 'Kontakti — Avantime', description: 'Sazinieties ar Avantime un pārrunājiet automatizācijas uzdevumu.' },
+    ru: { title: 'Контакты — Avantime', description: 'Связаться с Avantime и обсудить задачу автоматизации.' },
+    en: { title: 'Contacts — Avantime', description: 'Contact Avantime to discuss your automation task.' },
+  } as const;
+  return metadata[locale];
+}
 export default async function ContactsPage() {
   const copy = pageCopy[await getLocale()];
   return (
