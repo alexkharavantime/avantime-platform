@@ -11,7 +11,10 @@ export type IdentityRateLimitScope =
   | 'email-verification-ip'
   | 'mfa-challenge'
   | 'mfa-enrollment'
-  | 'invitation';
+  | 'invitation'
+  | 'access-request-identifier'
+  | 'access-request-ip'
+  | 'access-request-verify-ip';
 
 export type IdentityRateLimitRequest = {
   scope: IdentityRateLimitScope;

@@ -39,7 +39,7 @@ export function middleware(request: NextRequest) {
       response.headers.set('x-correlation-id', correlationId);
       return response;
     }
-    const loginUrl = new URL('/portal/login', request.url);
+    const loginUrl = new URL(locale ? `/${locale}/portal/login` : '/portal/login', request.url);
     loginUrl.searchParams.set('returnTo', `${path}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }

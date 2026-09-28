@@ -92,16 +92,16 @@ const utPageCopy = {
 
 const localizedOverview = {
   lv: {
-    src: '/images/avantime-trade-management-hero.webp',
-    alt: 'Darbinieki pārbauda pasūtījumus un preču pieejamību birojā pie noliktavas.',
+    src: '/images/solution-cards/detailed-3d/01-trade-management.webp',
+    alt: 'Detalizēta 3D ilustrācija tirdzniecības vadībai ar pārdošanu, precēm un noliktavu.',
   },
   ru: {
-    src: '/images/avantime-trade-management-hero.webp',
-    alt: 'Сотрудники проверяют заказы и наличие товаров в офисе при складе.',
+    src: '/images/solution-cards/detailed-3d/01-trade-management.webp',
+    alt: 'Детальная 3D-иллюстрация управления торговлей: продажи, товары и склад.',
   },
   en: {
-    src: '/images/avantime-trade-management-hero.webp',
-    alt: 'Employees review orders and stock availability in an office overlooking a warehouse.',
+    src: '/images/solution-cards/detailed-3d/01-trade-management.webp',
+    alt: 'Detailed 3D illustration of trade management with sales, goods and warehouse operations.',
   },
 } as const;
 
@@ -150,22 +150,24 @@ export default async function TradeManagementPage() {
 
         <section className="border-b border-slate-200 bg-white py-10 sm:py-14">
           <div className="mx-auto max-w-7xl px-6">
-            <a
-              href="/images/avantime-ut-1-3-overview.webp"
-              target="_blank"
-              rel="noreferrer"
-              aria-label={copy.imageLabel}
-            >
-              <Image
-                src={overview.src}
-                alt={overview.alt}
-                width={1774}
-                height={887}
-                priority
-                sizes="(max-width: 1280px) 100vw, 1280px"
-                className="h-auto w-full rounded-3xl border border-slate-200 object-contain shadow-xl shadow-slate-950/10"
-              />
-            </a>
+            <div className="relative aspect-[3/2] w-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-950/10">
+              <a
+                href={overview.src}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={copy.imageLabel}
+                className="absolute inset-0"
+              >
+                <Image
+                  src={overview.src}
+                  alt={overview.alt}
+                  priority
+                  sizes="(max-width: 1280px) 100vw, 1280px"
+                  fill
+                  className="object-contain"
+                />
+              </a>
+            </div>
           </div>
         </section>
 
@@ -239,7 +241,7 @@ export default async function TradeManagementPage() {
               <p className="mt-6 text-lg leading-8 text-slate-600">{copy.nextText}</p>
               <p className="mt-8 text-lg font-black text-slate-900">{copy.contact}</p>
             </div>
-            <ContactForm />
+            <ContactForm locale={locale} />
           </div>
         </section>
       </main>

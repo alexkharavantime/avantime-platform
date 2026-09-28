@@ -180,12 +180,27 @@ export async function inviteCompanyMember(
   if (!actorRole || !canInviteRole(actorRole, role)) {
     throw new TeamInvitationError('INVITATION_FORBIDDEN');
   }
+  return createCompanyInvitation({ companyId, email: input.email, role, invitedBy: session.userId }, now);
+}
+
+// Shared by the self-service org invite above and the platform-admin access-request approval flow;
+// both paths must produce the exact same IdentityInvitation record and acceptance semantics.
+async function createCompanyInvitation(
+  input: { companyId: string; email: string; role: OrganizationRole; invitedBy: string },
+  now = new Date(),
+) {
+  const { companyId, role } = input;
   if (process.env.DATABASE_URL) {
     const prisma = await getPrisma();
     if (prisma) {
       const emailNormalized = input.email.trim().normalize('NFKC').toLowerCase();
       const token = randomBytes(32).toString('base64url');
       const invitation = await prisma.$transaction(async (database: Prisma.TransactionClient) => {
+        const company = await database.company.findUnique({
+          where: { id: companyId },
+          select: { id: true },
+        });
+        if (!company) throw new TeamInvitationError('INVITATION_INVALID');
         const existing = await database.organizationMembership.findFirst({
           where: {
             companyId,
@@ -211,7 +226,7 @@ export async function inviteCompanyMember(
             emailNormalized,
             role: legacyRole(role),
             organizationRole: role,
-            invitedBy: session.userId,
+            invitedBy: input.invitedBy,
             expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
           },
         });
@@ -235,6 +250,25 @@ export async function inviteCompanyMember(
     expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
     token: randomBytes(32).toString('base64url'),
   };
+}
+
+const PLATFORM_INVITABLE_ROLES = new Set<OrganizationRole>(['ADMIN', 'MANAGER', 'MEMBER', 'VIEWER']);
+
+// Used only by the approved access-request flow: a platform admin explicitly names the company and
+// role (never derived from user-supplied company name or email domain) before a standard invitation
+// is sent. No membership or company data access is granted until the invitation is accepted.
+export async function inviteMemberToCompanyAsPlatformAdmin(
+  actorUserId: string,
+  input: { companyId: string; email: string; role: OrganizationRole },
+  now = new Date(),
+) {
+  if (!PLATFORM_INVITABLE_ROLES.has(input.role)) {
+    throw new TeamInvitationError('INVITATION_FORBIDDEN');
+  }
+  return createCompanyInvitation(
+    { companyId: input.companyId, email: input.email, role: input.role, invitedBy: actorUserId },
+    now,
+  );
 }
 
 export async function acceptCompanyInvitation(

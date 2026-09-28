@@ -79,14 +79,15 @@ export default async function SolutionPage({ params }: Props) {
       </section>
       <section className="border-b border-slate-200 bg-white py-10 sm:py-14">
         <div className="mx-auto max-w-7xl px-6">
-          <Image
-            src={image.src}
-            alt={image.alt}
-            width={1774}
-            height={887}
-            sizes="(max-width: 1280px) 100vw, 1280px"
-            className="h-auto w-full rounded-3xl border border-slate-200 object-contain shadow-xl shadow-slate-950/10"
-          />
+          <div className="relative aspect-[3/2] w-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-950/10">
+            <Image
+              src={image.src}
+              alt={image.alt}
+              fill
+              sizes="(max-width: 1280px) 100vw, 1280px"
+              className="object-contain"
+            />
+          </div>
         </div>
       </section>
       <section className="py-20">

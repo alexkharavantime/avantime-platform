@@ -1,17 +1,13 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import { isLocale, sharedCopy, type Locale } from '../lib/i18n';
+import { sharedCopy, type Locale } from '../lib/i18n';
 
 type FormErrors = Partial<Record<'name' | 'contact' | 'task', string>>;
 
-export function ContactForm() {
+export function ContactForm({ locale }: { locale: Locale }) {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
-  const pathname = usePathname();
-  const localeSegment = pathname.split('/')[1];
-  const locale: Locale = isLocale(localeSegment) ? localeSegment : 'lv';
   const copy = sharedCopy[locale].contact;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {

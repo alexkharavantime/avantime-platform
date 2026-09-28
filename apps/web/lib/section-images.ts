@@ -1,6 +1,6 @@
 import type { Locale } from './i18n';
 
-export type SectionImageId = 'home' | 'homepage-hero' | 'onec' | 'trade-management' | 'accounting' | 'manufacturing' | 'addressed-warehouse' | 'platform' | 'agent-plus' | 'ai' | 'integrations' | 'cloud' | 'portals' | 'knowledge';
+export type SectionImageId = 'home' | 'homepage-hero' | 'onec' | 'trade-management' | 'accounting' | 'manufacturing' | 'addressed-warehouse' | 'platform' | 'agent-plus' | 'ai' | 'integrations' | 'cloud' | 'portals' | 'knowledge' | 'assistant';
 
 type SectionImage = { src: string; alt: string };
 
@@ -16,49 +16,49 @@ const images: Record<SectionImageId, Record<Locale, SectionImage>> = {
     lv: { src: '/images/avantime-home.webp', alt: 'Birojs, noliktava un veikals, kurus vieno kopīgi biznesa procesi.' },
   },
   onec: {
-    ru: { src: '/images/avantime-onec.webp', alt: 'Документы, учётная книга, калькулятор и товары в общей системе учёта.' },
-    en: { src: '/images/avantime-onec.webp', alt: 'Documents, a ledger, a calculator and goods within a shared accounting system.' },
-    lv: { src: '/images/avantime-onec.webp', alt: 'Dokumenti, uzskaites žurnāls, kalkulators un preces vienotā uzskaites sistēmā.' },
+    ru: { src: '/images/avantime-1c-implementation-hero-v2.webp', alt: 'Внедрение 1С: проектирование процессов, рабочие места пользователей, серверная и склад.' },
+    en: { src: '/images/avantime-1c-implementation-hero-v2.webp', alt: '1C implementation: process design, user workstations, server infrastructure and warehouse.' },
+    lv: { src: '/images/avantime-1c-implementation-hero-v2.webp', alt: '1C ieviešana: procesu projektēšana, lietotāju darba vietas, serveru infrastruktūra un noliktava.' },
   },
   'trade-management': {
-    ru: { src: '/images/avantime-trade-management-hero.webp', alt: 'Сотрудники проверяют заказы и наличие товаров в офисе при складе.' },
-    en: { src: '/images/avantime-trade-management-hero.webp', alt: 'Employees review orders and stock availability in an office overlooking a warehouse.' },
-    lv: { src: '/images/avantime-trade-management-hero.webp', alt: 'Darbinieki pārbauda pasūtījumus un preču pieejamību birojā pie noliktavas.' },
+    ru: { src: '/images/solution-cards/detailed-3d/01-trade-management.webp', alt: 'Детальная 3D-иллюстрация управления торговлей: продажи, товары и склад.' },
+    en: { src: '/images/solution-cards/detailed-3d/01-trade-management.webp', alt: 'Detailed 3D illustration of trade management with sales, goods and warehouse operations.' },
+    lv: { src: '/images/solution-cards/detailed-3d/01-trade-management.webp', alt: 'Detalizēta 3D ilustrācija tirdzniecības vadībai ar pārdošanu, precēm un noliktavu.' },
   },
   accounting: {
-    ru: { src: '/images/avantime-accounting-hero.webp', alt: 'Бухгалтер сверяет документы с учётными данными на экранах.' },
-    en: { src: '/images/avantime-accounting-hero.webp', alt: 'An accountant checks documents against accounting records on the screens.' },
-    lv: { src: '/images/avantime-accounting-hero.webp', alt: 'Grāmatvede salīdzina dokumentus ar uzskaites datiem ekrānos.' },
+    ru: { src: '/images/solution-cards/08-accounting-3d.webp', alt: 'Детальная 3D-иллюстрация бухгалтерии предприятия, документов и учёта.' },
+    en: { src: '/images/solution-cards/08-accounting-3d.webp', alt: 'Detailed 3D illustration of enterprise accounting, documents and records.' },
+    lv: { src: '/images/solution-cards/08-accounting-3d.webp', alt: 'Detalizēta 3D ilustrācija uzņēmuma grāmatvedībai, dokumentiem un uzskaitei.' },
   },
   manufacturing: {
-    ru: { src: '/images/avantime-manufacturing-hero.webp', alt: 'Планирование производства, материалы и выпуск продукции.' },
-    en: { src: '/images/avantime-manufacturing-hero.webp', alt: 'Production planning, materials and finished goods.' },
-    lv: { src: '/images/avantime-manufacturing-hero.webp', alt: 'Ražošanas plānošana, materiāli un gatavā produkcija.' },
+    ru: { src: '/images/solution-cards/detailed-3d/04-upp.webp', alt: 'Детальная 3D-иллюстрация УПП: производство, материалы и выпуск продукции.' },
+    en: { src: '/images/solution-cards/detailed-3d/04-upp.webp', alt: 'Detailed 3D illustration of manufacturing, materials and finished goods.' },
+    lv: { src: '/images/solution-cards/detailed-3d/04-upp.webp', alt: 'Detalizēta 3D ilustrācija ražošanai, materiāliem un gatavai produkcijai.' },
   },
   'addressed-warehouse': {
-    ru: { src: '/images/avantime-addressed-warehouse-hero.webp', alt: 'Складские ячейки, сканер и подбор товаров.' },
-    en: { src: '/images/avantime-addressed-warehouse-hero.webp', alt: 'Warehouse bins, a scanner and order picking.' },
-    lv: { src: '/images/avantime-addressed-warehouse-hero.webp', alt: 'Noliktavas šūnas, skeneris un preču komplektēšana.' },
+    ru: { src: '/images/solution-cards/detailed-3d/03-address-warehouse.webp', alt: 'Детальная 3D-иллюстрация адресного склада, ячеек и подбора товаров.' },
+    en: { src: '/images/solution-cards/detailed-3d/03-address-warehouse.webp', alt: 'Detailed 3D illustration of an address warehouse, bins and order picking.' },
+    lv: { src: '/images/solution-cards/detailed-3d/03-address-warehouse.webp', alt: 'Detalizēta 3D ilustrācija adresu noliktavai, šūnām un preču komplektēšanai.' },
   },
   platform: {
-    ru: { src: '/images/avantime-platform-hero.webp', alt: 'Компьютер и модули бизнес-приложений на общей технологической основе.' },
-    en: { src: '/images/avantime-platform-hero.webp', alt: 'A computer and business application modules on a shared technology foundation.' },
-    lv: { src: '/images/avantime-platform-hero.webp', alt: 'Dators un biznesa lietotņu moduļi uz kopīga tehnoloģiskā pamata.' },
+    ru: { src: '/images/solution-cards/detailed-3d/10-1c-platform.webp', alt: 'Детальная 3D-иллюстрация платформы 1С и связанных бизнес-модулей.' },
+    en: { src: '/images/solution-cards/detailed-3d/10-1c-platform.webp', alt: 'Detailed 3D illustration of the 1C platform and connected business modules.' },
+    lv: { src: '/images/solution-cards/detailed-3d/10-1c-platform.webp', alt: 'Detalizēta 3D ilustrācija 1C platformai un saistītajiem biznesa moduļiem.' },
   },
   'agent-plus': {
-    ru: { src: '/images/avantime-mobile-sales-hero.webp', alt: 'Торговый представитель оформляет заказ на мобильном устройстве у клиента.' },
-    en: { src: '/images/avantime-mobile-sales-hero.webp', alt: 'A sales representative uses a mobile device to take an order during a customer visit.' },
-    lv: { src: '/images/avantime-mobile-sales-hero.webp', alt: 'Tirdzniecības pārstāvis noformē pasūtījumu mobilajā ierīcē klienta apmeklējuma laikā.' },
+    ru: { src: '/images/solution-cards/detailed-3d/05-agent-plus.webp', alt: 'Детальная 3D-иллюстрация Agent+ и мобильной работы торгового представителя.' },
+    en: { src: '/images/solution-cards/detailed-3d/05-agent-plus.webp', alt: 'Detailed 3D illustration of Agent+ and mobile work for a sales representative.' },
+    lv: { src: '/images/solution-cards/detailed-3d/05-agent-plus.webp', alt: 'Detalizēta 3D ilustrācija Agent+ un mobilajam tirdzniecības pārstāvja darbam.' },
   },
   ai: {
-    ru: { src: '/images/avantime-ai.webp', alt: 'Специалисты работают с AI-помощником и материалами на экране.' },
-    en: { src: '/images/avantime-ai.webp', alt: 'Specialists work with an AI assistant and source materials on screen.' },
-    lv: { src: '/images/avantime-ai.webp', alt: 'Speciālisti strādā ar AI palīgu un avotu materiāliem ekrānā.' },
+    ru: { src: '/images/solution-cards/detailed-3d/09-ai.webp', alt: 'Детальная 3D-иллюстрация применения искусственного интеллекта в бизнесе.' },
+    en: { src: '/images/solution-cards/detailed-3d/09-ai.webp', alt: 'Detailed 3D illustration of artificial intelligence applied to business.' },
+    lv: { src: '/images/solution-cards/detailed-3d/09-ai.webp', alt: 'Detalizēta 3D ilustrācija mākslīgā intelekta izmantošanai uzņēmumā.' },
   },
   integrations: {
-    ru: { src: '/images/avantime-integrations.webp', alt: 'Специалисты проверяют обмен данными между бизнес-системами.' },
-    en: { src: '/images/avantime-integrations.webp', alt: 'Specialists check data exchange between business systems.' },
-    lv: { src: '/images/avantime-integrations.webp', alt: 'Speciālisti pārbauda datu apmaiņu starp biznesa sistēmām.' },
+    ru: { src: '/images/solution-cards/05-integrations-3d.webp', alt: 'Детальная 3D-иллюстрация интеграций и обмена данными между системами.' },
+    en: { src: '/images/solution-cards/05-integrations-3d.webp', alt: 'Detailed 3D illustration of integrations and data exchange between systems.' },
+    lv: { src: '/images/solution-cards/05-integrations-3d.webp', alt: 'Detalizēta 3D ilustrācija integrācijām un datu apmaiņai starp sistēmām.' },
   },
   cloud: {
     ru: { src: '/images/avantime-cloud.webp', alt: 'Инженер контролирует серверную инфраструктуру в центре обработки данных.' },
@@ -71,9 +71,14 @@ const images: Record<SectionImageId, Record<Locale, SectionImage>> = {
     lv: { src: '/images/avantime-portals.webp', alt: 'Klients un menedžeris apskata katalogu un pasūtījumus klēpjdatorā un planšetdatorā.' },
   },
   knowledge: {
-    ru: { src: '/images/avantime-knowledge.webp', alt: 'Консультант объясняет коллеге рабочую инструкцию из базы знаний.' },
-    en: { src: '/images/avantime-knowledge.webp', alt: 'A consultant explains a knowledge-base guide to a colleague.' },
-    lv: { src: '/images/avantime-knowledge.webp', alt: 'Konsultants kolēģei skaidro darba instrukciju no zināšanu bāzes.' },
+    ru: { src: '/images/avantime-knowledge-base-3d.webp', alt: 'Детальная 3D-иллюстрация базы знаний: документы, поиск и рабочие материалы.' },
+    en: { src: '/images/avantime-knowledge-base-3d.webp', alt: 'Detailed 3D illustration of a knowledge base with documents, search and work materials.' },
+    lv: { src: '/images/avantime-knowledge-base-3d.webp', alt: 'Detalizēta 3D ilustrācija zināšanu bāzei ar dokumentiem, meklēšanu un darba materiāliem.' },
+  },
+  assistant: {
+    ru: { src: '/images/avantime-ai-consultant-3d.webp', alt: 'Детальная 3D-иллюстрация AI-консультанта: диалог пользователя и пошаговая помощь.' },
+    en: { src: '/images/avantime-ai-consultant-3d.webp', alt: 'Detailed 3D illustration of an AI consultant with a user dialogue and step-by-step help.' },
+    lv: { src: '/images/avantime-ai-consultant-3d.webp', alt: 'Detalizēta 3D ilustrācija AI konsultantam ar lietotāja dialogu un pakāpenisku palīdzību.' },
   },
 };
 
@@ -83,12 +88,12 @@ export function getSectionImage(id: SectionImageId, locale: Locale) {
 
 export function getSectionCardImage(id: SectionImageId, locale: Locale) {
   const cardSources: Partial<Record<SectionImageId, string>> = {
-    'trade-management': '/images/avantime-onec.webp',
-    accounting: '/images/avantime-accounting.webp',
-    manufacturing: '/images/avantime-manufacturing.webp',
-    'addressed-warehouse': '/images/avantime-addressed-warehouse.webp',
-    platform: '/images/avantime-platform.webp',
-    'agent-plus': '/images/avantime-agent-plus.webp',
+    'trade-management': '/images/solution-cards/detailed-3d/01-trade-management.webp',
+    accounting: '/images/solution-cards/08-accounting-3d.webp',
+    manufacturing: '/images/solution-cards/detailed-3d/04-upp.webp',
+    'addressed-warehouse': '/images/solution-cards/detailed-3d/03-address-warehouse.webp',
+    platform: '/images/solution-cards/detailed-3d/10-1c-platform.webp',
+    'agent-plus': '/images/solution-cards/detailed-3d/05-agent-plus.webp',
   };
   const image = images[id][locale];
   return { ...image, src: cardSources[id] ?? image.src };

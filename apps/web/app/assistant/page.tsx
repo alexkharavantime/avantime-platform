@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import { AiConsultant } from '../../components/ai-consultant';
 import { PageShell } from '../../components/page-shell';
 import { getLocale } from '../../lib/i18n-server';
+import { getSectionImage } from '../../lib/section-images';
 
 const pageCopy = {
   lv: { eyebrow: 'Avantime AI', title: 'Aprakstiet uzdevumu saviem vārdiem', description: 'Konsultants palīdzēs formulēt iespējamo pirmo soli. Šobrīd atbildes darbojas demonstrācijas režīmā.', next: 'Kas būs nākamajā AI versijā', items: ['Atbildes ar avotu norādēm', 'Meklēšana zināšanu bāzē un pakalpojumos', 'Pieprasījuma uzmetuma izveide', 'Dialoga nodošana speciālistam'] },
@@ -22,6 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AssistantPage() {
   const locale = await getLocale();
   const copy = pageCopy[locale];
+  const assistantImage = getSectionImage('assistant', locale);
   return (
     <PageShell>
       <section className="bg-[linear-gradient(135deg,#eff6ff,#f0fdfa)] py-20 sm:py-28">
@@ -35,6 +38,15 @@ export default async function AssistantPage() {
               <ul className="mt-4 space-y-3 text-slate-600">
                 {copy.items.map((item) => <li key={item}>• {item};</li>)}
               </ul>
+            </div>
+            <div className="relative mt-6 aspect-[3/2] overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-xl shadow-blue-950/10">
+              <Image
+                src={assistantImage.src}
+                alt={assistantImage.alt}
+                fill
+                sizes="(max-width: 1024px) 100vw, 40vw"
+                className="object-contain"
+              />
             </div>
           </div>
           <AiConsultant locale={locale} />

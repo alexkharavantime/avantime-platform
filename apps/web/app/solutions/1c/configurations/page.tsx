@@ -48,7 +48,7 @@ export default async function ConfigurationsPage() {
     });
   const imageIds: Record<string, SectionImageId> = {
     'platform-1c-predpriyatie': 'platform',
-    'ut-1-3': 'onec',
+    'ut-1-3': 'trade-management',
     'buhgalteriya-predpriyatiya': 'accounting',
     'upravlenie-proizvodstvennym-predpriyatiem': 'manufacturing',
     'adresny-sklad': 'addressed-warehouse',
@@ -69,14 +69,15 @@ export default async function ConfigurationsPage() {
         <div className="mx-auto grid max-w-7xl gap-6 px-6 md:grid-cols-2">
           {items.map((item) => (
             <article key={item.slug} className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-              <Image
-                src={getSectionCardImage(imageIds[item.slug], locale).src}
-                alt={getSectionCardImage(imageIds[item.slug], locale).alt}
-                width={768}
-                height={384}
-                sizes="(max-width: 768px) 100vw, 50vw"
-                className="h-auto w-full rounded-2xl border border-slate-200 object-contain"
-              />
+              <div className="relative aspect-[3/2] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <Image
+                  src={getSectionCardImage(imageIds[item.slug], locale).src}
+                  alt={getSectionCardImage(imageIds[item.slug], locale).alt}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  className="object-contain"
+                />
+              </div>
               <h2 className="mt-5 text-3xl font-black tracking-tight">{item.title}</h2>
               <p className="mt-4 leading-7 text-slate-600">{item.summary}</p>
               <Link href={localePath(locale, `/solutions/${item.slug}`)} className="mt-7 inline-flex font-black text-blue-600">

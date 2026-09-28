@@ -1,15 +1,19 @@
 import { PageShell } from '../../../components/page-shell';
 import { ResetPasswordForm } from '../../../components/portal/reset-password-form';
+import { portalCopy } from '../../../lib/i18n';
+import { getLocale } from '../../../lib/i18n-server';
 
-export default function Page() {
+export default async function Page() {
+  const locale = await getLocale();
+  const copy = portalCopy[locale].auth;
   return (
     <PageShell>
       <section className="bg-slate-50 py-20">
         <div className="mx-auto max-w-md px-6">
           <div className="rounded-[2rem] bg-white p-8 shadow-xl">
-            <p className="eyebrow">Безопасность</p>
-            <h1 className="mt-4 text-4xl font-black">Новый пароль</h1>
-            <ResetPasswordForm />
+            <p className="eyebrow">{copy.securityEyebrow}</p>
+            <h1 className="mt-4 text-4xl font-black">{copy.resetTitle}</h1>
+            <ResetPasswordForm locale={locale} />
           </div>
         </div>
       </section>

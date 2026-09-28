@@ -18,7 +18,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return metadata[locale];
 }
 export default async function ContactsPage() {
-  const copy = pageCopy[await getLocale()];
+  const locale = await getLocale();
+  const copy = pageCopy[locale];
   return (
     <PageShell>
       <section className="bg-[linear-gradient(135deg,#eff6ff,#ecfeff)] py-20 sm:py-28">
@@ -34,7 +35,7 @@ export default async function ContactsPage() {
               </ul>
             </div>
           </div>
-          <ContactForm />
+          <ContactForm locale={locale} />
         </div>
       </section>
     </PageShell>

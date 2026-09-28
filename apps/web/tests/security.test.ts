@@ -437,7 +437,7 @@ test('portal shell contains role-aware and mobile navigation controls', async ()
   assert.doesNotMatch(source, /role === 'ADMIN'/);
   assert.match(layout, /buildPortalNavigation/);
   assert.match(source, /aria-expanded=/);
-  assert.match(source, /Перейти к содержимому/);
+  assert.match(source, /copy\.shell\.skipToContent/);
   assert.match(source, /aria-current=/);
 });
 
@@ -519,4 +519,13 @@ test('returnTo accepts only local application paths', () => {
   assert.equal(safeReturnTo('//attacker.example/path'), undefined);
   assert.equal(safeReturnTo('/\\attacker.example/path'), undefined);
   assert.equal(safeReturnTo('javascript:alert(1)'), undefined);
+});
+
+test('returnTo rejects the login page itself, including locale-prefixed and nested variants', () => {
+  assert.equal(safeReturnTo('/portal/login'), undefined);
+  assert.equal(safeReturnTo('/portal/login?returnTo=/portal'), undefined);
+  assert.equal(safeReturnTo('/lv/portal/login'), undefined);
+  assert.equal(safeReturnTo('/ru/portal/login?returnTo=%2Fportal%2Flogin'), undefined);
+  assert.equal(safeReturnTo('/portal/forgot-password'), undefined);
+  assert.equal(safeReturnTo('/portal/reset-password'), undefined);
 });

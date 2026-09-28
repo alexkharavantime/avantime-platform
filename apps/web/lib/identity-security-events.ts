@@ -34,6 +34,10 @@ const IDENTITY_SECURITY_ACTIONS = new Set([
   'identity.invitation.created',
   'identity.invitation.accepted',
   'identity.invitation.revoked',
+  'identity.access_request.submitted',
+  'identity.access_request.email_verified',
+  'identity.access_request.approved',
+  'identity.access_request.rejected',
 ] as const);
 
 export type IdentitySecurityAction =

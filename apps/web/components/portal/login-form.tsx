@@ -2,25 +2,27 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { localePath, portalCopy, type Locale } from '../../lib/i18n';
 
 export function LoginForm({
   returnTo,
+  locale,
   demoEnabled,
   oidcMfa = false,
   oidcEnrollmentRequired = false,
   oidcError = false,
 }: {
   returnTo?: string;
+  locale: Locale;
   demoEnabled: boolean;
   oidcMfa?: boolean;
   oidcEnrollmentRequired?: boolean;
   oidcError?: boolean;
 }) {
+  const copy = portalCopy[locale].auth;
   const [email, setEmail] = useState(demoEnabled ? 'demo@avantime.lv' : '');
   const [password, setPassword] = useState(demoEnabled ? 'avantime' : '');
-  const [error, setError] = useState(
-    oidcError ? 'Корпоративный вход не выполнен. Начните вход заново.' : '',
-  );
+  const [error, setError] = useState(oidcError ? copy.oidcError : '');
   const [pending, setPending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [challengeToken, setChallengeToken] = useState(oidcMfa ? 'oidc-cookie' : '');
@@ -62,7 +64,7 @@ export function LoginForm({
       returnTo?: string;
     };
     setPending(false);
-    if (!response.ok) return setError(data.error ?? 'Не удалось войти.');
+    if (!response.ok) return setError(data.error ?? copy.genericError);
     if (data.mfaRequired && data.challengeToken) {
       setChallengeToken(data.challengeToken);
       setEnrollmentRequired(Boolean(data.enrollmentRequired));
@@ -70,7 +72,7 @@ export function LoginForm({
       return;
     }
     window.location.replace(
-      data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'),
+      data.returnTo ?? returnTo ?? localePath(locale, data.role === 'ADMIN' ? '/admin' : '/portal'),
     );
   }
 
@@ -95,19 +97,19 @@ export function LoginForm({
             onClick={useClientDemo}
             className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 hover:border-blue-500"
           >
-            Клиент
+            {copy.demoClientButton}
           </button>
           <button
             type="button"
             onClick={useAdminDemo}
             className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 hover:border-blue-500"
           >
-            Администратор
+            {copy.demoAdminButton}
           </button>
         </div>
       )}
       <label className="block">
-        <span className="mb-2 block text-sm font-bold text-slate-700">Email</span>
+        <span className="mb-2 block text-sm font-bold text-slate-700">{copy.emailLabel}</span>
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -119,9 +121,7 @@ export function LoginForm({
       </label>
       {challengeToken ? (
         <label className="block">
-          <span className="mb-2 block text-sm font-bold text-slate-700">
-            Код MFA или recovery code
-          </span>
+          <span className="mb-2 block text-sm font-bold text-slate-700">{copy.mfaCodeLabel}</span>
           <input
             value={mfaCode}
             onChange={(event) => setMfaCode(event.target.value)}
@@ -133,7 +133,7 @@ export function LoginForm({
         </label>
       ) : (
         <label className="block">
-          <span className="mb-2 block text-sm font-bold text-slate-700">Пароль</span>
+          <span className="mb-2 block text-sm font-bold text-slate-700">{copy.passwordLabel}</span>
           <input
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -148,8 +148,7 @@ export function LoginForm({
           role="alert"
           className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800"
         >
-          Политика организации требует MFA. Обратитесь к администратору для безопасного
-          первоначального подключения.
+          {copy.mfaPolicyNotice}
         </p>
       )}
       {error && (
@@ -158,16 +157,16 @@ export function LoginForm({
         </p>
       )}
       <Link
-        href="/portal/forgot-password"
+        href={localePath(locale, '/portal/forgot-password')}
         className="block text-center text-sm font-bold text-blue-700"
       >
-        Забыли пароль?
+        {copy.forgotPasswordLink}
       </Link>
       <button
         disabled={pending || !hydrated || enrollmentRequired}
         className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
       >
-        {pending ? 'Проверяем…' : challengeToken ? 'Подтвердить' : 'Войти'}
+        {pending ? copy.submitPending : challengeToken ? copy.submitConfirm : copy.submit}
       </button>
       {challengeToken && (
         <button
@@ -180,16 +179,16 @@ export function LoginForm({
           }}
           className="w-full text-sm font-bold text-slate-600"
         >
-          Начать вход заново
+          {copy.restartLogin}
         </button>
       )}
       {demoEnabled && (
         <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
           <p>
-            <strong>Клиент:</strong> demo@avantime.lv / avantime
+            <strong>{copy.demoNoticeClient}</strong> demo@avantime.lv / avantime
           </p>
           <p>
-            <strong>Администратор:</strong> admin@avantime.lv / admin
+            <strong>{copy.demoNoticeAdmin}</strong> admin@avantime.lv / admin
           </p>
         </div>
       )}

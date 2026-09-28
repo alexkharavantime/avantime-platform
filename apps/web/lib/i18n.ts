@@ -26,6 +26,11 @@ export function stripLocale(path: string) {
   return stripped || '/';
 }
 
+export function localeFromPathname(pathname: string): Locale {
+  const segment = pathname.split('/')[1];
+  return isLocale(segment) ? segment : defaultLocale;
+}
+
 export type SharedCopy = {
   navigation: {
     oneC: string;
@@ -392,5 +397,241 @@ export const assistantWidgetCopy: Record<Locale, {
   },
   en: {
     title: 'Avantime AI consultant', demo: 'Demonstration version', initialMessage: 'Describe your process or problem. I will suggest a possible first automation stage.', fallbackAnswer: 'I suggest starting with a short process assessment.', errorAnswer: 'We could not get an answer. Describe the task in the contact form and we will review it manually.', loading: 'Analysing the task…', starters: ['Automate customer requests', 'Integrate 1C and Jira', 'AI assistant for employees'], inputLabel: 'Message to the AI consultant', placeholder: 'For example: we want to reduce manual order entry', submit: 'Send',
+  },
+};
+
+export type PortalCopy = {
+  auth: {
+    eyebrow: string;
+    loginTitle: string;
+    loginSubtitle: string;
+    emailLabel: string;
+    passwordLabel: string;
+    mfaCodeLabel: string;
+    mfaPolicyNotice: string;
+    forgotPasswordLink: string;
+    submit: string;
+    submitPending: string;
+    submitConfirm: string;
+    restartLogin: string;
+    demoClientButton: string;
+    demoAdminButton: string;
+    demoNoticeClient: string;
+    demoNoticeAdmin: string;
+    genericError: string;
+    oidcError: string;
+    securityEyebrow: string;
+    forgotTitle: string;
+    forgotSubtitle: string;
+    forgotSubmit: string;
+    resetTitle: string;
+    resetCodeLabel: string;
+    resetPasswordLabel: string;
+    resetPasswordHint: string;
+    resetSubmit: string;
+  };
+  shell: {
+    tagline: string;
+    homeBreadcrumb: string;
+    skipToContent: string;
+    dataNotice: string;
+    notifications: string;
+    settingsAriaPrefix: string;
+    menuOpen: string;
+    menuClose: string;
+    mobileNavAria: string;
+    navigationAria: string;
+    breadcrumbsAria: string;
+  };
+  nav: {
+    home: string;
+    requests: string;
+    documents: string;
+    knowledge: string;
+    company: string;
+    team: string;
+    notifications: string;
+    settings: string;
+    platform: string;
+    documentsAdmin: string;
+    requestTitle: string;
+    documentTitle: string;
+  };
+};
+
+export const portalCopy: Record<Locale, PortalCopy> = {
+  lv: {
+    auth: {
+      eyebrow: 'Klienta kabinets',
+      loginTitle: 'Pieslēgšanās',
+      loginSubtitle: 'Pieprasījumi, dokumenti, statusi un zināšanu bāze vienuviet.',
+      emailLabel: 'E-pasts',
+      passwordLabel: 'Parole',
+      mfaCodeLabel: 'MFA kods vai atkopšanas kods',
+      mfaPolicyNotice: 'Organizācijas politika pieprasa MFA. Sazinieties ar administratoru par drošu sākotnējo pieslēgšanu.',
+      forgotPasswordLink: 'Aizmirsāt paroli?',
+      submit: 'Ienākt',
+      submitPending: 'Pārbaudām…',
+      submitConfirm: 'Apstiprināt',
+      restartLogin: 'Sākt pieslēgšanos no jauna',
+      demoClientButton: 'Klients',
+      demoAdminButton: 'Administrators',
+      demoNoticeClient: 'Klients:',
+      demoNoticeAdmin: 'Administrators:',
+      genericError: 'Neizdevās pieslēgties.',
+      oidcError: 'Korporatīvā pieslēgšanās neizdevās. Sāciet pieslēgšanos no jauna.',
+      securityEyebrow: 'Drošība',
+      forgotTitle: 'Paroles atjaunošana',
+      forgotSubtitle: 'Saite ir derīga 30 minūtes.',
+      forgotSubmit: 'Saņemt instrukciju',
+      resetTitle: 'Jauna parole',
+      resetCodeLabel: 'Atjaunošanas kods',
+      resetPasswordLabel: 'Jaunā parole',
+      resetPasswordHint: 'No 12 līdz 128 rakstzīmēm; neizmantojiet e-pastu vai izplatītu paroli.',
+      resetSubmit: 'Mainīt paroli',
+    },
+    shell: {
+      tagline: 'Klienta kabinets',
+      homeBreadcrumb: 'Kabinets',
+      skipToContent: 'Pāriet uz saturu',
+      dataNotice: 'Dati ir pieejami tikai jūsu uzņēmuma dalībniekiem.',
+      notifications: 'Paziņojumi',
+      settingsAriaPrefix: 'Lietotāja iestatījumi',
+      menuOpen: 'Atvērt izvēlni',
+      menuClose: 'Aizvērt izvēlni',
+      mobileNavAria: 'Mobilā navigācija',
+      navigationAria: 'Galvenā navigācija',
+      breadcrumbsAria: 'Navigācijas ceļš',
+    },
+    nav: {
+      home: 'Sākums',
+      requests: 'Pieprasījumi',
+      documents: 'Dokumenti',
+      knowledge: 'Zināšanu bāze',
+      company: 'Uzņēmums',
+      team: 'Komanda',
+      notifications: 'Paziņojumi',
+      settings: 'Iestatījumi',
+      platform: 'Platformas pārvaldība',
+      documentsAdmin: 'Dokumentu pārvaldība',
+      requestTitle: 'Pieprasījums',
+      documentTitle: 'Dokuments',
+    },
+  },
+  ru: {
+    auth: {
+      eyebrow: 'Кабинет клиента',
+      loginTitle: 'Вход',
+      loginSubtitle: 'Обращения, документы, статусы и база знаний в одном месте.',
+      emailLabel: 'Email',
+      passwordLabel: 'Пароль',
+      mfaCodeLabel: 'Код MFA или recovery code',
+      mfaPolicyNotice: 'Политика организации требует MFA. Обратитесь к администратору для безопасного первоначального подключения.',
+      forgotPasswordLink: 'Забыли пароль?',
+      submit: 'Войти',
+      submitPending: 'Проверяем…',
+      submitConfirm: 'Подтвердить',
+      restartLogin: 'Начать вход заново',
+      demoClientButton: 'Клиент',
+      demoAdminButton: 'Администратор',
+      demoNoticeClient: 'Клиент:',
+      demoNoticeAdmin: 'Администратор:',
+      genericError: 'Не удалось войти.',
+      oidcError: 'Корпоративный вход не выполнен. Начните вход заново.',
+      securityEyebrow: 'Безопасность',
+      forgotTitle: 'Восстановление пароля',
+      forgotSubtitle: 'Ссылка действует 30 минут.',
+      forgotSubmit: 'Получить инструкцию',
+      resetTitle: 'Новый пароль',
+      resetCodeLabel: 'Код восстановления',
+      resetPasswordLabel: 'Новый пароль',
+      resetPasswordHint: 'От 12 до 128 символов; не используйте email или распространённый пароль.',
+      resetSubmit: 'Изменить пароль',
+    },
+    shell: {
+      tagline: 'Кабинет клиента',
+      homeBreadcrumb: 'Кабинет',
+      skipToContent: 'Перейти к содержимому',
+      dataNotice: 'Данные доступны только участникам вашей компании.',
+      notifications: 'Уведомления',
+      settingsAriaPrefix: 'Настройки пользователя',
+      menuOpen: 'Открыть меню',
+      menuClose: 'Закрыть меню',
+      mobileNavAria: 'Мобильная навигация',
+      navigationAria: 'Основная навигация',
+      breadcrumbsAria: 'Хлебные крошки',
+    },
+    nav: {
+      home: 'Главная',
+      requests: 'Обращения',
+      documents: 'Документы',
+      knowledge: 'База знаний',
+      company: 'Компания',
+      team: 'Команда',
+      notifications: 'Уведомления',
+      settings: 'Настройки',
+      platform: 'Управление платформой',
+      documentsAdmin: 'Управление документами',
+      requestTitle: 'Обращение',
+      documentTitle: 'Документ',
+    },
+  },
+  en: {
+    auth: {
+      eyebrow: 'Client portal',
+      loginTitle: 'Sign in',
+      loginSubtitle: 'Requests, documents, statuses and the knowledge base in one place.',
+      emailLabel: 'Email',
+      passwordLabel: 'Password',
+      mfaCodeLabel: 'MFA code or recovery code',
+      mfaPolicyNotice: 'Your organization requires MFA. Contact an administrator for secure initial enrollment.',
+      forgotPasswordLink: 'Forgot your password?',
+      submit: 'Sign in',
+      submitPending: 'Checking…',
+      submitConfirm: 'Confirm',
+      restartLogin: 'Start over',
+      demoClientButton: 'Client',
+      demoAdminButton: 'Administrator',
+      demoNoticeClient: 'Client:',
+      demoNoticeAdmin: 'Administrator:',
+      genericError: 'Sign-in failed.',
+      oidcError: 'Corporate sign-in was not completed. Please start over.',
+      securityEyebrow: 'Security',
+      forgotTitle: 'Password recovery',
+      forgotSubtitle: 'The link is valid for 30 minutes.',
+      forgotSubmit: 'Get instructions',
+      resetTitle: 'New password',
+      resetCodeLabel: 'Recovery code',
+      resetPasswordLabel: 'New password',
+      resetPasswordHint: '12 to 128 characters; do not use your email or a common password.',
+      resetSubmit: 'Change password',
+    },
+    shell: {
+      tagline: 'Client portal',
+      homeBreadcrumb: 'Portal',
+      skipToContent: 'Skip to content',
+      dataNotice: 'Data is only available to members of your company.',
+      notifications: 'Notifications',
+      settingsAriaPrefix: 'User settings',
+      menuOpen: 'Open menu',
+      menuClose: 'Close menu',
+      mobileNavAria: 'Mobile navigation',
+      navigationAria: 'Main navigation',
+      breadcrumbsAria: 'Breadcrumbs',
+    },
+    nav: {
+      home: 'Home',
+      requests: 'Requests',
+      documents: 'Documents',
+      knowledge: 'Knowledge base',
+      company: 'Company',
+      team: 'Team',
+      notifications: 'Notifications',
+      settings: 'Settings',
+      platform: 'Platform management',
+      documentsAdmin: 'Document management',
+      requestTitle: 'Request',
+      documentTitle: 'Document',
+    },
   },
 };

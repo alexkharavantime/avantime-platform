@@ -6,30 +6,35 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 
 import type { AppSession } from '../../lib/session';
 import type { PortalNavigationItem } from '../../lib/portal-navigation';
+import { portalCopy, stripLocale, type Locale } from '../../lib/i18n';
 
-const publicPaths = new Set(['/portal/login', '/portal/forgot-password', '/portal/reset-password']);
-
-function titleForPath(pathname: string, navigation: readonly PortalNavigationItem[]) {
-  if (/^\/portal\/requests\/[^/]+$/.test(pathname)) return 'Обращение';
-  if (/^\/portal\/documents\/[^/]+$/.test(pathname)) return 'Документ';
+function titleForPath(
+  pathname: string,
+  navigation: readonly PortalNavigationItem[],
+  copy: (typeof portalCopy)[Locale],
+) {
+  if (/^\/portal\/requests\/[^/]+$/.test(pathname)) return copy.nav.requestTitle;
+  if (/^\/portal\/documents\/[^/]+$/.test(pathname)) return copy.nav.documentTitle;
   return (
     navigation.find(
       (item) => pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`)),
-    )?.label ?? 'Кабинет'
+    )?.label ?? copy.shell.homeBreadcrumb
   );
 }
 
 function PortalNavigation({
   pathname,
   navigation,
+  navigationAria,
   onNavigate,
 }: {
   pathname: string;
   navigation: readonly PortalNavigationItem[];
+  navigationAria: string;
   onNavigate?: () => void;
 }) {
   return (
-    <nav aria-label="Основная навигация" className="space-y-1">
+    <nav aria-label={navigationAria} className="space-y-1">
       {navigation.map((item) => {
         const active =
           pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`));
@@ -58,13 +63,19 @@ function PortalNavigation({
 export function PortalShell({
   session,
   navigation,
+  locale,
+  isPublicPath,
   children,
 }: {
   session: AppSession | null;
   navigation: readonly PortalNavigationItem[];
+  locale: Locale;
+  isPublicPath: boolean;
   children: ReactNode;
 }) {
-  const pathname = usePathname();
+  const copy = portalCopy[locale];
+  const rawPathname = usePathname();
+  const pathname = stripLocale(rawPathname);
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileDialogRef = useRef<HTMLElement>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -110,9 +121,9 @@ export function PortalShell({
     mobileTriggerRef.current?.focus();
   }
 
-  if (publicPaths.has(pathname)) return children;
+  if (isPublicPath) return children;
 
-  const title = titleForPath(pathname, navigation);
+  const title = titleForPath(pathname, navigation, copy);
   const initials = session?.name
     .split(/\s+/)
     .filter(Boolean)
@@ -126,7 +137,7 @@ export function PortalShell({
         href="#portal-content"
         className="sr-only z-50 rounded-lg bg-white px-4 py-3 font-bold text-slate-950 focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
-        Перейти к содержимому
+        {copy.shell.skipToContent}
       </a>
 
       <aside className="hidden min-h-screen w-72 shrink-0 flex-col bg-slate-950 px-5 py-6 text-white lg:flex">
@@ -136,20 +147,22 @@ export function PortalShell({
           </span>
           <span>
             <span className="block text-lg font-black">Avantime</span>
-            <span className="block text-xs text-slate-400">Кабинет клиента</span>
+            <span className="block text-xs text-slate-400">{copy.shell.tagline}</span>
           </span>
         </Link>
-        <PortalNavigation pathname={pathname} navigation={navigation} />
-        <p className="mt-auto px-3 text-xs leading-5 text-slate-400">
-          Данные доступны только участникам вашей компании.
-        </p>
+        <PortalNavigation
+          pathname={pathname}
+          navigation={navigation}
+          navigationAria={copy.shell.navigationAria}
+        />
+        <p className="mt-auto px-3 text-xs leading-5 text-slate-400">{copy.shell.dataNotice}</p>
       </aside>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
             type="button"
-            aria-label="Закрыть меню"
+            aria-label={copy.shell.menuClose}
             className="absolute inset-0 bg-slate-950/60"
             onClick={() => setMobileOpen(false)}
           />
@@ -158,7 +171,7 @@ export function PortalShell({
             id="portal-mobile-navigation"
             role="dialog"
             aria-modal="true"
-            aria-label="Мобильная навигация"
+            aria-label={copy.shell.mobileNavAria}
             onKeyDown={keepFocusInMobileMenu}
             className="relative flex min-h-full w-[min(20rem,88vw)] flex-col bg-slate-950 px-5 py-6 text-white shadow-2xl"
           >
@@ -170,12 +183,13 @@ export function PortalShell({
                 onClick={closeMobileMenu}
                 className="rounded-lg border border-white/20 px-3 py-2 text-sm font-bold"
               >
-                Закрыть
+                {copy.shell.menuClose}
               </button>
             </div>
             <PortalNavigation
               pathname={pathname}
               navigation={navigation}
+              navigationAria={copy.shell.navigationAria}
               onNavigate={() => setMobileOpen(false)}
             />
           </aside>
@@ -194,11 +208,11 @@ export function PortalShell({
                 onClick={() => setMobileOpen(true)}
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-black lg:hidden"
               >
-                Меню
+                {copy.shell.menuOpen}
               </button>
               <div className="min-w-0">
                 <p className="truncate text-xs font-bold uppercase tracking-wider text-slate-500">
-                  {session?.company ?? 'Кабинет клиента'}
+                  {session?.company ?? copy.shell.tagline}
                 </p>
                 <p className="truncate text-lg font-black text-slate-950">{title}</p>
               </div>
@@ -206,24 +220,24 @@ export function PortalShell({
             <div className="flex items-center gap-2 sm:gap-3">
               <Link
                 href="/portal/notifications"
-                aria-label="Открыть уведомления"
+                aria-label={copy.shell.notifications}
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700"
               >
-                Уведомления
+                {copy.shell.notifications}
               </Link>
               <Link
                 href="/portal/settings"
                 title={session?.name}
-                aria-label={`Настройки пользователя ${session?.name ?? ''}`}
+                aria-label={`${copy.shell.settingsAriaPrefix} ${session?.name ?? ''}`}
                 className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-sm font-black text-white"
               >
                 {initials || 'AV'}
               </Link>
             </div>
           </div>
-          <nav aria-label="Хлебные крошки" className="mt-3 text-sm text-slate-500">
+          <nav aria-label={copy.shell.breadcrumbsAria} className="mt-3 text-sm text-slate-500">
             <Link href="/portal" className="font-bold text-blue-700">
-              Кабинет
+              {copy.shell.homeBreadcrumb}
             </Link>
             {pathname !== '/portal' && (
               <>

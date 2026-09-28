@@ -1,16 +1,17 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { PageShell } from '../../components/page-shell';
+import { SolutionImagePreview } from '../../components/solution-image-preview';
 import { solutions } from '../../lib/content';
 import { getLocale } from '../../lib/i18n-server';
 import { localePath } from '../../lib/i18n';
 import { getLocalizedSolution } from '../../lib/solution-localization';
-import { getSolutionCardImage, type SolutionCardImageId } from '../../lib/solution-card-images';
+import { getOtherSolutionPreviewImages, getSolutionCardImage, getSolutionCardImageVariants, type SolutionCardImageId } from '../../lib/solution-card-images';
 
 const pageCopy = {
-  lv: { eyebrow: 'Avantime risinājumi', title: 'Vienota digitālā biznesa arhitektūra', description: 'Savienojam uzskaiti, darbinieku darbu, klientu attiecības un mākslīgo intelektu pārvaldāmā sistēmā.', more: 'Uzzināt vairāk →' },
-  ru: { eyebrow: 'Решения Avantime', title: 'Единая архитектура цифрового бизнеса', description: 'Соединяем учет, работу сотрудников, взаимодействие с клиентами и искусственный интеллект в управляемую систему.', more: 'Подробнее →' },
-  en: { eyebrow: 'Avantime solutions', title: 'One architecture for digital business', description: 'We connect accounting, employee workflows, customer interaction and artificial intelligence into a manageable system.', more: 'Learn more →' },
+  lv: { eyebrow: 'Avantime risinājumi', title: 'Vienota digitālā biznesa arhitektūra', description: 'Savienojam uzskaiti, darbinieku darbu, klientu attiecības un mākslīgo intelektu pārvaldāmā sistēmā.', more: 'Uzzināt vairāk →', variant: { photo: 'Foto', photo2: 'Foto 2', threeD: '3D', detailed3D: '3D — vienota sērija', partnerPortal3D: '3D — partnera portāls', illustration: 'Ilustrācija', section: 'Papildu attēls', original: 'Oriģināls' }, preview: { count: 'varianti', reset: 'Atiestatīt sākotnējo attēlu', otherTitle: 'Citi attēli izvēlei' } },
+  ru: { eyebrow: 'Решения Avantime', title: 'Единая архитектура цифрового бизнеса', description: 'Соединяем учет, работу сотрудников, взаимодействие с клиентами и искусственный интеллект в управляемую систему.', more: 'Подробнее →', variant: { photo: 'Фото', photo2: 'Фото 2', threeD: '3D', detailed3D: '3D — единая серия', partnerPortal3D: '3D — кабинет партнёра', illustration: 'Иллюстрация', section: 'Дополнительное изображение', original: 'Оригинал' }, preview: { count: 'вариантов', reset: 'Сбросить исходное изображение', otherTitle: 'Другие изображения для выбора' } },
+  en: { eyebrow: 'Avantime solutions', title: 'One architecture for digital business', description: 'We connect accounting, employee workflows, customer interaction and artificial intelligence into a manageable system.', more: 'Learn more →', variant: { photo: 'Photo', photo2: 'Photo 2', threeD: '3D', detailed3D: '3D — unified series', partnerPortal3D: '3D — partner portal', illustration: 'Illustration', section: 'Additional image', original: 'Original' }, preview: { count: 'variants', reset: 'Reset original image', otherTitle: 'Other images for selection' } },
 } as const;
 
 const solutionOrder = [
@@ -37,8 +38,14 @@ export async function generateMetadata(): Promise<Metadata> {
   return metadata[locale];
 }
 
-export default async function SolutionsPage() {
+export default async function SolutionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preview?: string }>;
+}) {
+  const params = await searchParams;
   const locale = await getLocale();
+  const previewEnabled = params.preview === 'images';
   const localizedSolutions = solutionOrder
     .map((slug) => solutions.find((item) => item.slug === slug))
     .filter((item): item is (typeof solutions)[number] => Boolean(item))
@@ -69,19 +76,26 @@ export default async function SolutionsPage() {
       </section>
       <section className="bg-slate-50 py-20">
         <div className="mx-auto grid max-w-7xl gap-6 px-6 md:grid-cols-2 lg:grid-cols-3">
-          {localizedSolutions.map((item, index) => (
+          {localizedSolutions.map((item, index) => {
+            const mainImage = getSolutionCardImage(imageIds[item.slug], locale);
+            const variants = getSolutionCardImageVariants(imageIds[item.slug])?.map((variant) => ({
+              ...variant,
+              label: copy.variant[variant.key as keyof typeof copy.variant],
+              fileName: variant.fileName,
+            })) ?? null;
+            return (
             <a
               key={item.slug}
               href={localePath(locale, `/solutions/${item.slug}`)}
               className="group flex min-h-96 flex-col rounded-3xl border border-slate-200 bg-white p-8 transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-2xl hover:shadow-blue-950/10"
             >
-              <Image
-                src={getSolutionCardImage(imageIds[item.slug], locale).src}
-                alt={getSolutionCardImage(imageIds[item.slug], locale).alt}
-                width={getSolutionCardImage(imageIds[item.slug], locale).width}
-                height={getSolutionCardImage(imageIds[item.slug], locale).height}
-                sizes="(max-width: 768px) 100vw, 33vw"
-                className="mb-7 h-36 w-full rounded-2xl border border-slate-200 object-cover"
+              <SolutionImagePreview
+                enabled={previewEnabled}
+                mainSrc={mainImage.src}
+                alt={mainImage.alt}
+                variants={variants}
+                resetLabel={copy.preview.reset}
+                countLabel={copy.preview.count}
               />
               <span className="text-sm font-black tracking-[0.2em] text-blue-600">
                 {String(index + 1).padStart(2, '0')}
@@ -100,8 +114,26 @@ export default async function SolutionsPage() {
               </div>
               <span className="mt-8 font-black text-blue-600">{copy.more}</span>
             </a>
-          ))}
+            );
+          })}
         </div>
+        {previewEnabled && (
+          <div className="mx-auto mt-10 max-w-7xl px-6">
+            <section className="rounded-3xl border border-dashed border-slate-300 bg-white p-6">
+              <h2 className="text-2xl font-black tracking-tight">{copy.preview.otherTitle}</h2>
+              <div className="mt-5 flex gap-4 overflow-x-auto pb-2">
+                {getOtherSolutionPreviewImages().map((image) => (
+                  <figure key={image.key} className="w-48 shrink-0">
+                    <div className="relative h-28 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                      <Image src={image.src} alt="" fill sizes="192px" className="object-cover" />
+                    </div>
+                    <figcaption className="mt-2 truncate text-xs font-bold text-slate-500">{image.fileName}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
       </section>
     </PageShell>
   );

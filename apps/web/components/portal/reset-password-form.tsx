@@ -2,11 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { localePath, portalCopy, type Locale } from '../../lib/i18n';
 
 const RESET_STORAGE_KEY = 'avantime.password-reset';
 
-export function ResetPasswordForm() {
+export function ResetPasswordForm({ locale }: { locale: Locale }) {
   const router = useRouter();
+  const copy = portalCopy[locale].auth;
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
@@ -27,14 +29,14 @@ export function ResetPasswordForm() {
     setMessage(data.error ?? data.message ?? '');
     if (response.ok) {
       window.sessionStorage.removeItem(RESET_STORAGE_KEY);
-      router.replace('/portal/login');
+      router.replace(localePath(locale, '/portal/login'));
     }
   }
 
   return (
     <form onSubmit={submit} className="mt-8 space-y-5">
       <label className="block">
-        <span className="mb-2 block text-sm font-bold">Код восстановления</span>
+        <span className="mb-2 block text-sm font-bold">{copy.resetCodeLabel}</span>
         <input
           type="password"
           autoComplete="one-time-code"
@@ -45,7 +47,7 @@ export function ResetPasswordForm() {
         />
       </label>
       <label className="block">
-        <span className="mb-2 block text-sm font-bold">Новый пароль</span>
+        <span className="mb-2 block text-sm font-bold">{copy.resetPasswordLabel}</span>
         <input
           type="password"
           minLength={12}
@@ -57,11 +59,9 @@ export function ResetPasswordForm() {
           className="w-full rounded-2xl border border-slate-200 px-4 py-3"
         />
       </label>
-      <p className="text-sm text-slate-600">
-        От 12 до 128 символов; не используйте email или распространённый пароль.
-      </p>
+      <p className="text-sm text-slate-600">{copy.resetPasswordHint}</p>
       <button className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white">
-        Изменить пароль
+        {copy.resetSubmit}
       </button>
       {message && (
         <p role="status" className="rounded-2xl bg-slate-50 p-4 text-sm">

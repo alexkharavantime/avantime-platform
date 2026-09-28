@@ -130,25 +130,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-7 lg:flex-row lg:items-center lg:justify-between">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-              {copy.stripTitle}
-          </p>
-          <div className="flex flex-wrap gap-2 text-sm font-bold text-slate-700">
-            {copy.stripLinks.map((item) => (
-              <Link
-                key={item.href}
-                href={localePath(locale, item.href)}
-                className="rounded-full border border-slate-200 bg-white px-4 py-2 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section id="solutions" className="bg-slate-50 py-24 sm:py-28">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
@@ -207,14 +188,15 @@ export default async function HomePage() {
                   className={`absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br ${item.accent} opacity-15 blur-3xl transition group-hover:opacity-25`}
                 />
                 <div className="relative flex h-full flex-col">
-                  <Image
-                    src={getSolutionCardImage(item.cardId, locale).src}
-                    alt=""
-                    width={1672}
-                    height={941}
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    className="mb-6 h-32 w-full rounded-2xl object-cover opacity-90"
-                  />
+                  <div className="relative mb-6 aspect-[3/2] w-full overflow-hidden rounded-2xl bg-white/95">
+                    <Image
+                      src={getSolutionCardImage(item.cardId, locale).src}
+                      alt=""
+                      fill
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-contain opacity-90"
+                    />
+                  </div>
                   <div className="flex items-start justify-between">
                     <span
                       className={`grid h-13 w-13 place-items-center rounded-2xl bg-gradient-to-br ${item.accent} text-xl font-black shadow-lg`}
@@ -282,7 +264,7 @@ export default async function HomePage() {
               ))}
             </div>
           </div>
-          <ContactForm />
+          <ContactForm locale={locale} />
         </div>
       </section>
 

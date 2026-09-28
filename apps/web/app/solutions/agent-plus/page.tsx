@@ -124,14 +124,15 @@ export default async function AgentPlusPage() {
 
       <section className="border-b border-slate-200 bg-white py-10 sm:py-14">
         <div className="mx-auto max-w-7xl px-6">
-          <Image
-            src={sectionImage.src}
-            alt={sectionImage.alt}
-            width={1536}
-            height={1024}
-            sizes="(max-width: 1280px) 100vw, 1280px"
-            className="h-auto w-full rounded-3xl border border-slate-200 object-contain shadow-xl shadow-slate-950/10"
-          />
+          <div className="relative aspect-[3/2] w-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-950/10">
+            <Image
+              src={sectionImage.src}
+              alt={sectionImage.alt}
+              fill
+              sizes="(max-width: 1280px) 100vw, 1280px"
+              className="object-contain"
+            />
+          </div>
         </div>
       </section>
 

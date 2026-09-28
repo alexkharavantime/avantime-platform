@@ -52,6 +52,7 @@ model User {
   approvalDecisions         GovernanceApprovalDecision[] @relation("ApprovalApprover")
   governanceNotifications   GovernanceNotification[]
   platformOwnerBootstraps   PlatformOwnerBootstrap[]
+  accessRequestsDecided     AccessRequest[]              @relation("AccessRequestDecider")
 
   @@index([emailNormalized])
 }
@@ -453,10 +454,48 @@ model IdentityInvitation {
   revokedAt        DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+  accessRequest    AccessRequest?
 
   @@index([companyId, emailNormalized, revokedAt, acceptedAt])
   @@index([invitedBy, createdAt])
   @@index([expiresAt])
+}
+
+// A prospective client's self-service request for portal access. Approval only ever creates a
+// standard IdentityInvitation (see inviteMemberToCompany in lib/team.ts); it never grants
+// membership or company data access directly.
+model AccessRequest {
+  id                    String              @id @default(cuid())
+  name                  String
+  email                 String
+  emailNormalized       String
+  companyName           String
+  comment               String?
+  locale                String?
+  status                AccessRequestStatus @default(PENDING)
+  verificationTokenHash String?             @unique @db.VarChar(64)
+  verificationExpiresAt DateTime?
+  emailVerifiedAt       DateTime?
+  decidedBy             User?               @relation("AccessRequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedById           String?
+  decidedAt             DateTime?
+  decisionCompanyId     String?
+  decisionRole          OrganizationRole?
+  rejectionReason       String?
+  invitation            IdentityInvitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+  invitationId          String?             @unique
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([emailNormalized, status])
+  @@index([status, createdAt])
+}
+
+enum AccessRequestStatus {
+  PENDING
+  EMAIL_VERIFIED
+  APPROVED
+  REJECTED
 }
 
 enum SecurityEventResult {
