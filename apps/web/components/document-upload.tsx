@@ -1,6 +1,7 @@
 'use client';
 
 import { ChangeEvent, useRef, useState } from 'react';
+import type { Locale } from '../lib/i18n';
 
 type UploadedDocument = {
   id: string;
@@ -13,10 +14,18 @@ type UploadedDocument = {
 };
 
 type DocumentUploadProps = {
+  locale: Locale;
   onUploaded?: (document: UploadedDocument) => void;
 };
 
-export function DocumentUpload({ onUploaded }: DocumentUploadProps) {
+const copy = {
+  lv: { uploading: 'Augšupielādē…', upload: 'Augšupielādēt dokumentu', error: 'Neizdevās augšupielādēt dokumentu.' },
+  ru: { uploading: 'Загружаем…', upload: 'Загрузить документ', error: 'Не удалось загрузить документ.' },
+  en: { uploading: 'Uploading…', upload: 'Upload document', error: 'Could not upload the document.' },
+} satisfies Record<Locale, { uploading: string; upload: string; error: string }>;
+
+export function DocumentUpload({ locale, onUploaded }: DocumentUploadProps) {
+  const text = copy[locale];
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -43,13 +52,13 @@ export function DocumentUpload({ onUploaded }: DocumentUploadProps) {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Ошибка загрузки.');
+        throw new Error(text.error);
       }
 
       onUploaded?.(result.document);
     } catch (uploadError) {
       setError(
-        uploadError instanceof Error ? uploadError.message : 'Не удалось загрузить документ.',
+        uploadError instanceof Error ? uploadError.message : text.error,
       );
     } finally {
       setUploading(false);
@@ -76,7 +85,7 @@ export function DocumentUpload({ onUploaded }: DocumentUploadProps) {
         onClick={() => inputRef.current?.click()}
         className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {uploading ? 'Загрузка…' : 'Загрузить документ'}
+        {uploading ? text.uploading : text.upload}
       </button>
 
       {error ? <p className="mt-2 max-w-sm text-sm font-semibold text-red-600">{error}</p> : null}

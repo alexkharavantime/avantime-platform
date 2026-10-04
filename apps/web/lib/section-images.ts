@@ -1,6 +1,6 @@
 import type { Locale } from './i18n';
 
-export type SectionImageId = 'home' | 'homepage-hero' | 'onec' | 'trade-management' | 'accounting' | 'manufacturing' | 'addressed-warehouse' | 'platform' | 'agent-plus' | 'ai' | 'integrations' | 'cloud' | 'portals' | 'knowledge' | 'assistant';
+export type SectionImageId = 'home' | 'homepage-hero' | 'onec' | 'trade-management' | 'accounting' | 'manufacturing' | 'addressed-warehouse' | 'platform' | 'agent-plus' | 'ai' | 'integrations' | 'cloud' | 'portals' | 'knowledge' | 'assistant' | 'approach' | 'client-cabinet';
 
 type SectionImage = { src: string; alt: string };
 
@@ -61,14 +61,14 @@ const images: Record<SectionImageId, Record<Locale, SectionImage>> = {
     lv: { src: '/images/solution-cards/05-integrations-3d.webp', alt: 'Detalizēta 3D ilustrācija integrācijām un datu apmaiņai starp sistēmām.' },
   },
   cloud: {
-    ru: { src: '/images/avantime-cloud.webp', alt: 'Инженер контролирует серверную инфраструктуру в центре обработки данных.' },
-    en: { src: '/images/avantime-cloud.webp', alt: 'An engineer monitors server infrastructure in a data centre.' },
-    lv: { src: '/images/avantime-cloud.webp', alt: 'Inženieris uzrauga serveru infrastruktūru datu centrā.' },
+    ru: { src: '/images/solution-cards/06-cloud-3d.webp', alt: 'Детальная 3D-иллюстрация облачной инфраструктуры и управляемых сервисов.' },
+    en: { src: '/images/solution-cards/06-cloud-3d.webp', alt: 'Detailed 3D illustration of cloud infrastructure and managed services.' },
+    lv: { src: '/images/solution-cards/06-cloud-3d.webp', alt: 'Detalizēta 3D ilustrācija mākoņa infrastruktūrai un pārvaldītiem servisiem.' },
   },
   portals: {
-    ru: { src: '/images/avantime-portals.webp', alt: 'Клиент и менеджер просматривают каталог и заказы на ноутбуке и планшете.' },
-    en: { src: '/images/avantime-portals.webp', alt: 'A customer and account manager review a catalogue and orders on a laptop and tablet.' },
-    lv: { src: '/images/avantime-portals.webp', alt: 'Klients un menedžeris apskata katalogu un pasūtījumus klēpjdatorā un planšetdatorā.' },
+    ru: { src: '/images/solution-cards/07-portals-3d.webp', alt: 'Детальная 3D-иллюстрация клиентских и партнёрских порталов с цифровыми сервисами.' },
+    en: { src: '/images/solution-cards/07-portals-3d.webp', alt: 'Detailed 3D illustration of client and partner portals with digital services.' },
+    lv: { src: '/images/solution-cards/07-portals-3d.webp', alt: 'Detalizēta 3D ilustrācija klientu un partneru portāliem ar digitālajiem servisiem.' },
   },
   knowledge: {
     ru: { src: '/images/avantime-knowledge-base-3d.webp', alt: 'Детальная 3D-иллюстрация базы знаний: документы, поиск и рабочие материалы.' },
@@ -79,6 +79,16 @@ const images: Record<SectionImageId, Record<Locale, SectionImage>> = {
     ru: { src: '/images/avantime-ai-consultant-3d.webp', alt: 'Детальная 3D-иллюстрация AI-консультанта: диалог пользователя и пошаговая помощь.' },
     en: { src: '/images/avantime-ai-consultant-3d.webp', alt: 'Detailed 3D illustration of an AI consultant with a user dialogue and step-by-step help.' },
     lv: { src: '/images/avantime-ai-consultant-3d.webp', alt: 'Detalizēta 3D ilustrācija AI konsultantam ar lietotāja dialogu un pakāpenisku palīdzību.' },
+  },
+  approach: {
+    ru: { src: '/images/avantime-approach-3d.png', alt: '3D-сцена о решении повседневных рабочих задач и устранении препятствий.' },
+    en: { src: '/images/avantime-approach-3d.png', alt: '3D scene about solving everyday work tasks and removing obstacles.' },
+    lv: { src: '/images/avantime-approach-3d.png', alt: '3D aina par ikdienas darba uzdevumu risināšanu un šķēršļu novēršanu.' },
+  },
+  'client-cabinet': {
+    ru: { src: '/images/avantime-client-cabinet-3d.png', alt: '3D-сцена клиентского кабинета для обращений, документов и поддержки.' },
+    en: { src: '/images/avantime-client-cabinet-3d.png', alt: '3D scene of a client portal for requests, documents and support.' },
+    lv: { src: '/images/avantime-client-cabinet-3d.png', alt: '3D aina klientu portālam pieprasījumiem, dokumentiem un atbalstam.' },
   },
 };
 

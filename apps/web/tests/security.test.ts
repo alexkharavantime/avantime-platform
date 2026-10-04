@@ -108,14 +108,14 @@ test('client document reads require an authenticated company membership', () => 
 });
 
 test('portal session validation rejects inactive and cross-tenant identities', async () => {
-  const current = session();
+  const current = session({ membershipVersion: 2 });
   const validIdentity = {
     id: current.userId,
     email: current.email,
     role: current.role,
     active: true,
     disabledAt: null,
-    memberships: [{ companyId: current.companyId!, active: true }],
+    memberships: [{ companyId: current.companyId!, active: true, version: 2 }],
   };
   const validated = await validatePortalSession(current, {
     databaseConfigured: true,
@@ -124,7 +124,7 @@ test('portal session validation rejects inactive and cross-tenant identities', a
   assert.equal(validated?.userId, current.userId);
   assert.equal(validated?.organizationRole, 'MEMBER');
   assert.equal(validated?.membershipStatus, 'ACTIVE');
-  assert.equal(validated?.membershipVersion, 1);
+  assert.equal(validated?.membershipVersion, 2);
   assert.equal(
     await validatePortalSession(current, {
       databaseConfigured: true,
@@ -138,6 +138,16 @@ test('portal session validation rejects inactive and cross-tenant identities', a
       loadIdentity: async () => ({
         ...validIdentity,
         memberships: [{ companyId: 'other-company', active: true }],
+      }),
+    }),
+    null,
+  );
+  assert.equal(
+    await validatePortalSession(current, {
+      databaseConfigured: true,
+      loadIdentity: async () => ({
+        ...validIdentity,
+        memberships: [{ companyId: current.companyId!, active: true, version: 1 }],
       }),
     }),
     null,
@@ -528,4 +538,8 @@ test('returnTo rejects the login page itself, including locale-prefixed and nest
   assert.equal(safeReturnTo('/ru/portal/login?returnTo=%2Fportal%2Flogin'), undefined);
   assert.equal(safeReturnTo('/portal/forgot-password'), undefined);
   assert.equal(safeReturnTo('/portal/reset-password'), undefined);
+  assert.equal(
+    safeReturnTo('/portal/accept-invitation?token=single-use-token'),
+    '/portal/accept-invitation?token=single-use-token',
+  );
 });

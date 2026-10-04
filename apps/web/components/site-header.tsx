@@ -33,7 +33,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
           <span>
             <span className="block text-xl font-black tracking-tight text-slate-950">Avantime</span>
             <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-              Business automation
+              {copy.navigation.brandTagline}
             </span>
           </span>
         </Link>
@@ -51,7 +51,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
         </nav>
 
         <div className="hidden items-center gap-3 xl:flex">
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label="Language">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label={copy.navigation.languageLabel}>
             {(['lv', 'ru', 'en'] as const).map((candidate) => (
               <Link
                 key={candidate}
@@ -64,7 +64,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
             ))}
           </div>
           <Link
-            href="/portal"
+            href={localePath(locale, '/portal')}
             className="text-sm font-bold text-slate-600 transition hover:text-blue-600"
           >
             {copy.navigation.portal}
@@ -78,7 +78,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
         </div>
 
         <div className="flex items-center gap-2 xl:hidden">
-          <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label="Language selection">
+          <div className="flex items-center gap-1 rounded-full border border-slate-200 p-1" aria-label={copy.navigation.languageLabel}>
             {(['lv', 'ru', 'en'] as const).map((candidate) => (
               <Link
                 key={candidate}
@@ -116,7 +116,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
               </Link>
             ))}
             <Link
-              href="/portal"
+              href={localePath(locale, '/portal')}
               onClick={() => setIsOpen(false)}
               className="rounded-xl px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-blue-700"
             >

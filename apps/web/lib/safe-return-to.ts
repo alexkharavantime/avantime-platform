@@ -14,7 +14,8 @@ export function safeReturnTo(value?: string): string | undefined {
       return undefined;
     }
     // The login page itself must never become its own return target (prevents nested returnTo loops).
-    if (isPortalPublicPath(stripLocale(target.pathname))) {
+    const pathname = stripLocale(target.pathname);
+    if (isPortalPublicPath(pathname) && pathname !== '/portal/accept-invitation') {
       return undefined;
     }
 

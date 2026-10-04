@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures';
-import { browserIdentities } from './environment';
+import { BROWSER_BASE_URL, browserIdentities } from './environment';
 
 async function loginOnPage(
   page: import('@playwright/test').Page,
@@ -68,7 +68,7 @@ test.describe('@platform-governance scope separation', () => {
   }) => {
     await loginAs('admin');
     const created = await page.request.post('/api/platform/support/sessions', {
-      headers: { origin: 'http://127.0.0.1:3410' },
+      headers: { origin: BROWSER_BASE_URL },
       data: {
         companyId: browserIdentities.tenantB.companyId,
         reasonCode: 'BROWSER_REVIEW',
@@ -83,7 +83,7 @@ test.describe('@platform-governance scope separation', () => {
     await expect(page.getByText('TASK-013-BROWSER')).toBeVisible();
     await runAxe('platform-support-active');
     const ended = await page.request.delete(`/api/platform/support/sessions/${body.id}`, {
-      headers: { origin: 'http://127.0.0.1:3410' },
+      headers: { origin: BROWSER_BASE_URL },
     });
     expect(ended.status()).toBe(204);
     await page.reload();
@@ -99,7 +99,7 @@ test.describe('@platform-governance scope separation', () => {
   }) => {
     await loginAs('admin');
     const requested = await page.request.post('/api/governance/approvals', {
-      headers: { origin: 'http://127.0.0.1:3410' },
+      headers: { origin: BROWSER_BASE_URL },
       data: {
         actionType: 'PLATFORM_OWNER_ASSIGN',
         scope: 'PLATFORM',
@@ -121,7 +121,7 @@ test.describe('@platform-governance scope separation', () => {
       const decision = await approverPage.request.post(
         `/api/governance/approvals/${approval.id}/decision`,
         {
-          headers: { origin: 'http://127.0.0.1:3410' },
+          headers: { origin: BROWSER_BASE_URL },
           data: { approved: true },
         },
       );
@@ -131,12 +131,12 @@ test.describe('@platform-governance scope separation', () => {
     }
 
     const executed = await page.request.post('/api/platform/roles/browser-user-a/owner', {
-      headers: { origin: 'http://127.0.0.1:3410' },
+      headers: { origin: BROWSER_BASE_URL },
       data: { approvalId: approval.id, action: 'ASSIGN' },
     });
     expect(executed.status()).toBe(200);
     const replay = await page.request.post('/api/platform/roles/browser-user-a/owner', {
-      headers: { origin: 'http://127.0.0.1:3410' },
+      headers: { origin: BROWSER_BASE_URL },
       data: { approvalId: approval.id, action: 'ASSIGN' },
     });
     expect(replay.status()).toBe(409);
@@ -163,7 +163,7 @@ test.describe('@platform-governance scope separation', () => {
       await loginOnPage(requesterPage, 'identityOwner');
       await loginOnPage(approverPage, 'identityAdmin');
       const requested = await requesterPage.request.post('/api/governance/approvals', {
-        headers: { origin: 'http://127.0.0.1:3410' },
+        headers: { origin: BROWSER_BASE_URL },
         data: {
           actionType: 'KNOWLEDGE_VISIBILITY_PUBLIC',
           scope: 'ORGANIZATION',
@@ -181,7 +181,7 @@ test.describe('@platform-governance scope separation', () => {
       const decision = await approverPage.request.post(
         `/api/governance/approvals/${approval.id}/decision`,
         {
-          headers: { origin: 'http://127.0.0.1:3410' },
+          headers: { origin: BROWSER_BASE_URL },
           data: { approved: true },
         },
       );
@@ -189,7 +189,7 @@ test.describe('@platform-governance scope separation', () => {
       const visibility = await requesterPage.request.post(
         '/api/admin/knowledge/browser-article-publication-review/visibility',
         {
-          headers: { origin: 'http://127.0.0.1:3410' },
+          headers: { origin: BROWSER_BASE_URL },
           data: { visibility: 'PUBLIC', expectedVersion: 1, approvalId: approval.id },
         },
       );
@@ -197,7 +197,7 @@ test.describe('@platform-governance scope separation', () => {
       const published = await requesterPage.request.post(
         '/api/admin/knowledge/browser-article-publication-review/status',
         {
-          headers: { origin: 'http://127.0.0.1:3410' },
+          headers: { origin: BROWSER_BASE_URL },
           form: { status: 'PUBLISHED', expectedVersion: '2' },
           maxRedirects: 0,
         },
@@ -210,7 +210,7 @@ test.describe('@platform-governance scope separation', () => {
       const archived = await requesterPage.request.post(
         '/api/admin/knowledge/browser-article-publication-review/status',
         {
-          headers: { origin: 'http://127.0.0.1:3410' },
+          headers: { origin: BROWSER_BASE_URL },
           form: { status: 'ARCHIVED', expectedVersion: '3' },
           maxRedirects: 0,
         },

@@ -1,13 +1,35 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isLocale, stripLocale } from './lib/i18n';
+import {
+  isLocale,
+  localeCookieMaxAge,
+  localeCookieName,
+  resolveLocale,
+  stripLocale,
+} from './lib/i18n';
+import { isPortalPublicPath } from './lib/portal-public-paths';
 import { SESSION_COOKIE } from './lib/session-constants';
 
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const localeSegment = path.split('/')[1];
-  const locale = isLocale(localeSegment) ? localeSegment : null;
-  const routePath = locale ? stripLocale(path) : path;
-  const publicPortalPaths = ['/portal/login', '/portal/forgot-password', '/portal/reset-password'];
+  const pathLocale = isLocale(localeSegment) ? localeSegment : null;
+  const previousPath = request.headers.get('x-avantime-original-path')?.split(/[?#]/u, 1)[0];
+  const previousPathLocale = previousPath?.split('/')[1];
+  const rewrittenLocale =
+    !pathLocale &&
+    previousPath &&
+    stripLocale(previousPath) === path &&
+    isLocale(previousPathLocale)
+      ? previousPathLocale
+      : null;
+  const locale =
+    rewrittenLocale ??
+    resolveLocale(
+      path,
+      request.cookies.get(localeCookieName)?.value,
+      request.headers.get('accept-language'),
+    );
+  const routePath = pathLocale ? stripLocale(path) : path;
   const protectedApi = [
     '/api/account',
     '/api/attachments',
@@ -21,14 +43,28 @@ export function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-avantime-request-path', `${path}${request.nextUrl.search}`);
   requestHeaders.set('x-avantime-original-path', `${path}${request.nextUrl.search}`);
-  if (locale) requestHeaders.set('x-avantime-locale', locale);
+  requestHeaders.set('x-avantime-locale', locale);
   const continueRequest = () => {
-    if (!locale) return NextResponse.next({ request: { headers: requestHeaders } });
-    const rewriteUrl = request.nextUrl.clone();
-    rewriteUrl.pathname = routePath;
-    return NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } });
+    let response: NextResponse;
+    if (pathLocale) {
+      const rewriteUrl = request.nextUrl.clone();
+      rewriteUrl.pathname = routePath;
+      response = NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } });
+    } else {
+      response = NextResponse.next({ request: { headers: requestHeaders } });
+    }
+    if (pathLocale && request.cookies.get(localeCookieName)?.value !== locale) {
+      response.cookies.set(localeCookieName, locale, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: request.nextUrl.protocol === 'https:',
+        path: '/',
+        maxAge: localeCookieMaxAge,
+      });
+    }
+    return response;
   };
-  if ((!protectedPage && !protectedApi) || publicPortalPaths.includes(routePath)) {
+  if ((!protectedPage && !protectedApi) || isPortalPublicPath(routePath)) {
     return continueRequest();
   }
   const correlationId = crypto.randomUUID();
@@ -39,7 +75,17 @@ export function middleware(request: NextRequest) {
       response.headers.set('x-correlation-id', correlationId);
       return response;
     }
-    const loginUrl = new URL(locale ? `/${locale}/portal/login` : '/portal/login', request.url);
+    let redirectBase = request.url;
+    const configuredOrigin = process.env.AUTH_PUBLIC_ORIGIN?.trim();
+    if (configuredOrigin) {
+      try {
+        const parsedOrigin = new URL(configuredOrigin);
+        if (parsedOrigin.origin === configuredOrigin) redirectBase = parsedOrigin.origin;
+      } catch {
+        redirectBase = request.url;
+      }
+    }
+    const loginUrl = new URL(locale ? `/${locale}/portal/login` : '/portal/login', redirectBase);
     loginUrl.searchParams.set('returnTo', `${path}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }

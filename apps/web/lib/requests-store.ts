@@ -187,31 +187,44 @@ function mapDbRequest(item: any): SupportRequest {
   };
 }
 
-export async function listRequests(session?: AppSession): Promise<SupportRequest[]> {
+async function queryRequests(session?: AppSession): Promise<SupportRequest[]> {
   if (session && !session.companyId) return [];
   if (databaseConfigured()) {
-    try {
-      const prisma = await getPrisma();
-      if (!prisma) throw new Error('Prisma unavailable');
-      const items = await prisma.supportRequest.findMany({
-        where: session ? { companyId: session.companyId } : undefined,
-        include: {
-          requester: true,
-          company: true,
-          messages: { include: { author: true }, orderBy: { createdAt: 'asc' } },
-          auditEvents: { orderBy: { createdAt: 'desc' } },
-        },
-        orderBy: { updatedAt: 'desc' },
-      });
-      return (items as any[]).map(mapDbRequest);
-    } catch {
-      console.warn('Request list is unavailable.');
-      return [];
-    }
+    const prisma = await getPrisma();
+    if (!prisma) throw new Error('Request database is unavailable.');
+    const items = await prisma.supportRequest.findMany({
+      where: session ? { companyId: session.companyId } : undefined,
+      include: {
+        requester: true,
+        company: true,
+        messages: { include: { author: true }, orderBy: { createdAt: 'asc' } },
+        auditEvents: { orderBy: { createdAt: 'desc' } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return (items as any[]).map(mapDbRequest);
   }
   return requests
     .filter((item) => !session || item.companyId === session.companyId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function listRequests(session?: AppSession): Promise<SupportRequest[]> {
+  try {
+    return await queryRequests(session);
+  } catch {
+    console.warn('Request list is unavailable.');
+    return [];
+  }
+}
+
+export async function listRequestsStrict(session?: AppSession): Promise<SupportRequest[]> {
+  try {
+    return await queryRequests(session);
+  } catch {
+    console.warn('Request list is unavailable.');
+    throw new Error('Request list is unavailable.');
+  }
 }
 
 export async function getRequest(id: string, session?: AppSession): Promise<SupportRequest | null> {

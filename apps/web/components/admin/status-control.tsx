@@ -3,21 +3,26 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RequestStatus } from '../../lib/requests-store';
+import type { Locale } from '../../lib/i18n';
 
-const options: Array<{ value: RequestStatus; label: string }> = [
-  { value: 'NEW', label: 'Новое' },
-  { value: 'IN_PROGRESS', label: 'В работе' },
-  { value: 'WAITING_CUSTOMER', label: 'Нужно уточнение' },
-  { value: 'RESOLVED', label: 'Решено' },
-];
+const copy = {
+  lv: { options: ['Jauns', 'Procesā', 'Nepieciešams precizējums', 'Atrisināts'], title: 'Pieprasījuma pārvaldība', save: 'Saglabāt', pending: 'Saglabā…', success: 'Statuss saglabāts.', error: 'Neizdevās saglabāt statusu.' },
+  ru: { options: ['Новое', 'В работе', 'Нужно уточнение', 'Решено'], title: 'Управление обращением', save: 'Сохранить', pending: 'Сохраняем…', success: 'Статус сохранён.', error: 'Не удалось сохранить статус.' },
+  en: { options: ['New', 'In progress', 'Needs clarification', 'Resolved'], title: 'Request management', save: 'Save', pending: 'Saving…', success: 'Status saved.', error: 'Could not save the status.' },
+} satisfies Record<Locale, { options: string[]; title: string; save: string; pending: string; success: string; error: string }>;
+
+const values: RequestStatus[] = ['NEW', 'IN_PROGRESS', 'WAITING_CUSTOMER', 'RESOLVED'];
 
 export function StatusControl({
   requestId,
   initialStatus,
+  locale,
 }: {
   requestId: string;
   initialStatus: RequestStatus;
+  locale: Locale;
 }) {
+  const text = copy[locale];
   const router = useRouter();
   const [status, setStatus] = useState<RequestStatus>(initialStatus);
   const [pending, setPending] = useState(false);
@@ -32,14 +37,14 @@ export function StatusControl({
       body: JSON.stringify({ status }),
     });
     setPending(false);
-    setMessage(response.ok ? 'Статус сохранен.' : 'Не удалось сохранить статус.');
+    setMessage(response.ok ? text.success : text.error);
     if (response.ok) router.refresh();
   }
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6">
       <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-        Управление обращением
+        {text.title}
       </p>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
         <select
@@ -47,9 +52,9 @@ export function StatusControl({
           onChange={(event) => setStatus(event.target.value as RequestStatus)}
           className="min-h-12 flex-1 rounded-2xl border border-slate-200 px-4 font-bold outline-none focus:border-blue-600"
         >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
+          {values.map((value, index) => (
+            <option key={value} value={value}>
+              {text.options[index]}
             </option>
           ))}
         </select>
@@ -59,7 +64,7 @@ export function StatusControl({
           disabled={pending}
           className="rounded-full bg-blue-600 px-6 py-3 font-black text-white disabled:opacity-60"
         >
-          {pending ? 'Сохраняем…' : 'Сохранить'}
+          {pending ? text.pending : text.save}
         </button>
       </div>
       {message && <p className="mt-3 text-sm font-bold text-slate-600">{message}</p>}

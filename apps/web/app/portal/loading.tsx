@@ -1,4 +1,9 @@
-export default function PortalLoading() {
+import { getLocale } from '../../lib/i18n-server';
+
+const loadingText = { lv: 'Ielādē klienta kabinetu…', ru: 'Загрузка кабинета…', en: 'Loading portal…' } as const;
+
+export default async function PortalLoading() {
+  const locale = await getLocale();
   return (
     <div className="mx-auto max-w-7xl px-6 py-12" role="status" aria-live="polite">
       <div className="h-7 w-48 animate-pulse rounded-lg bg-slate-200" />
@@ -7,7 +12,7 @@ export default function PortalLoading() {
           <div key={item} className="h-32 animate-pulse rounded-2xl bg-slate-200" />
         ))}
       </div>
-      <span className="sr-only">Загрузка кабинета…</span>
+      <span className="sr-only">{loadingText[locale]}</span>
     </div>
   );
 }

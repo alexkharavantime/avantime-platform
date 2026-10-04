@@ -6,7 +6,14 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 
 import type { AppSession } from '../../lib/session';
 import type { PortalNavigationItem } from '../../lib/portal-navigation';
-import { portalCopy, stripLocale, type Locale } from '../../lib/i18n';
+import {
+  localeNames,
+  localePath,
+  locales,
+  portalCopy,
+  stripLocale,
+  type Locale,
+} from '../../lib/i18n';
 
 function titleForPath(
   pathname: string,
@@ -25,11 +32,13 @@ function titleForPath(
 function PortalNavigation({
   pathname,
   navigation,
+  locale,
   navigationAria,
   onNavigate,
 }: {
   pathname: string;
   navigation: readonly PortalNavigationItem[];
+  locale: Locale;
   navigationAria: string;
   onNavigate?: () => void;
 }) {
@@ -41,7 +50,7 @@ function PortalNavigation({
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={localePath(locale, item.href)}
             aria-current={active ? 'page' : undefined}
             onClick={onNavigate}
             className={`block rounded-xl px-4 py-3 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 ${
@@ -141,7 +150,7 @@ export function PortalShell({
       </a>
 
       <aside className="hidden min-h-screen w-72 shrink-0 flex-col bg-slate-950 px-5 py-6 text-white lg:flex">
-        <Link href="/portal" className="mb-8 flex items-center gap-3 px-3">
+        <Link href={localePath(locale, '/portal')} className="mb-8 flex items-center gap-3 px-3">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-600 text-sm font-black">
             AV
           </span>
@@ -153,6 +162,7 @@ export function PortalShell({
         <PortalNavigation
           pathname={pathname}
           navigation={navigation}
+          locale={locale}
           navigationAria={copy.shell.navigationAria}
         />
         <p className="mt-auto px-3 text-xs leading-5 text-slate-400">{copy.shell.dataNotice}</p>
@@ -189,6 +199,7 @@ export function PortalShell({
             <PortalNavigation
               pathname={pathname}
               navigation={navigation}
+              locale={locale}
               navigationAria={copy.shell.navigationAria}
               onNavigate={() => setMobileOpen(false)}
             />
@@ -219,24 +230,37 @@ export function PortalShell({
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <Link
-                href="/portal/notifications"
+                href={localePath(locale, '/portal/notifications')}
                 aria-label={copy.shell.notifications}
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700"
               >
                 {copy.shell.notifications}
               </Link>
               <Link
-                href="/portal/settings"
+                href={localePath(locale, '/portal/settings')}
                 title={session?.name}
                 aria-label={`${copy.shell.settingsAriaPrefix} ${session?.name ?? ''}`}
                 className="grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-sm font-black text-white"
               >
                 {initials || 'AV'}
               </Link>
+              <nav aria-label={copy.shell.languageLabel} className="flex items-center gap-1">
+                {locales.map((candidate) => (
+                  <Link
+                    key={candidate}
+                    href={localePath(candidate, rawPathname || '/portal')}
+                    aria-current={candidate === locale ? 'page' : undefined}
+                    className={`rounded-lg px-2 py-2 text-xs font-black ${candidate === locale ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                    title={localeNames[candidate]}
+                  >
+                    {candidate.toUpperCase()}
+                  </Link>
+                ))}
+              </nav>
             </div>
           </div>
           <nav aria-label={copy.shell.breadcrumbsAria} className="mt-3 text-sm text-slate-500">
-            <Link href="/portal" className="font-bold text-blue-700">
+            <Link href={localePath(locale, '/portal')} className="font-bold text-blue-700">
               {copy.shell.homeBreadcrumb}
             </Link>
             {pathname !== '/portal' && (

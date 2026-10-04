@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 
 import { DocumentUpload } from '../document-upload';
 import { KnowledgeAsk } from '../knowledge-ask';
+import { localePath, type Locale } from '../../lib/i18n';
 
 type DocumentItem = {
   id: string;
@@ -36,39 +37,47 @@ type SearchResult = {
   };
 };
 
-function formatSize(bytes: number) {
+const copy = {
+  lv: { title: 'Avantime zināšanu bāze', description: 'Augšupielādējiet dokumentus, izgūstiet tekstu un meklējiet zināšanu bāzē.', documents: 'dokumenti', indexed: 'vektoru indeksā', processed: 'apstrādāti', errors: 'kļūdas', search: 'Meklēt dokumentos', searchDescription: 'Izvēlieties lexical, semantic vai hybrid meklēšanu apstrādātajos dokumentos.', searchLabel: 'Meklēt dokumentos', placeholder: 'Ievadiet vārdu vai frāzi', mode: 'Meklēšanas režīms', searching: 'Meklē…', find: 'Meklēt', clear: 'Notīrīt', found: 'Atrasti dokumenti:', noResults: 'Atbilstības nav atrastas.', relevance: 'Atbilstība:', list: 'Dokumenti', uploaded: 'Augšupielādētie dokumenti', loading: 'Ielādē dokumentus…', empty: 'Dokumenti vēl nav augšupielādēti', emptyHint: 'Izvēlieties PDF, izmantojot pogu “Augšupielādēt dokumentu”.', page: 'lpp.', index: 'indekss', delete: 'Dzēst', deleteConfirm: 'Dzēst dokumentu', loadError: 'Neizdevās ielādēt dokumentu sarakstu.', deleteError: 'Neizdevās dzēst dokumentu.', searchError: 'Neizdevās veikt meklēšanu.', shortQuery: 'Ievadiet vismaz divas rakstzīmes.', statuses: { 'Обработан': 'Apstrādāts', 'Ошибка': 'Kļūda', 'Карантин': 'Karantīnā', 'В очереди': 'Rindā', 'Обрабатывается': 'Tiek apstrādāts' } },
+  ru: { title: 'База знаний Avantime', description: 'Загружайте документы, извлекайте текст и выполняйте поиск по базе знаний.', documents: 'документов', indexed: 'в векторном индексе', processed: 'обработано', errors: 'ошибок', search: 'Поиск по документам', searchDescription: 'Выберите лексический, семантический или гибридный поиск по обработанным документам.', searchLabel: 'Поиск по документам', placeholder: 'Введите слово или фразу', mode: 'Режим поиска', searching: 'Поиск…', find: 'Найти', clear: 'Очистить', found: 'Найдено документов:', noResults: 'Совпадений не найдено.', relevance: 'Релевантность:', list: 'Документы', uploaded: 'Загруженные документы', loading: 'Загрузка документов…', empty: 'Документы ещё не загружены', emptyHint: 'Нажмите «Загрузить документ» и выберите PDF.', page: 'стр.', index: 'индекс', delete: 'Удалить', deleteConfirm: 'Удалить документ', loadError: 'Не удалось загрузить список документов.', deleteError: 'Не удалось удалить документ.', searchError: 'Не удалось выполнить поиск.', shortQuery: 'Введите не менее двух символов.', statuses: { 'Обработан': 'Обработан', 'Ошибка': 'Ошибка', 'Карантин': 'Карантин', 'В очереди': 'В очереди', 'Обрабатывается': 'Обрабатывается' } },
+  en: { title: 'Avantime knowledge base', description: 'Upload documents, extract text and search the knowledge base.', documents: 'documents', indexed: 'in vector index', processed: 'processed', errors: 'errors', search: 'Search documents', searchDescription: 'Choose lexical, semantic or hybrid retrieval across processed documents.', searchLabel: 'Search documents', placeholder: 'Enter a word or phrase', mode: 'Search mode', searching: 'Searching…', find: 'Search', clear: 'Clear', found: 'Documents found:', noResults: 'No matches found.', relevance: 'Relevance:', list: 'Documents', uploaded: 'Uploaded documents', loading: 'Loading documents…', empty: 'No documents uploaded yet', emptyHint: 'Choose a PDF using the “Upload document” button.', page: 'pages', index: 'index', delete: 'Delete', deleteConfirm: 'Delete document', loadError: 'Could not load the document list.', deleteError: 'Could not delete the document.', searchError: 'Could not search documents.', shortQuery: 'Enter at least two characters.', statuses: { 'Обработан': 'Processed', 'Ошибка': 'Error', 'Карантин': 'Quarantined', 'В очереди': 'Queued', 'Обрабатывается': 'Processing' } },
+} satisfies Record<Locale, { title: string; description: string; documents: string; indexed: string; processed: string; errors: string; search: string; searchDescription: string; searchLabel: string; placeholder: string; mode: string; searching: string; find: string; clear: string; found: string; noResults: string; relevance: string; list: string; uploaded: string; loading: string; empty: string; emptyHint: string; page: string; index: string; delete: string; deleteConfirm: string; loadError: string; deleteError: string; searchError: string; shortQuery: string; statuses: Record<string, string> }>;
+
+function formatSize(bytes: number, locale: Locale) {
+  const units = locale === 'ru' ? ['Б', 'КБ', 'МБ'] : locale === 'lv' ? ['B', 'KB', 'MB'] : ['B', 'KB', 'MB'];
   if (bytes < 1024) {
-    return `${bytes} Б`;
+    return `${bytes} ${units[0]}`;
   }
 
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / 1024).toFixed(1)} ${units[1]}`;
   }
 
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} ${units[2]}`;
 }
 
-function formatDate(value: string) {
+function formatDate(value: string, locale: Locale) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
     return '—';
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
+  return new Intl.DateTimeFormat(locale === 'ru' ? 'ru-RU' : locale === 'lv' ? 'lv-LV' : 'en-GB', {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date);
 }
 
-export function AdminDocumentManagement() {
+export function AdminDocumentManagement({ locale }: { locale: Locale }) {
+  const text = copy[locale];
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<'lexical' | 'semantic' | 'hybrid'>('hybrid');
+  const [searchMode, setSearchMode] = useState<'lexical' | 'semantic' | 'hybrid'>('lexical');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
@@ -94,32 +103,30 @@ export function AdminDocumentManagement() {
         try {
           result = JSON.parse(responseText);
         } catch {
-          throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
+          throw new Error(text.loadError);
         }
 
         if (!response.ok) {
-          throw new Error(result.error || 'Не удалось загрузить список документов.');
+          throw new Error(text.loadError);
         }
 
         setDocuments(Array.isArray(result.documents) ? result.documents : []);
       } catch (error) {
-        setLoadError(
-          error instanceof Error ? error.message : 'Не удалось загрузить список документов.',
-        );
+        setLoadError(error instanceof Error ? error.message : text.loadError);
       } finally {
         setLoading(false);
       }
     }
 
     void loadDocuments();
-  }, []);
+  }, [text.loadError]);
 
   function handleUploaded(document: DocumentItem) {
     setDocuments((current) => [document, ...current]);
   }
 
   async function handleDelete(document: DocumentItem) {
-    const confirmed = window.confirm(`Удалить документ «${document.name}»?`);
+    const confirmed = window.confirm(`${text.deleteConfirm} «${document.name}»?`);
 
     if (!confirmed) {
       return;
@@ -131,17 +138,15 @@ export function AdminDocumentManagement() {
         headers: { 'x-avantime-confirmation': 'DELETE DOCUMENT' },
       });
 
-      const result = await response.json();
-
       if (!response.ok) {
-        throw new Error(result.error || 'Не удалось удалить документ.');
+        throw new Error(text.deleteError);
       }
 
       setDocuments((current) => current.filter((item) => item.id !== document.id));
 
       setSearchResults((current) => current.filter((item) => item.documentId !== document.id));
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Не удалось удалить документ.');
+      window.alert(error instanceof Error ? error.message : text.deleteError);
     }
   }
 
@@ -151,7 +156,7 @@ export function AdminDocumentManagement() {
     const query = searchQuery.trim();
 
     if (query.length < 2) {
-      setSearchError('Введите не менее двух символов.');
+      setSearchError(text.shortQuery);
       return;
     }
 
@@ -177,17 +182,17 @@ export function AdminDocumentManagement() {
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
+          throw new Error(text.searchError);
       }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Не удалось выполнить поиск.');
+        throw new Error(text.searchError);
       }
 
       setSearchResults(Array.isArray(result.results) ? result.results : []);
     } catch (error) {
       setSearchResults([]);
-      setSearchError(error instanceof Error ? error.message : 'Не удалось выполнить поиск.');
+      setSearchError(error instanceof Error ? error.message : text.searchError);
     } finally {
       setSearching(false);
     }
@@ -213,57 +218,53 @@ export function AdminDocumentManagement() {
     <main className="p-6 lg:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">
-            Knowledge Center
-          </p>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">Avantime</p>
 
-          <h1 className="mt-2 text-3xl font-black text-slate-950">База знаний Avantime</h1>
+          <h1 className="mt-2 text-3xl font-black text-slate-950">{text.title}</h1>
 
-          <p className="mt-2 max-w-2xl text-slate-500">
-            Загружайте документы, извлекайте текст и выполняйте поиск по базе знаний.
-          </p>
+          <p className="mt-2 max-w-2xl text-slate-500">{text.description}</p>
         </div>
 
-        <DocumentUpload onUploaded={handleUploaded} />
+        <DocumentUpload locale={locale} onUploaded={handleUploaded} />
       </div>
 
       <div className="mt-8 grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-3xl font-black text-slate-950">{documents.length}</p>
-          <p className="mt-1 text-sm text-slate-500">документов</p>
+          <p className="mt-1 text-sm text-slate-500">{text.documents}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-3xl font-black text-slate-950">{indexedCount}</p>
-          <p className="mt-1 text-sm text-slate-500">в vector index</p>
+          <p className="mt-1 text-sm text-slate-500">{text.indexed}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-3xl font-black text-slate-950">{processedCount}</p>
-          <p className="mt-1 text-sm text-slate-500">обработано</p>
+          <p className="mt-1 text-sm text-slate-500">{text.processed}</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-3xl font-black text-slate-950">{errorCount}</p>
-          <p className="mt-1 text-sm text-slate-500">ошибок</p>
+          <p className="mt-1 text-sm text-slate-500">{text.errors}</p>
         </div>
       </div>
 
-      <KnowledgeAsk />
+      <KnowledgeAsk locale={locale} />
 
       <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="font-black text-slate-950">Поиск по документам</h3>
+        <h3 className="font-black text-slate-950">{text.search}</h3>
 
         <p className="mt-1 text-sm text-slate-500">
-          Выберите lexical, semantic или hybrid retrieval по обработанным документам.
+          {text.searchDescription}
         </p>
 
         <form onSubmit={handleSearch} className="mt-5 flex flex-col gap-3 sm:flex-row">
           <input
-            aria-label="Поиск по документам"
+            aria-label={text.searchLabel}
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Введите слово или фразу"
+            placeholder={text.placeholder}
             className="min-h-12 flex-1 rounded-xl border border-slate-300 px-4 outline-none ring-blue-200 focus:ring-4"
           />
 
@@ -273,7 +274,7 @@ export function AdminDocumentManagement() {
               setSearchMode(event.target.value as 'lexical' | 'semantic' | 'hybrid')
             }
             className="min-h-12 rounded-xl border border-slate-300 bg-white px-4 font-semibold text-slate-700"
-            aria-label="Режим поиска"
+            aria-label={text.mode}
           >
             <option value="lexical">Lexical</option>
             <option value="semantic">Semantic</option>
@@ -285,7 +286,7 @@ export function AdminDocumentManagement() {
             disabled={searching}
             className="rounded-xl bg-blue-600 px-6 py-3 font-bold text-white hover:bg-blue-700 disabled:opacity-60"
           >
-            {searching ? 'Поиск…' : 'Найти'}
+            {searching ? text.searching : text.find}
           </button>
 
           {searchPerformed ? (
@@ -294,7 +295,7 @@ export function AdminDocumentManagement() {
               onClick={clearSearch}
               className="rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-700 hover:bg-slate-50"
             >
-              Очистить
+              {text.clear}
             </button>
           ) : null}
         </form>
@@ -304,17 +305,17 @@ export function AdminDocumentManagement() {
         {searchPerformed && !searching && !searchError ? (
           <div className="mt-6">
             <p className="text-sm font-bold text-slate-600">
-              Найдено документов: {searchResults.length}
+              {text.found} {searchResults.length}
             </p>
 
             {searchResults.length === 0 ? (
-              <p className="mt-4 text-slate-500">Совпадений не найдено.</p>
+              <p className="mt-4 text-slate-500">{text.noResults}</p>
             ) : (
               <div className="mt-4 space-y-4">
                 {searchResults.map((result) => (
                   <Link
                     key={`${result.documentId}-${result.chunkId}`}
-                    href={`/admin/documents/${result.documentId}`}
+                    href={localePath(locale, `/admin/documents/${result.documentId}`)}
                     className="block rounded-2xl border border-slate-200 p-5 transition hover:border-blue-300 hover:bg-blue-50/40"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -330,7 +331,7 @@ export function AdminDocumentManagement() {
                         </span>
 
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                          Релевантность: {result.score}
+                          {text.relevance} {result.score}
                         </span>
                       </div>
                     </div>
@@ -346,14 +347,14 @@ export function AdminDocumentManagement() {
 
       <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h3 className="font-black text-slate-950">Документы</h3>
+          <h3 className="font-black text-slate-950">{text.list}</h3>
 
-          <p className="text-sm text-slate-500">Загруженные документы</p>
+          <p className="text-sm text-slate-500">{text.uploaded}</p>
         </div>
 
         {loading ? (
           <div className="px-5 py-14 text-center">
-            <p className="font-bold text-slate-800">Загрузка документов…</p>
+            <p className="font-bold text-slate-800">{text.loading}</p>
           </div>
         ) : loadError ? (
           <div className="px-5 py-14 text-center">
@@ -361,11 +362,9 @@ export function AdminDocumentManagement() {
           </div>
         ) : documents.length === 0 ? (
           <div className="px-5 py-14 text-center">
-            <p className="font-bold text-slate-800">Документы ещё не загружены</p>
+            <p className="font-bold text-slate-800">{text.empty}</p>
 
-            <p className="mt-2 text-sm text-slate-500">
-              Нажмите «Загрузить документ» и выберите PDF.
-            </p>
+            <p className="mt-2 text-sm text-slate-500">{text.emptyHint}</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -376,7 +375,7 @@ export function AdminDocumentManagement() {
               >
                 <div>
                   <Link
-                    href={`/admin/documents/${document.id}`}
+                    href={localePath(locale, `/admin/documents/${document.id}`)}
                     className="font-bold text-slate-900 hover:text-blue-700"
                   >
                     {document.name}
@@ -384,14 +383,14 @@ export function AdminDocumentManagement() {
 
                   <p className="mt-1 text-xs text-slate-500">
                     {document.type}
-                    {document.pages ? ` · ${document.pages} стр.` : ''}
+                    {document.pages ? ` · ${document.pages} ${text.page}` : ''}
                     {document.embeddingStatus
-                      ? ` · index: ${document.embeddingStatus.toLowerCase()}`
+                      ? ` · ${text.index}: ${document.embeddingStatus.toLowerCase()}`
                       : ''}
                   </p>
                 </div>
 
-                <span className="text-sm text-slate-500">{formatSize(document.size)}</span>
+                <span className="text-sm text-slate-500">{formatSize(document.size, locale)}</span>
 
                 <span
                   className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
@@ -402,17 +401,17 @@ export function AdminDocumentManagement() {
                         : 'bg-blue-50 text-blue-700'
                   }`}
                 >
-                  {document.status}
+                  {text.statuses[document.status as keyof typeof text.statuses] ?? document.status}
                 </span>
 
-                <span className="text-sm text-slate-500">{formatDate(document.uploadedAt)}</span>
+                <span className="text-sm text-slate-500">{formatDate(document.uploadedAt, locale)}</span>
 
                 <button
                   type="button"
                   onClick={() => handleDelete(document)}
                   className="rounded-lg border border-red-200 px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
                 >
-                  Удалить
+                  {text.delete}
                 </button>
               </div>
             ))}

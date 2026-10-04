@@ -2,17 +2,27 @@
 
 import { useState } from 'react';
 import type { AccountProfile } from '../../lib/account';
+import type { Locale } from '../../lib/i18n';
+
+const copy: Record<Locale, Record<string, string>> = {
+  lv: { error: 'Neizdevās saglabāt izmaiņas.', saved: 'Izmaiņas saglabātas.', name: 'Vārds un uzvārds', email: 'E-pasts', phone: 'Tālrunis', job: 'Amats', company: 'Uzņēmums', companyName: 'Uzņēmuma nosaukums', registration: 'Reģistrācijas numurs', address: 'Adrese', saving: 'Saglabā…', save: 'Saglabāt izmaiņas' },
+  ru: { error: 'Не удалось сохранить изменения.', saved: 'Изменения сохранены.', name: 'Имя и фамилия', email: 'Электронная почта', phone: 'Телефон', job: 'Должность', company: 'Компания', companyName: 'Название компании', registration: 'Регистрационный номер', address: 'Адрес', saving: 'Сохраняем…', save: 'Сохранить изменения' },
+  en: { error: 'Could not save changes.', saved: 'Changes saved.', name: 'Full name', email: 'Email', phone: 'Phone', job: 'Job title', company: 'Company', companyName: 'Company name', registration: 'Registration number', address: 'Address', saving: 'Saving…', save: 'Save changes' },
+};
 
 export function ProfileForm({
   initialProfile,
   canUpdateCompany,
+  locale,
 }: {
   initialProfile: AccountProfile;
   canUpdateCompany: boolean;
+  locale: Locale;
 }) {
   const [profile, setProfile] = useState(initialProfile);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const text = copy[locale];
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -23,14 +33,13 @@ export function ProfileForm({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profile),
     });
-    const data = (await response.json()) as { error?: string };
     if (!response.ok) {
       setState('error');
-      setMessage(data.error ?? 'Не удалось сохранить изменения.');
+      setMessage(text.error);
       return;
     }
     setState('saved');
-    setMessage('Изменения сохранены.');
+    setMessage(text.saved);
   }
 
   const field = (key: keyof AccountProfile, label: string, disabled = false) => (
@@ -51,17 +60,19 @@ export function ProfileForm({
       className="mt-8 grid gap-6 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8"
     >
       <div className="grid gap-5 md:grid-cols-2">
-        {field('name', 'Имя и фамилия')}
-        {field('email', 'Email', true)}
-        {field('phone', 'Телефон')}
-        {field('jobTitle', 'Должность')}
+        {field('name', text.name)}
+        {field('email', text.email, true)}
+        {field('phone', text.phone)}
+        {field('jobTitle', text.job)}
       </div>
       <div className="border-t border-slate-200 pt-6">
-        <h2 className="text-2xl font-black">Компания</h2>
+        <h2 className="text-2xl font-black">{text.company}</h2>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
-          {field('companyName', 'Название компании', !canUpdateCompany)}
-          {field('registrationNumber', 'Регистрационный номер', !canUpdateCompany)}
-          <div className="md:col-span-2">{field('address', 'Адрес', !canUpdateCompany)}</div>
+          {field('companyName', text.companyName, !canUpdateCompany)}
+          {field('registrationNumber', text.registration, !canUpdateCompany)}
+          <div className="md:col-span-2">
+            {field('address', text.address, !canUpdateCompany)}
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-4">
@@ -69,7 +80,7 @@ export function ProfileForm({
           disabled={state === 'saving'}
           className="rounded-full bg-blue-600 px-6 py-3 font-black text-white disabled:opacity-60"
         >
-          {state === 'saving' ? 'Сохраняем…' : 'Сохранить изменения'}
+          {state === 'saving' ? text.saving : text.save}
         </button>
         {message && (
           <p

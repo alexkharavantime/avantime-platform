@@ -6,9 +6,13 @@ import { isDemoAuthEnabled } from '../../../lib/demo-auth';
 import { localePath, portalCopy } from '../../../lib/i18n';
 import { getLocale } from '../../../lib/i18n-server';
 import { safeReturnTo } from '../../../lib/safe-return-to';
-import { getSession } from '../../../lib/session';
+import { getValidatedPortalSession } from '../../../lib/portal-session';
 
-export const metadata: Metadata = { title: 'Вход в кабинет — Avantime' };
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  const title = { lv: 'Pieslēgšanās — Avantime', ru: 'Вход в кабинет — Avantime', en: 'Sign in — Avantime' };
+  return { title: title[locale] };
+}
 
 export default async function LoginPage({
   searchParams,
@@ -22,10 +26,10 @@ export default async function LoginPage({
 }) {
   const parameters = await searchParams;
   const returnTo = safeReturnTo(parameters.returnTo);
-  const session = await getSession();
+  const session = await getValidatedPortalSession();
   const locale = await getLocale();
   if (session) {
-    redirect(returnTo ?? localePath(locale, session.role === 'ADMIN' ? '/admin' : '/portal'));
+    redirect(localePath(locale, returnTo ?? (session.role === 'ADMIN' ? '/admin' : '/portal')));
   }
   const copy = portalCopy[locale].auth;
   return (

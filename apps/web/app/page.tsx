@@ -69,6 +69,7 @@ export default async function HomePage() {
   const copy = homeCopy[locale];
   const currentPath = stripLocale(await getOriginalPath());
   const homeImage = getSectionImage('homepage-hero', locale);
+  const approachImage = getSectionImage('approach', locale);
 
   return (
     <main id="top" className="overflow-hidden bg-white text-slate-950">
@@ -221,11 +222,20 @@ export default async function HomePage() {
       </section>
 
       <section id="approach" className="py-24 sm:py-28">
-        <div className="mx-auto grid max-w-7xl gap-14 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div className="mx-auto grid max-w-7xl gap-10 px-6 lg:grid-cols-2 lg:items-center lg:gap-14">
           <div>
             <p className="eyebrow">{copy.approach.eyebrow}</p>
             <h2 className="section-title mt-4">{copy.approach.title}</h2>
             <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">{copy.approach.text}</p>
+            <div className="relative mt-8 aspect-[3/2] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <Image
+                src={approachImage.src}
+                alt={approachImage.alt}
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-contain"
+              />
+            </div>
           </div>
           <div className="space-y-3">
             {copy.approach.outcomes.map(({ title, text }, index) => (

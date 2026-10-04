@@ -7,7 +7,7 @@ import { appendPortalAudit } from '../../lib/portal-audit';
 import { getValidatedPortalSession } from '../../lib/portal-session';
 import { safeReturnTo } from '../../lib/safe-return-to';
 import { buildPortalNavigation } from '../../lib/portal-navigation';
-import { stripLocale } from '../../lib/i18n';
+import { localePath, stripLocale } from '../../lib/i18n';
 import { getLocale } from '../../lib/i18n-server';
 import { isPortalPublicPath } from '../../lib/portal-public-paths';
 
@@ -23,7 +23,8 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
   if (!session && !isPublicPortalPath) {
     const returnTo = safeReturnTo(currentPath);
-    redirect(returnTo ? `/portal/login?returnTo=${encodeURIComponent(returnTo)}` : '/portal/login');
+    const loginPath = localePath(locale, '/portal/login');
+    redirect(returnTo ? `${loginPath}?returnTo=${encodeURIComponent(returnTo)}` : loginPath);
   }
   if (session && currentPath) {
     await appendPortalAudit(

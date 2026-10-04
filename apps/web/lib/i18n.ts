@@ -1,6 +1,8 @@
 export const locales = ['lv', 'ru', 'en'] as const;
 export type Locale = (typeof locales)[number];
 export const defaultLocale: Locale = 'lv';
+export const localeCookieName = 'avantime_locale';
+export const localeCookieMaxAge = 60 * 60 * 24 * 365;
 
 export const localeNames: Record<Locale, string> = {
   lv: 'Latviešu',
@@ -14,11 +16,8 @@ export function isLocale(value: string | null | undefined): value is Locale {
 
 export function localePath(locale: Locale, path = '/') {
   if (!path.startsWith('/')) return path;
-  if (path === '/') return `/${locale}`;
-  if (locales.some((candidate) => path === `/${candidate}` || path.startsWith(`/${candidate}/`))) {
-    return path;
-  }
-  return `/${locale}${path}`;
+  const unlocalizedPath = stripLocale(path);
+  return unlocalizedPath === '/' ? `/${locale}` : `/${locale}${unlocalizedPath}`;
 }
 
 export function stripLocale(path: string) {
@@ -31,8 +30,33 @@ export function localeFromPathname(pathname: string): Locale {
   return isLocale(segment) ? segment : defaultLocale;
 }
 
+export function localeFromAcceptLanguage(value: string | null | undefined): Locale | undefined {
+  if (!value) return undefined;
+  const preferences = value.split(',').map((entry, index) => {
+    const [tag, ...parameters] = entry.trim().split(';');
+    const qualityParameter = parameters.find((parameter) => parameter.trim().startsWith('q='));
+    const quality = qualityParameter ? Number(qualityParameter.trim().slice(2)) : 1;
+    return { tag: tag?.split('-')[0]?.toLowerCase(), quality, index };
+  });
+  preferences.sort((left, right) => right.quality - left.quality || left.index - right.index);
+  return preferences.find((preference) => isLocale(preference.tag))?.tag as Locale | undefined;
+}
+
+export function resolveLocale(
+  pathname: string,
+  savedLocale: string | null | undefined,
+  acceptLanguage: string | null | undefined,
+): Locale {
+  const pathLocale = pathname.split('/')[1];
+  if (isLocale(pathLocale)) return pathLocale;
+  if (isLocale(savedLocale)) return savedLocale;
+  return localeFromAcceptLanguage(acceptLanguage) ?? defaultLocale;
+}
+
 export type SharedCopy = {
   navigation: {
+    brandTagline: string;
+    languageLabel: string;
     oneC: string;
     solutions: string;
     approach: string;
@@ -67,6 +91,7 @@ export type SharedCopy = {
     demoNotice: string;
     thankYou: string;
     saved: string;
+    savedNextStep: string;
     sendAnother: string;
     nameError: string;
     contactError: string;
@@ -77,6 +102,8 @@ export type SharedCopy = {
 export const sharedCopy: Record<Locale, SharedCopy> = {
   lv: {
     navigation: {
+      brandTagline: 'Biznesa automatizācija',
+      languageLabel: 'Valoda',
       oneC: '1C',
       solutions: 'Risinājumi',
       approach: 'Pieeja',
@@ -111,6 +138,7 @@ export const sharedCopy: Record<Locale, SharedCopy> = {
       demoNotice: 'Šobrīd forma darbojas demonstrācijas režīmā un nenosūta datus uz serveri.',
       thankYou: 'Paldies',
       saved: 'Pieprasījums saglabāts demonstrācijā',
+      savedNextStep: 'Nākamajā posmā pieslēgsim īstu nosūtīšanu, aizsardzību pret surogātpastu un pieprasījuma nodošanu Jira vai CRM.',
       sendAnother: 'Nosūtīt vēl vienu pieprasījumu',
       nameError: 'Norādiet vārdu, kas ir vismaz divus simbolus garš.',
       contactError: 'Norādiet pareizu e-pastu vai tālruņa numuru.',
@@ -119,6 +147,8 @@ export const sharedCopy: Record<Locale, SharedCopy> = {
   },
   ru: {
     navigation: {
+      brandTagline: 'Автоматизация бизнеса',
+      languageLabel: 'Язык',
       oneC: '1С',
       solutions: 'Решения',
       approach: 'Подход',
@@ -153,6 +183,7 @@ export const sharedCopy: Record<Locale, SharedCopy> = {
       demoNotice: 'Сейчас форма работает в демонстрационном режиме и не передаёт данные на сервер.',
       thankYou: 'Спасибо',
       saved: 'Запрос сохранён в демоверсии',
+      savedNextStep: 'На следующем этапе подключим реальную отправку, защиту от спама и передачу обращения в Jira или CRM.',
       sendAnother: 'Отправить ещё один запрос',
       nameError: 'Укажите имя минимум из двух символов.',
       contactError: 'Укажите корректный email или номер телефона.',
@@ -161,6 +192,8 @@ export const sharedCopy: Record<Locale, SharedCopy> = {
   },
   en: {
     navigation: {
+      brandTagline: 'Business automation',
+      languageLabel: 'Language',
       oneC: '1C',
       solutions: 'Solutions',
       approach: 'Approach',
@@ -195,6 +228,7 @@ export const sharedCopy: Record<Locale, SharedCopy> = {
       demoNotice: 'The form is currently in demo mode and does not send data to the server.',
       thankYou: 'Thank you',
       saved: 'Request saved in the demo',
+      savedNextStep: 'Next, we can connect real submission, spam protection, and forwarding the request to Jira or a CRM.',
       sendAnother: 'Send another request',
       nameError: 'Enter a name of at least two characters.',
       contactError: 'Enter a valid email address or phone number.',
@@ -406,9 +440,20 @@ export type PortalCopy = {
     loginTitle: string;
     loginSubtitle: string;
     emailLabel: string;
+    requestAccessLink: string;
     passwordLabel: string;
     mfaCodeLabel: string;
     mfaPolicyNotice: string;
+    mfaSetupAction: string;
+    mfaSetupTitle: string;
+    mfaSetupDescription: string;
+    mfaSetupStart: string;
+    mfaSetupCodeLabel: string;
+    mfaSetupConfirm: string;
+    mfaSetupQrLabel: string;
+    mfaSetupRecoveryNotice: string;
+    mfaSetupContinue: string;
+    mfaSetupExpired: string;
     forgotPasswordLink: string;
     submit: string;
     submitPending: string;
@@ -419,6 +464,13 @@ export type PortalCopy = {
     demoNoticeClient: string;
     demoNoticeAdmin: string;
     genericError: string;
+    invalidCredentials: string;
+    requestRejected: string;
+    rateLimitError: string;
+    serviceUnavailable: string;
+    mfaInvalidCode: string;
+    mfaChallengeExpired: string;
+    mfaRateLimited: string;
     oidcError: string;
     securityEyebrow: string;
     forgotTitle: string;
@@ -432,6 +484,7 @@ export type PortalCopy = {
   };
   shell: {
     tagline: string;
+    languageLabel: string;
     homeBreadcrumb: string;
     skipToContent: string;
     dataNotice: string;
@@ -453,9 +506,125 @@ export type PortalCopy = {
     notifications: string;
     settings: string;
     platform: string;
+    accessRequests: string;
     documentsAdmin: string;
     requestTitle: string;
     documentTitle: string;
+  };
+  requestAccess: {
+    eyebrow: string;
+    title: string;
+    subtitle: string;
+    verifyTitle: string;
+    nameLabel: string;
+    emailLabel: string;
+    companyLabel: string;
+    commentLabel: string;
+    commentPlaceholder: string;
+    submit: string;
+    submitPending: string;
+    successMessage: string;
+    deliveryDisabledMessage: string;
+    deliveryFailedMessage: string;
+    emailVerificationNotice: string;
+    emailDeliveryDisabledNotice: string;
+    genericError: string;
+    backToLogin: string;
+    verifyPending: string;
+    verifySuccess: string;
+    verifyError: string;
+  };
+  accessRequests: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    overview: string;
+    roles: string;
+    audit: string;
+    support: string;
+    approvals: string;
+    operations: string;
+    accessRequests: string;
+    navigationAria: string;
+    empty: string;
+    reviewTitle: string;
+    pendingVerificationTitle: string;
+    requestedAt: string;
+    name: string;
+    email: string;
+    requestedCompany: string;
+    comment: string;
+    noComment: string;
+    status: string;
+    assignedCompany: string;
+    companyFor: string;
+    companyPlaceholder: string;
+    roleFor: string;
+    roleLabels: Record<'ADMIN' | 'MANAGER' | 'MEMBER' | 'VIEWER', string>;
+    emailVerificationLabel: string;
+    emailVerificationConfirmed: string;
+    emailVerificationPending: string;
+    adminDecisionLabel: string;
+    adminDecisionPending: string;
+    adminDecisionApproved: string;
+    adminDecisionRejected: string;
+    emailVerificationBlocked: string;
+    emailDeliveryDisabled: string;
+    resendVerification: string;
+    verificationResentAccepted: string;
+    verificationResentDisabled: string;
+    verificationResentFailed: string;
+    resendRateLimited: string;
+    selectCompanyReason: string;
+    companiesUnavailable: string;
+    rejectionReasonLabel: string;
+    rejectionReasonRequired: string;
+    approveDialogTitle: string;
+    approveDialogDescription: string;
+    rejectDialogTitle: string;
+    rejectDialogDescription: string;
+    cancel: string;
+    confirmApprove: string;
+    confirmReject: string;
+    approve: string;
+    reject: string;
+    historyTitle: string;
+    statusLabels: Record<'PENDING' | 'EMAIL_VERIFIED' | 'APPROVED' | 'REJECTED', string>;
+    operationFailed: string;
+    approvalCreatedInvitation: string;
+    invitationEmailAccepted: string;
+    invitationEmailNotAccepted: string;
+    invitationEmailDeliveryUnconfirmed: string;
+    invitationEmailDisabledNextStep: string;
+    invitationEmailFailureNextStep: string;
+    requestForbidden: string;
+    requestNoLongerEligible: string;
+    requestMissing: string;
+    operationUnavailable: string;
+    approved: string;
+    rejected: string;
+  };
+  accessInvitation: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    signedInDescription: string;
+    passwordLabel: string;
+    confirmPasswordLabel: string;
+    passwordHint: string;
+    submit: string;
+    submitPending: string;
+    accept: string;
+    acceptPending: string;
+    passwordMismatch: string;
+    passwordPolicy: string;
+    accountExists: string;
+    signIn: string;
+    accepted: string;
+    continueToPortal: string;
+    continueToLogin: string;
+    invalidLink: string;
+    genericError: string;
   };
 };
 
@@ -466,9 +635,20 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       loginTitle: 'Pieslēgšanās',
       loginSubtitle: 'Pieprasījumi, dokumenti, statusi un zināšanu bāze vienuviet.',
       emailLabel: 'E-pasts',
+      requestAccessLink: 'Pieprasīt piekļuvi',
       passwordLabel: 'Parole',
       mfaCodeLabel: 'MFA kods vai atkopšanas kods',
-      mfaPolicyNotice: 'Organizācijas politika pieprasa MFA. Sazinieties ar administratoru par drošu sākotnējo pieslēgšanu.',
+      mfaPolicyNotice: 'Lai turpinātu, iestatiet autentifikatora lietotni.',
+      mfaSetupAction: 'Iestatīt autentifikatora lietotni',
+      mfaSetupTitle: 'MFA iestatīšana',
+      mfaSetupDescription: 'Noskenējiet QR kodu ar autentifikatora lietotni un ievadiet tajā redzamo sešciparu kodu.',
+      mfaSetupStart: 'Parādīt QR kodu',
+      mfaSetupCodeLabel: 'Apstiprinājuma kods',
+      mfaSetupConfirm: 'Apstiprināt MFA',
+      mfaSetupQrLabel: 'MFA autentifikatora QR kods',
+      mfaSetupRecoveryNotice: 'Saglabājiet rezerves kodus drošā vietā. Tie tiek parādīti tikai vienu reizi.',
+      mfaSetupContinue: 'Turpināt uz pieslēgšanos',
+      mfaSetupExpired: 'Iestatīšanas sesija ir beigusies. Sāciet pieslēgšanos no jauna.',
       forgotPasswordLink: 'Aizmirsāt paroli?',
       submit: 'Ienākt',
       submitPending: 'Pārbaudām…',
@@ -479,6 +659,13 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       demoNoticeClient: 'Klients:',
       demoNoticeAdmin: 'Administrators:',
       genericError: 'Neizdevās pieslēgties.',
+      invalidCredentials: 'Nepareizs e-pasts vai parole.',
+      requestRejected: 'Pieslēgšanās pieprasījums tika noraidīts.',
+      rateLimitError: 'Pārāk daudz mēģinājumu. Mēģiniet vēlāk.',
+      serviceUnavailable: 'Pieslēgšanās īslaicīgi nav pieejama.',
+      mfaInvalidCode: 'Nederīgs apstiprinājuma kods.',
+      mfaChallengeExpired: 'Apstiprināšanas sesijas termiņš ir beidzies. Sāciet pieslēgšanos no jauna.',
+      mfaRateLimited: 'Pārāk daudz mēģinājumu. Sāciet pieslēgšanos no jauna.',
       oidcError: 'Korporatīvā pieslēgšanās neizdevās. Sāciet pieslēgšanos no jauna.',
       securityEyebrow: 'Drošība',
       forgotTitle: 'Paroles atjaunošana',
@@ -492,6 +679,7 @@ export const portalCopy: Record<Locale, PortalCopy> = {
     },
     shell: {
       tagline: 'Klienta kabinets',
+      languageLabel: 'Valoda',
       homeBreadcrumb: 'Kabinets',
       skipToContent: 'Pāriet uz saturu',
       dataNotice: 'Dati ir pieejami tikai jūsu uzņēmuma dalībniekiem.',
@@ -513,9 +701,125 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       notifications: 'Paziņojumi',
       settings: 'Iestatījumi',
       platform: 'Platformas pārvaldība',
+      accessRequests: 'Piekļuves pieprasījumi',
       documentsAdmin: 'Dokumentu pārvaldība',
       requestTitle: 'Pieprasījums',
       documentTitle: 'Dokuments',
+    },
+    requestAccess: {
+      eyebrow: 'Klienta kabinets',
+      title: 'Pieprasīt piekļuvi',
+      subtitle: 'Iesniedziet pieprasījumu piekļuvei klienta kabinetam.',
+      verifyTitle: 'E-pasta apstiprināšana',
+      nameLabel: 'Vārds, uzvārds',
+      emailLabel: 'E-pasts',
+      companyLabel: 'Uzņēmums',
+      commentLabel: 'Komentārs (nav obligāts)',
+      commentPlaceholder: 'Pastāstiet, kādam nolūkam nepieciešama piekļuve',
+      submit: 'Nosūtīt pieprasījumu',
+      submitPending: 'Sūtām…',
+      successMessage: 'Pieprasījums ir saglabāts. E-pasta pakalpojums pieņēma apstiprinājuma vēstuli, taču piegāde vēl nav apstiprināta. Pārbaudiet e-pastu.',
+      deliveryDisabledMessage: 'Pieprasījums ir saglabāts, bet e-pasta sūtīšana ir izslēgta. Neveidojiet dublikātu; lūdziet platformas administratoram atkārtoti nosūtīt apstiprinājumu šim pieprasījumam.',
+      deliveryFailedMessage: 'Pieprasījums ir saglabāts, bet e-pasta pakalpojums to nepieņēma. Neveidojiet dublikātu; lūdziet administratoram atkārtoti nosūtīt apstiprinājumu šim pieprasījumam.',
+      emailVerificationNotice: 'E-pasta apstiprināšana ir obligāta un neaizstāj administratora lēmumu par piekļuvi.',
+      emailDeliveryDisabledNotice: 'E-pasta sūtīšana šajā vidē ir izslēgta. Pieprasījumu nevar izskatīt, kamēr adrese nav apstiprināta. Ja iesniegsiet pieprasījumu, administrators var atkārtoti nosūtīt apstiprinājumu esošajam ierakstam.',
+      genericError: 'Pieprasījumu neizdevās nosūtīt. Mēģiniet vēlreiz.',
+      backToLogin: 'Atpakaļ uz pieslēgšanos',
+      verifyPending: 'Apstiprinām e-pasta adresi…',
+      verifySuccess: 'E-pasta adrese apstiprināta. Piekļuves pieprasījums gaida administratora apstiprinājumu.',
+      verifyError: 'Neizdevās apstiprināt e-pasta adresi. Pieprasiet jaunu apstiprinājuma saiti.',
+    },
+    accessRequests: {
+      eyebrow: 'Platformas pārvaldība',
+      title: 'Piekļuves pieprasījumi',
+      description: 'Pārskatiet piekļuves pieprasījumus un piešķiriet apstiprinātajiem lietotājiem uzņēmumu un lomu.',
+      overview: 'Pārskats',
+      roles: 'Platformas lomas',
+      audit: 'Globālais audits',
+      support: 'Atbalsta sesijas',
+      approvals: 'Apstiprinājumi',
+      operations: 'Operācijas',
+      accessRequests: 'Piekļuves pieprasījumi',
+      navigationAria: 'Platformas pārvaldība',
+      empty: 'Nav pieprasījumu, kas gaida izskatīšanu.',
+      reviewTitle: 'Gaida izskatīšanu',
+      pendingVerificationTitle: 'Gaida e-pasta apstiprinājumu',
+      requestedAt: 'Iesniegts',
+      name: 'Vārds',
+      email: 'E-pasts',
+      requestedCompany: 'Pieprasītais uzņēmums:',
+      comment: 'Komentārs',
+      noComment: 'Komentāra nav',
+      status: 'Statuss',
+      assignedCompany: 'Piešķirtais uzņēmums',
+      companyFor: 'Uzņēmums lietotājam',
+      companyPlaceholder: 'Izvēlieties uzņēmumu',
+      roleFor: 'Loma lietotājam',
+      roleLabels: { ADMIN: 'Administrators', MANAGER: 'Vadītājs', MEMBER: 'Dalībnieks', VIEWER: 'Skatītājs' },
+      emailVerificationLabel: 'Pieteikuma iesniedzēja e-pasts',
+      emailVerificationConfirmed: 'Apstiprināts',
+      emailVerificationPending: 'Nav apstiprināts',
+      adminDecisionLabel: 'Administratora lēmums',
+      adminDecisionPending: 'Vēl nav pieņemts',
+      adminDecisionApproved: 'Apstiprināts',
+      adminDecisionRejected: 'Noraidīts',
+      emailVerificationBlocked: 'Pieprasījumu nevar izskatīt, kamēr iesniedzējs nav apstiprinājis e-pastu. Nākamais solis: atveriet apstiprināšanas saiti un pēc tam atsvaidziniet rindu.',
+      emailDeliveryDisabled: 'E-pasta sūtīšana ir izslēgta; iesniedzējs nesaņems apstiprināšanas saiti. Lēmums ir bloķēts līdz e-pasta apstiprināšanai. Nākamais solis: atjaunojiet e-pasta sūtīšanu un lūdziet iesniedzējam iesniegt jaunu pieprasījumu.',
+      resendVerification: 'Atkārtoti nosūtīt apstiprinājumu',
+      verificationResentAccepted: 'E-pasta pakalpojums pieņēma apstiprinājuma vēstuli. Piegāde vēl nav apstiprināta; pieprasījums gaida saites atvēršanu.',
+      verificationResentDisabled: 'E-pasta sūtīšana ir izslēgta. Pieprasījums paliek neapstiprināts; atjaunojiet sūtīšanu un atkārtojiet šo darbību.',
+      verificationResentFailed: 'Apstiprinājuma vēstuli neizdevās nosūtīt. Pieprasījums paliek neapstiprināts; pārbaudiet pasta pakalpojumu un mēģiniet vēlreiz.',
+      resendRateLimited: 'Pārāk daudz mēģinājumu. Pirms atkārtota mēģinājuma uzgaidiet.',
+      selectCompanyReason: 'Lai apstiprinātu, vispirms izvēlieties uzņēmumu.',
+      companiesUnavailable: 'Uzņēmumu saraksts nav pieejams. Nākamais solis: pārbaudiet uzņēmumu katalogu vai sazinieties ar platformas administratoru.',
+      rejectionReasonLabel: 'Noraidīšanas pamatojums',
+      rejectionReasonRequired: 'Lai turpinātu, ievadiet noraidīšanas pamatojumu.',
+      approveDialogTitle: 'Apstiprināt piekļuves pieprasījumu?',
+      approveDialogDescription: 'Tiks izveidots uzaicinājums izvēlētajam uzņēmumam un lomai.',
+      rejectDialogTitle: 'Noraidīt piekļuves pieprasījumu?',
+      rejectDialogDescription: 'Pirms noraidīšanas norādiet pamatojumu.',
+      cancel: 'Atcelt',
+      confirmApprove: 'Apstiprināt piekļuvi',
+      confirmReject: 'Noraidīt pieprasījumu',
+      approve: 'Apstiprināt piekļuvi',
+      reject: 'Noraidīt',
+      historyTitle: 'Izskatītie pieprasījumi',
+      statusLabels: { PENDING: 'Gaida e-pasta apstiprinājumu', EMAIL_VERIFIED: 'Gaida izskatīšanu', APPROVED: 'Apstiprināts', REJECTED: 'Noraidīts' },
+      operationFailed: 'Neizdevās atjaunināt pieprasījumu.',
+      approvalCreatedInvitation: 'Pieprasījums apstiprināts, ielūgums izveidots.',
+      invitationEmailAccepted: 'Pasta pakalpojums pieņēma ielūguma vēstuli.',
+      invitationEmailNotAccepted: 'Pasta pakalpojums vēstuli nenosūtīja.',
+      invitationEmailDeliveryUnconfirmed: 'Piegāde nav apstiprināta.',
+      invitationEmailDisabledNextStep: 'E-pasta sūtīšana ir izslēgta. Nākamais solis: atjaunojiet e-pasta sūtīšanu un lūdziet platformas administratoram droši izveidot un nosūtīt jaunu uzaicinājumu.',
+      invitationEmailFailureNextStep: 'Nākamais solis: pārbaudiet e-pasta pakalpojumu un atkārtojiet uzaicināšanu, pirms paziņojat par piekļuves aktivizēšanu.',
+      requestForbidden: 'Jums nav tiesību mainīt šo pieprasījumu. Nākamais solis: sazinieties ar platformas administratoru.',
+      requestNoLongerEligible: 'Pieprasījums jau apstrādāts vai e-pasts vēl nav apstiprināts. Atsvaidziniet rindu un pārbaudiet abus statusus.',
+      requestMissing: 'Pieprasījums vairs nav pieejams. Atsvaidziniet rindu.',
+      operationUnavailable: 'Pieprasījumu neizdevās saglabāt servera kļūmes dēļ. Nākamais solis: atsvaidziniet rindu un mēģiniet vēlreiz.',
+      approved: 'Pieprasījums apstiprināts.',
+      rejected: 'Pieprasījums noraidīts.',
+    },
+    accessInvitation: {
+      eyebrow: 'Klienta kabinets',
+      title: 'Aktivizēt kontu',
+      description: 'Izveidojiet paroli, lai pieņemtu apstiprināto uzaicinājumu klienta kabinetā.',
+      signedInDescription: 'Pieņemiet uzaicinājumu ar savu esošo kontu.',
+      passwordLabel: 'Jaunā parole',
+      confirmPasswordLabel: 'Atkārtojiet paroli',
+      passwordHint: 'Vismaz 12 rakstzīmes; neizmantojiet savu e-pastu vai plaši lietotu paroli.',
+      submit: 'Izveidot kontu un pieņemt uzaicinājumu',
+      submitPending: 'Veidojam kontu…',
+      accept: 'Pieņemt uzaicinājumu',
+      acceptPending: 'Pieņemam…',
+      passwordMismatch: 'Paroles nesakrīt.',
+      passwordPolicy: 'Parolei jāatbilst drošības prasībām.',
+      accountExists: 'Šai e-pasta adresei jau ir konts. Pieslēdzieties, pēc tam atveriet uzaicinājuma saiti vēlreiz.',
+      signIn: 'Pieslēgties',
+      accepted: 'Uzaicinājums pieņemts. Konts ir aktivizēts.',
+      continueToPortal: 'Atvērt klienta kabinetu',
+      continueToLogin: 'Doties uz pieslēgšanos',
+      invalidLink: 'Uzaicinājuma saite nav derīga vai ir beigusies.',
+      genericError: 'Neizdevās pieņemt uzaicinājumu. Atveriet saiti vēlreiz vai sazinieties ar administratoru.',
     },
   },
   ru: {
@@ -523,10 +827,21 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       eyebrow: 'Кабинет клиента',
       loginTitle: 'Вход',
       loginSubtitle: 'Обращения, документы, статусы и база знаний в одном месте.',
-      emailLabel: 'Email',
+      emailLabel: 'Электронная почта',
+      requestAccessLink: 'Запросить доступ',
       passwordLabel: 'Пароль',
-      mfaCodeLabel: 'Код MFA или recovery code',
-      mfaPolicyNotice: 'Политика организации требует MFA. Обратитесь к администратору для безопасного первоначального подключения.',
+      mfaCodeLabel: 'Код MFA или резервный код',
+      mfaPolicyNotice: 'Для продолжения настройте приложение-аутентификатор.',
+      mfaSetupAction: 'Настроить приложение-аутентификатор',
+      mfaSetupTitle: 'Настройка MFA',
+      mfaSetupDescription: 'Отсканируйте QR-код приложением-аутентификатором и введите показанный им шестизначный код.',
+      mfaSetupStart: 'Показать QR-код',
+      mfaSetupCodeLabel: 'Код подтверждения',
+      mfaSetupConfirm: 'Подтвердить MFA',
+      mfaSetupQrLabel: 'QR-код приложения-аутентификатора',
+      mfaSetupRecoveryNotice: 'Сохраните резервные коды в надёжном месте. Они показываются только один раз.',
+      mfaSetupContinue: 'Перейти ко входу',
+      mfaSetupExpired: 'Сеанс настройки истёк. Начните вход заново.',
       forgotPasswordLink: 'Забыли пароль?',
       submit: 'Войти',
       submitPending: 'Проверяем…',
@@ -537,6 +852,13 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       demoNoticeClient: 'Клиент:',
       demoNoticeAdmin: 'Администратор:',
       genericError: 'Не удалось войти.',
+      invalidCredentials: 'Неверный адрес электронной почты или пароль.',
+      requestRejected: 'Запрос на вход отклонён.',
+      rateLimitError: 'Слишком много попыток. Повторите позже.',
+      serviceUnavailable: 'Вход временно недоступен.',
+      mfaInvalidCode: 'Неверный код подтверждения.',
+      mfaChallengeExpired: 'Сеанс подтверждения истёк. Начните вход заново.',
+      mfaRateLimited: 'Слишком много попыток. Начните вход заново.',
       oidcError: 'Корпоративный вход не выполнен. Начните вход заново.',
       securityEyebrow: 'Безопасность',
       forgotTitle: 'Восстановление пароля',
@@ -550,6 +872,7 @@ export const portalCopy: Record<Locale, PortalCopy> = {
     },
     shell: {
       tagline: 'Кабинет клиента',
+      languageLabel: 'Язык',
       homeBreadcrumb: 'Кабинет',
       skipToContent: 'Перейти к содержимому',
       dataNotice: 'Данные доступны только участникам вашей компании.',
@@ -571,9 +894,125 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       notifications: 'Уведомления',
       settings: 'Настройки',
       platform: 'Управление платформой',
+      accessRequests: 'Заявки на доступ',
       documentsAdmin: 'Управление документами',
       requestTitle: 'Обращение',
       documentTitle: 'Документ',
+    },
+    requestAccess: {
+      eyebrow: 'Кабинет клиента',
+      title: 'Запросить доступ',
+      subtitle: 'Отправьте запрос на доступ к клиентскому кабинету.',
+      verifyTitle: 'Подтверждение email',
+      nameLabel: 'Имя и фамилия',
+      emailLabel: 'Электронная почта',
+      companyLabel: 'Компания',
+      commentLabel: 'Комментарий (необязательно)',
+      commentPlaceholder: 'Расскажите, для чего вам нужен доступ',
+      submit: 'Отправить запрос',
+      submitPending: 'Отправляем…',
+      successMessage: 'Запрос сохранён. Почтовый сервис принял письмо с подтверждением, но доставка ещё не подтверждена. Проверьте почту.',
+      deliveryDisabledMessage: 'Запрос сохранён, но отправка email отключена. Не создавайте дубликат; попросите администратора повторно отправить подтверждение для этой заявки.',
+      deliveryFailedMessage: 'Запрос сохранён, но почтовый сервис не принял письмо. Не создавайте дубликат; попросите администратора повторно отправить подтверждение для этой заявки.',
+      emailVerificationNotice: 'Подтверждение email обязательно и не заменяет отдельное решение администратора о доступе.',
+      emailDeliveryDisabledNotice: 'В этой среде отправка email отключена. Заявку нельзя рассмотреть, пока адрес не подтверждён. Если вы подадите заявку, администратор сможет повторно отправить подтверждение для уже сохранённой записи.',
+      genericError: 'Не удалось отправить запрос. Попробуйте ещё раз.',
+      backToLogin: 'Вернуться ко входу',
+      verifyPending: 'Подтверждаем адрес электронной почты…',
+      verifySuccess: 'Адрес электронной почты подтверждён. Запрос ожидает одобрения администратора.',
+      verifyError: 'Не удалось подтвердить адрес электронной почты. Запросите новую ссылку для подтверждения.',
+    },
+    accessRequests: {
+      eyebrow: 'Управление платформой',
+      title: 'Заявки на доступ',
+      description: 'Рассматривайте заявки на доступ и назначайте одобренным пользователям компанию и роль.',
+      overview: 'Обзор',
+      roles: 'Роли платформы',
+      audit: 'Глобальный аудит',
+      support: 'Сессии поддержки',
+      approvals: 'Подтверждения',
+      operations: 'Операции',
+      accessRequests: 'Заявки на доступ',
+      navigationAria: 'Управление платформой',
+      empty: 'Нет запросов, ожидающих рассмотрения.',
+      reviewTitle: 'Ожидают рассмотрения',
+      pendingVerificationTitle: 'Ожидают подтверждения email',
+      requestedAt: 'Дата заявки',
+      name: 'Имя',
+      email: 'Электронная почта',
+      requestedCompany: 'Запрошенная компания:',
+      comment: 'Комментарий',
+      noComment: 'Комментарий не указан',
+      status: 'Статус',
+      assignedCompany: 'Назначенная компания',
+      companyFor: 'Компания для пользователя',
+      companyPlaceholder: 'Выберите компанию',
+      roleFor: 'Роль для пользователя',
+      roleLabels: { ADMIN: 'Администратор', MANAGER: 'Менеджер', MEMBER: 'Участник', VIEWER: 'Наблюдатель' },
+      emailVerificationLabel: 'Подтверждение email заявителем',
+      emailVerificationConfirmed: 'Подтверждён',
+      emailVerificationPending: 'Не подтверждён',
+      adminDecisionLabel: 'Решение администратора',
+      adminDecisionPending: 'Ещё не принято',
+      adminDecisionApproved: 'Одобрено',
+      adminDecisionRejected: 'Отклонено',
+      emailVerificationBlocked: 'Заявку нельзя рассматривать, пока заявитель не подтвердит email. Следующий шаг: заявитель открывает ссылку подтверждения, затем обновите очередь.',
+      emailDeliveryDisabled: 'Отправка email отключена; заявитель не получит ссылку подтверждения. Решение заблокировано до подтверждения адреса. Восстановите отправку и повторно отправьте подтверждение для этой заявки; новую создавать не нужно.',
+      resendVerification: 'Повторно отправить подтверждение',
+      verificationResentAccepted: 'Почтовый сервис принял письмо с подтверждением. Доставка ещё не подтверждена; заявка ожидает открытия ссылки.',
+      verificationResentDisabled: 'Отправка email отключена. Заявка остаётся неподтверждённой; восстановите отправку и повторите это действие.',
+      verificationResentFailed: 'Не удалось отправить письмо с подтверждением. Заявка остаётся неподтверждённой; проверьте почтовый сервис и повторите попытку.',
+      resendRateLimited: 'Слишком много попыток. Подождите перед повторной отправкой.',
+      selectCompanyReason: 'Чтобы одобрить заявку, сначала выберите компанию.',
+      companiesUnavailable: 'Список компаний недоступен. Следующий шаг: проверьте каталог компаний или обратитесь к администратору платформы.',
+      rejectionReasonLabel: 'Причина отклонения',
+      rejectionReasonRequired: 'Чтобы продолжить, укажите причину отклонения.',
+      approveDialogTitle: 'Одобрить заявку на доступ?',
+      approveDialogDescription: 'Для выбранных компании и роли будет создано приглашение.',
+      rejectDialogTitle: 'Отклонить заявку на доступ?',
+      rejectDialogDescription: 'Перед отклонением укажите причину.',
+      cancel: 'Отмена',
+      confirmApprove: 'Одобрить доступ',
+      confirmReject: 'Отклонить заявку',
+      approve: 'Одобрить доступ',
+      reject: 'Отклонить',
+      historyTitle: 'Рассмотренные запросы',
+      statusLabels: { PENDING: 'Ожидает подтверждения email', EMAIL_VERIFIED: 'Ожидает рассмотрения', APPROVED: 'Одобрен', REJECTED: 'Отклонён' },
+      operationFailed: 'Не удалось обновить запрос.',
+      approvalCreatedInvitation: 'Заявка одобрена, приглашение создано.',
+      invitationEmailAccepted: 'Почтовый сервис принял письмо-приглашение.',
+      invitationEmailNotAccepted: 'Почтовый сервис не принял письмо к отправке.',
+      invitationEmailDeliveryUnconfirmed: 'Доставка не подтверждена.',
+      invitationEmailDisabledNextStep: 'Отправка email отключена. Следующий шаг: восстановите отправку email и обратитесь к администратору платформы, чтобы безопасно создать и отправить новое приглашение.',
+      invitationEmailFailureNextStep: 'Следующий шаг: проверьте почтовый сервис и повторно отправьте приглашение до уведомления о доступе.',
+      requestForbidden: 'У вас нет прав изменять эту заявку. Следующий шаг: обратитесь к администратору платформы.',
+      requestNoLongerEligible: 'Заявка уже обработана или email ещё не подтверждён. Обновите очередь и проверьте оба статуса.',
+      requestMissing: 'Заявка больше недоступна. Обновите очередь.',
+      operationUnavailable: 'Не удалось сохранить решение из-за ошибки сервера. Следующий шаг: обновите очередь и повторите попытку.',
+      approved: 'Запрос одобрен.',
+      rejected: 'Запрос отклонён.',
+    },
+    accessInvitation: {
+      eyebrow: 'Кабинет клиента',
+      title: 'Активировать учётную запись',
+      description: 'Создайте пароль, чтобы принять одобренное приглашение в клиентский кабинет.',
+      signedInDescription: 'Примите приглашение под своей существующей учётной записью.',
+      passwordLabel: 'Новый пароль',
+      confirmPasswordLabel: 'Повторите пароль',
+      passwordHint: 'Не менее 12 символов; не используйте email или распространённый пароль.',
+      submit: 'Создать учётную запись и принять приглашение',
+      submitPending: 'Создаём учётную запись…',
+      accept: 'Принять приглашение',
+      acceptPending: 'Принимаем…',
+      passwordMismatch: 'Пароли не совпадают.',
+      passwordPolicy: 'Пароль не соответствует требованиям безопасности.',
+      accountExists: 'Для этого email уже есть учётная запись. Войдите, затем откройте ссылку приглашения ещё раз.',
+      signIn: 'Войти',
+      accepted: 'Приглашение принято. Учётная запись активирована.',
+      continueToPortal: 'Открыть клиентский кабинет',
+      continueToLogin: 'Перейти ко входу',
+      invalidLink: 'Ссылка приглашения недействительна или истекла.',
+      genericError: 'Не удалось принять приглашение. Откройте ссылку ещё раз или обратитесь к администратору.',
     },
   },
   en: {
@@ -582,9 +1021,20 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       loginTitle: 'Sign in',
       loginSubtitle: 'Requests, documents, statuses and the knowledge base in one place.',
       emailLabel: 'Email',
+      requestAccessLink: 'Request access',
       passwordLabel: 'Password',
       mfaCodeLabel: 'MFA code or recovery code',
-      mfaPolicyNotice: 'Your organization requires MFA. Contact an administrator for secure initial enrollment.',
+      mfaPolicyNotice: 'Set up an authenticator app to continue.',
+      mfaSetupAction: 'Set up authenticator app',
+      mfaSetupTitle: 'Set up MFA',
+      mfaSetupDescription: 'Scan the QR code with an authenticator app and enter the six-digit code it displays.',
+      mfaSetupStart: 'Show QR code',
+      mfaSetupCodeLabel: 'Verification code',
+      mfaSetupConfirm: 'Confirm MFA',
+      mfaSetupQrLabel: 'Authenticator app QR code',
+      mfaSetupRecoveryNotice: 'Store the backup codes securely. They are shown only once.',
+      mfaSetupContinue: 'Continue to sign in',
+      mfaSetupExpired: 'The setup session expired. Start sign-in again.',
       forgotPasswordLink: 'Forgot your password?',
       submit: 'Sign in',
       submitPending: 'Checking…',
@@ -595,6 +1045,13 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       demoNoticeClient: 'Client:',
       demoNoticeAdmin: 'Administrator:',
       genericError: 'Sign-in failed.',
+      invalidCredentials: 'The email address or password is incorrect.',
+      requestRejected: 'The sign-in request was rejected.',
+      rateLimitError: 'Too many attempts. Please try again later.',
+      serviceUnavailable: 'Sign-in is temporarily unavailable.',
+      mfaInvalidCode: 'The verification code is invalid.',
+      mfaChallengeExpired: 'The verification session expired. Start sign-in again.',
+      mfaRateLimited: 'Too many attempts. Start sign-in again.',
       oidcError: 'Corporate sign-in was not completed. Please start over.',
       securityEyebrow: 'Security',
       forgotTitle: 'Password recovery',
@@ -608,6 +1065,7 @@ export const portalCopy: Record<Locale, PortalCopy> = {
     },
     shell: {
       tagline: 'Client portal',
+      languageLabel: 'Language',
       homeBreadcrumb: 'Portal',
       skipToContent: 'Skip to content',
       dataNotice: 'Data is only available to members of your company.',
@@ -629,9 +1087,125 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       notifications: 'Notifications',
       settings: 'Settings',
       platform: 'Platform management',
+      accessRequests: 'Access requests',
       documentsAdmin: 'Document management',
       requestTitle: 'Request',
       documentTitle: 'Document',
+    },
+    requestAccess: {
+      eyebrow: 'Client portal',
+      title: 'Request access',
+      subtitle: 'Submit a request for access to the client portal.',
+      verifyTitle: 'Verify your email address',
+      nameLabel: 'Full name',
+      emailLabel: 'Email',
+      companyLabel: 'Company',
+      commentLabel: 'Comment (optional)',
+      commentPlaceholder: 'Tell us why you need access',
+      submit: 'Send request',
+      submitPending: 'Sending…',
+      successMessage: 'The request was saved. The mail provider accepted the verification email, but delivery is not confirmed. Check your email.',
+      deliveryDisabledMessage: 'The request was saved, but email sending is disabled. Do not create a duplicate; ask the platform administrator to resend verification for this saved request.',
+      deliveryFailedMessage: 'The request was saved, but the mail provider did not accept the message. Do not create a duplicate; ask the administrator to resend verification for this saved request.',
+      emailVerificationNotice: 'Email verification is required and is separate from the administrator access decision.',
+      emailDeliveryDisabledNotice: 'Email sending is disabled in this environment. The request cannot be reviewed until the address is verified. If submitted, an administrator can resend verification for the saved request.',
+      genericError: 'Could not send the request. Please try again.',
+      backToLogin: 'Back to sign in',
+      verifyPending: 'Verifying your email address…',
+      verifySuccess: 'Email address verified. Your access request is awaiting administrator approval.',
+      verifyError: 'Could not verify your email address. Request a new verification link.',
+    },
+    accessRequests: {
+      eyebrow: 'Platform management',
+      title: 'Access requests',
+      description: 'Review access requests and assign approved users to a company and role.',
+      overview: 'Overview',
+      roles: 'Platform roles',
+      audit: 'Global audit',
+      support: 'Support sessions',
+      approvals: 'Approvals',
+      operations: 'Operations',
+      accessRequests: 'Access requests',
+      navigationAria: 'Platform management',
+      empty: 'No requests are waiting for review.',
+      reviewTitle: 'Awaiting review',
+      pendingVerificationTitle: 'Awaiting email verification',
+      requestedAt: 'Submitted',
+      name: 'Name',
+      email: 'Email',
+      requestedCompany: 'Requested company:',
+      comment: 'Comment',
+      noComment: 'No comment provided',
+      status: 'Status',
+      assignedCompany: 'Assigned company',
+      companyFor: 'Company for',
+      companyPlaceholder: 'Select a company',
+      roleFor: 'Role for',
+      roleLabels: { ADMIN: 'Administrator', MANAGER: 'Manager', MEMBER: 'Member', VIEWER: 'Viewer' },
+      emailVerificationLabel: 'Applicant email verification',
+      emailVerificationConfirmed: 'Verified',
+      emailVerificationPending: 'Not verified',
+      adminDecisionLabel: 'Administrator decision',
+      adminDecisionPending: 'Not decided',
+      adminDecisionApproved: 'Approved',
+      adminDecisionRejected: 'Rejected',
+      emailVerificationBlocked: 'This request cannot be reviewed until the applicant verifies the email address. Next step: the applicant opens the verification link, then refresh the queue.',
+      emailDeliveryDisabled: 'Email sending is disabled; the applicant cannot receive the verification link. The decision is blocked until verification. Restore delivery and resend verification for this request; do not create a duplicate.',
+      resendVerification: 'Resend verification',
+      verificationResentAccepted: 'The mail provider accepted the verification email. Delivery is not confirmed; the request remains pending until the link is opened.',
+      verificationResentDisabled: 'Email sending is disabled. The request remains unverified; restore delivery and retry this action.',
+      verificationResentFailed: 'The verification email could not be sent. The request remains unverified; check the mail provider and retry.',
+      resendRateLimited: 'Too many attempts. Wait before resending.',
+      selectCompanyReason: 'Select a company before approving this request.',
+      companiesUnavailable: 'The company list is unavailable. Next step: check the company directory or contact the platform administrator.',
+      rejectionReasonLabel: 'Reason for rejection',
+      rejectionReasonRequired: 'Enter a reason before rejecting this request.',
+      approveDialogTitle: 'Approve this access request?',
+      approveDialogDescription: 'An invitation will be created for the selected company and role.',
+      rejectDialogTitle: 'Reject this access request?',
+      rejectDialogDescription: 'Enter a reason before rejecting the request.',
+      cancel: 'Cancel',
+      confirmApprove: 'Approve access',
+      confirmReject: 'Reject request',
+      approve: 'Approve access',
+      reject: 'Reject',
+      historyTitle: 'Reviewed requests',
+      statusLabels: { PENDING: 'Pending email verification', EMAIL_VERIFIED: 'Pending review', APPROVED: 'Approved', REJECTED: 'Rejected' },
+      operationFailed: 'Could not update the request.',
+      approvalCreatedInvitation: 'Request approved; invitation created.',
+      invitationEmailAccepted: 'The mail provider accepted the invitation email.',
+      invitationEmailNotAccepted: 'The mail provider did not accept the invitation email.',
+      invitationEmailDeliveryUnconfirmed: 'Delivery is not confirmed.',
+      invitationEmailDisabledNextStep: 'Email sending is disabled. Next step: restore email delivery and ask the platform administrator to create and send a replacement invitation securely.',
+      invitationEmailFailureNextStep: 'Next step: check the mail provider and resend the invitation before telling the applicant access is ready.',
+      requestForbidden: 'You do not have permission to change this request. Next step: contact the platform administrator.',
+      requestNoLongerEligible: 'The request was already decided or its email is not verified. Refresh the queue and check both statuses.',
+      requestMissing: 'This request is no longer available. Refresh the queue.',
+      operationUnavailable: 'The decision could not be saved because the server is unavailable. Next step: refresh the queue and try again.',
+      approved: 'Request approved.',
+      rejected: 'Request rejected.',
+    },
+    accessInvitation: {
+      eyebrow: 'Client portal',
+      title: 'Activate your account',
+      description: 'Create a password to accept your approved invitation to the client portal.',
+      signedInDescription: 'Accept the invitation with your existing account.',
+      passwordLabel: 'New password',
+      confirmPasswordLabel: 'Confirm password',
+      passwordHint: 'At least 12 characters; do not use your email or a common password.',
+      submit: 'Create account and accept invitation',
+      submitPending: 'Creating account…',
+      accept: 'Accept invitation',
+      acceptPending: 'Accepting…',
+      passwordMismatch: 'Passwords do not match.',
+      passwordPolicy: 'The password does not meet the security policy.',
+      accountExists: 'An account already exists for this email. Sign in, then open the invitation link again.',
+      signIn: 'Sign in',
+      accepted: 'Invitation accepted. Your account is active.',
+      continueToPortal: 'Open client portal',
+      continueToLogin: 'Continue to sign in',
+      invalidLink: 'This invitation link is invalid or has expired.',
+      genericError: 'Could not accept the invitation. Reopen the link or contact an administrator.',
     },
   },
 };

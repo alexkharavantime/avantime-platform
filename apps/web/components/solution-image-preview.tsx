@@ -27,10 +27,6 @@ export function SolutionImagePreview({
   resetLabel,
   countLabel,
 }: SolutionImagePreviewProps) {
-  const initialKey = variants?.find((variant) => variant.src === mainSrc)?.key ?? variants?.[0]?.key;
-  const [selectedKey, setSelectedKey] = useState(initialKey);
-  const selectedVariant = variants?.find((variant) => variant.key === selectedKey);
-
   if (!enabled || !variants?.length) {
     return (
       <div className="relative mb-7 aspect-[3/2] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -44,6 +40,34 @@ export function SolutionImagePreview({
       </div>
     );
   }
+
+  return (
+    <InteractiveSolutionImagePreview
+      mainSrc={mainSrc}
+      alt={alt}
+      variants={variants}
+      resetLabel={resetLabel}
+      countLabel={countLabel}
+    />
+  );
+}
+
+function InteractiveSolutionImagePreview({
+  mainSrc,
+  alt,
+  variants,
+  resetLabel,
+  countLabel,
+}: {
+  mainSrc: string;
+  alt: string;
+  variants: ImageVariant[];
+  resetLabel: string;
+  countLabel: string;
+}) {
+  const initialKey = variants.find((variant) => variant.src === mainSrc)?.key ?? variants[0]?.key;
+  const [selectedKey, setSelectedKey] = useState(initialKey);
+  const selectedVariant = variants.find((variant) => variant.key === selectedKey);
 
   return (
     <div className="mb-7">

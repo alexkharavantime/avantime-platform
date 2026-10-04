@@ -6,17 +6,33 @@ import { localePath, portalCopy, type Locale } from '../../lib/i18n';
 
 const RESET_STORAGE_KEY = 'avantime.password-reset';
 
-export function ResetPasswordForm({ locale }: { locale: Locale }) {
+export function ResetPasswordForm({
+  locale,
+  initialToken = '',
+}: {
+  locale: Locale;
+  initialToken?: string;
+}) {
   const router = useRouter();
   const copy = portalCopy[locale].auth;
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState(initialToken);
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    if (initialToken) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('token');
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+      return;
+    }
     const stored = window.sessionStorage.getItem(RESET_STORAGE_KEY);
     if (stored) setToken(stored);
-  }, []);
+  }, [initialToken]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -35,17 +51,19 @@ export function ResetPasswordForm({ locale }: { locale: Locale }) {
 
   return (
     <form onSubmit={submit} className="mt-8 space-y-5">
-      <label className="block">
-        <span className="mb-2 block text-sm font-bold">{copy.resetCodeLabel}</span>
-        <input
-          type="password"
-          autoComplete="one-time-code"
-          required
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-          className="w-full rounded-2xl border border-slate-200 px-4 py-3"
-        />
-      </label>
+      {!initialToken && (
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold">{copy.resetCodeLabel}</span>
+          <input
+            type="password"
+            autoComplete="one-time-code"
+            required
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+          />
+        </label>
+      )}
       <label className="block">
         <span className="mb-2 block text-sm font-bold">{copy.resetPasswordLabel}</span>
         <input

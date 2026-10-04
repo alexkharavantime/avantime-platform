@@ -57,6 +57,7 @@ export function LoginForm({
     );
     const data = (await response.json()) as {
       error?: string;
+      errorCode?: string;
       role?: 'CLIENT' | 'ADMIN';
       mfaRequired?: boolean;
       challengeToken?: string;
@@ -64,16 +65,32 @@ export function LoginForm({
       returnTo?: string;
     };
     setPending(false);
-    if (!response.ok) return setError(data.error ?? copy.genericError);
+    if (!response.ok) {
+      const messages: Record<string, string> = {
+        AUTH_INVALID_CREDENTIALS: copy.invalidCredentials,
+        AUTH_REQUEST_REJECTED: copy.requestRejected,
+        AUTH_RATE_LIMITED: copy.rateLimitError,
+        AUTH_UNAVAILABLE: copy.serviceUnavailable,
+        MFA_INVALID_CODE: copy.mfaInvalidCode,
+        MFA_CHALLENGE_EXPIRED: copy.mfaChallengeExpired,
+        MFA_RATE_LIMITED: copy.mfaRateLimited,
+      };
+      return setError(messages[data.errorCode ?? ''] ?? copy.genericError);
+    }
+    if (data.mfaRequired && data.enrollmentRequired) {
+      setChallengeToken('restricted-enrollment');
+      setEnrollmentRequired(true);
+      setPassword('');
+      return;
+    }
     if (data.mfaRequired && data.challengeToken) {
       setChallengeToken(data.challengeToken);
       setEnrollmentRequired(Boolean(data.enrollmentRequired));
       setPassword('');
       return;
     }
-    window.location.replace(
-      data.returnTo ?? returnTo ?? localePath(locale, data.role === 'ADMIN' ? '/admin' : '/portal'),
-    );
+    const destination = data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal');
+    window.location.replace(localePath(locale, destination));
   }
 
   function useAdminDemo() {
@@ -119,7 +136,11 @@ export function LoginForm({
           className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
         />
       </label>
-      {challengeToken ? (
+      {challengeToken === 'restricted-enrollment' ? (
+        <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+          {copy.mfaPolicyNotice}
+        </p>
+      ) : challengeToken ? (
         <label className="block">
           <span className="mb-2 block text-sm font-bold text-slate-700">{copy.mfaCodeLabel}</span>
           <input
@@ -143,7 +164,7 @@ export function LoginForm({
           />
         </label>
       )}
-      {enrollmentRequired && (
+      {enrollmentRequired && challengeToken !== 'restricted-enrollment' && (
         <p
           role="alert"
           className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800"
@@ -162,12 +183,27 @@ export function LoginForm({
       >
         {copy.forgotPasswordLink}
       </Link>
+      <Link
+        href={localePath(locale, '/portal/request-access')}
+        className="block text-center text-sm font-bold text-slate-600"
+      >
+        {copy.requestAccessLink}
+      </Link>
       <button
         disabled={pending || !hydrated || enrollmentRequired}
         className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
       >
         {pending ? copy.submitPending : challengeToken ? copy.submitConfirm : copy.submit}
       </button>
+      {challengeToken === 'restricted-enrollment' && (
+        <button
+          type="button"
+          onClick={() => window.location.replace(localePath(locale, '/portal/mfa-enrollment'))}
+          className="w-full rounded-full border border-blue-600 px-5 py-3 font-bold text-blue-700"
+        >
+          {copy.mfaSetupAction}
+        </button>
+      )}
       {challengeToken && (
         <button
           type="button"
