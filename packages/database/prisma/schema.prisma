@@ -33,6 +33,7 @@ model User {
   mfaMethods                MfaMethod[]
   recoveryCodes             RecoveryCode[]
   emailVerificationTokens   EmailVerificationToken[]
+  emailChangeVerifications EmailChangeVerification[]
   securityEvents            SecurityEvent[]
   mfaExemptions             OrganizationMfaExemption[]
   requests                  SupportRequest[]
@@ -434,6 +435,21 @@ model EmailVerificationToken {
   createdAt  DateTime  @default(now())
 
   @@index([userId, expiresAt])
+}
+
+model EmailChangeVerification {
+  id             String    @id @default(cuid())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  email          String
+  emailNormalized String
+  tokenHash      String    @unique @db.VarChar(64)
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId, usedAt, expiresAt])
+  @@index([emailNormalized, expiresAt])
 }
 
 model IdentityInvitation {

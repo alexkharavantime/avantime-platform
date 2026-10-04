@@ -28,7 +28,10 @@ function expireOidcChallenge(response: NextResponse) {
 
 export async function POST(request: Request) {
   if (!isSameOriginMutation(request)) {
-    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Запрос отклонён.', errorCode: 'AUTH_REQUEST_REJECTED' },
+      { status: 403 },
+    );
   }
   const store = await cookies();
   const challengeToken = store.get(OIDC_MFA_COOKIE)?.value ?? '';
@@ -36,12 +39,18 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return NextResponse.json({ error: 'Неверный код подтверждения.' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Неверный код подтверждения.', errorCode: 'MFA_INVALID_CODE' },
+      { status: 401 },
+    );
   }
   const code = typeof body.code === 'string' ? body.code.trim() : '';
   if (!challengeToken || !code) {
     return expireOidcChallenge(
-      NextResponse.json({ error: 'Сеанс подтверждения истёк.' }, { status: 401 }),
+      NextResponse.json(
+        { error: 'Сеанс подтверждения истёк.', errorCode: 'MFA_CHALLENGE_EXPIRED' },
+        { status: 401 },
+      ),
     );
   }
   const correlationId = request.headers.get('x-avantime-correlation-id') ?? crypto.randomUUID();
@@ -63,13 +72,16 @@ export async function POST(request: Request) {
       });
       return expireOidcChallenge(
         NextResponse.json(
-          { error: 'Слишком много попыток. Начните вход заново.' },
+          { error: 'Слишком много попыток. Начните вход заново.', errorCode: 'MFA_RATE_LIMITED' },
           { status: 429 },
         ),
       );
     }
   } catch {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
 
   const result = await authenticateMfaChallenge({ challengeToken, code });
@@ -80,13 +92,17 @@ export async function POST(request: Request) {
           result.status === 'EXPIRED'
             ? 'Сеанс подтверждения истёк. Начните вход заново.'
             : 'Неверный код подтверждения.',
+        errorCode: result.status === 'EXPIRED' ? 'MFA_CHALLENGE_EXPIRED' : 'MFA_INVALID_CODE',
       },
       { status: 401 },
     );
   }
   if (result.status === 'UNAVAILABLE' || !result.identity.identityProviderId) {
     return expireOidcChallenge(
-      NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 }),
+      NextResponse.json(
+        { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+        { status: 503 },
+      ),
     );
   }
   try {
@@ -122,7 +138,10 @@ export async function POST(request: Request) {
     return expireOidcChallenge(response);
   } catch {
     return expireOidcChallenge(
-      NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 }),
+      NextResponse.json(
+        { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+        { status: 503 },
+      ),
     );
   }
 }

@@ -52,6 +52,14 @@ export function buildPortalNavigation(
       emphasized: true,
     });
   }
+  if (sessionHasPlatformPermission(session, 'platform.access_requests.manage')) {
+    items.push({
+      href: '/portal/platform/access-requests',
+      label: copy.accessRequests,
+      exact: false,
+      emphasized: true,
+    });
+  }
   if (hasOrganizationPermission(session, 'documents.manage')) {
     items.push({
       href: '/admin/documents',

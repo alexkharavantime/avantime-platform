@@ -11,6 +11,7 @@ import {
   evaluateCriticalOrganizationAction,
   resolveOrganizationRole,
 } from './organization-permissions';
+import { hashPassword, validatePasswordPolicy } from './password';
 import type { AppSession, MembershipStatus, OrganizationRole } from './session';
 
 const INVITATION_TTL_MS = 72 * 60 * 60_000;
@@ -65,6 +66,7 @@ export class TeamInvitationError extends Error {
       | 'INVITATION_INVALID'
       | 'INVITATION_FORBIDDEN'
       | 'INVITATION_IDENTITY_UNVERIFIED'
+      | 'INVITATION_ACCOUNT_EXISTS'
       | 'INVITATION_NOT_FOUND',
   ) {
     super('Team invitation operation failed.');
@@ -189,55 +191,13 @@ async function createCompanyInvitation(
   input: { companyId: string; email: string; role: OrganizationRole; invitedBy: string },
   now = new Date(),
 ) {
-  const { companyId, role } = input;
+  const { role } = input;
   if (process.env.DATABASE_URL) {
     const prisma = await getPrisma();
     if (prisma) {
-      const emailNormalized = input.email.trim().normalize('NFKC').toLowerCase();
-      const token = randomBytes(32).toString('base64url');
-      const invitation = await prisma.$transaction(async (database: Prisma.TransactionClient) => {
-        const company = await database.company.findUnique({
-          where: { id: companyId },
-          select: { id: true },
-        });
-        if (!company) throw new TeamInvitationError('INVITATION_INVALID');
-        const existing = await database.organizationMembership.findFirst({
-          where: {
-            companyId,
-            user: { emailNormalized },
-            status: { in: ['ACTIVE', 'SUSPENDED', 'REMOVED'] },
-          },
-          select: { id: true },
-        });
-        if (existing) throw new TeamInviteConflictError();
-        await database.identityInvitation.updateMany({
-          where: {
-            companyId,
-            emailNormalized,
-            acceptedAt: null,
-            revokedAt: null,
-          },
-          data: { revokedAt: now },
-        });
-        return database.identityInvitation.create({
-          data: {
-            tokenHash: digest(token),
-            companyId,
-            emailNormalized,
-            role: legacyRole(role),
-            organizationRole: role,
-            invitedBy: input.invitedBy,
-            expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
-          },
-        });
-      });
-      return {
-        id: invitation.id,
-        email: emailNormalized,
-        role: invitation.organizationRole,
-        expiresAt: invitation.expiresAt,
-        token,
-      };
+      return prisma.$transaction((database: Prisma.TransactionClient) =>
+        createCompanyInvitationInTransaction(database, input, now),
+      );
     }
   }
   if (process.env.NODE_ENV === 'production') {
@@ -249,6 +209,54 @@ async function createCompanyInvitation(
     role,
     expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
     token: randomBytes(32).toString('base64url'),
+  };
+}
+
+async function createCompanyInvitationInTransaction(
+  database: Prisma.TransactionClient,
+  input: { companyId: string; email: string; role: OrganizationRole; invitedBy: string },
+  now: Date,
+) {
+  const { companyId, role } = input;
+  const emailNormalized = input.email.trim().normalize('NFKC').toLowerCase();
+  const token = randomBytes(32).toString('base64url');
+  const company = await database.company.findUnique({ where: { id: companyId }, select: { id: true } });
+  if (!company) throw new TeamInvitationError('INVITATION_INVALID');
+  const existing = await database.organizationMembership.findFirst({
+    where: {
+      companyId,
+      user: { emailNormalized },
+      status: { in: ['ACTIVE', 'SUSPENDED', 'REMOVED'] },
+    },
+    select: { id: true },
+  });
+  if (existing) throw new TeamInviteConflictError();
+  await database.identityInvitation.updateMany({
+    where: {
+      companyId,
+      emailNormalized,
+      acceptedAt: null,
+      revokedAt: null,
+    },
+    data: { revokedAt: now },
+  });
+  const invitation = await database.identityInvitation.create({
+    data: {
+      tokenHash: digest(token),
+      companyId,
+      emailNormalized,
+      role: legacyRole(role),
+      organizationRole: role,
+      invitedBy: input.invitedBy,
+      expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
+    },
+  });
+  return {
+    id: invitation.id,
+    email: emailNormalized,
+    role: invitation.organizationRole,
+    expiresAt: invitation.expiresAt,
+    token,
   };
 }
 
@@ -266,6 +274,22 @@ export async function inviteMemberToCompanyAsPlatformAdmin(
     throw new TeamInvitationError('INVITATION_FORBIDDEN');
   }
   return createCompanyInvitation(
+    { companyId: input.companyId, email: input.email, role: input.role, invitedBy: actorUserId },
+    now,
+  );
+}
+
+export async function inviteMemberToCompanyAsPlatformAdminInTransaction(
+  database: Prisma.TransactionClient,
+  actorUserId: string,
+  input: { companyId: string; email: string; role: OrganizationRole },
+  now = new Date(),
+) {
+  if (!PLATFORM_INVITABLE_ROLES.has(input.role)) {
+    throw new TeamInvitationError('INVITATION_FORBIDDEN');
+  }
+  return createCompanyInvitationInTransaction(
+    database,
     { companyId: input.companyId, email: input.email, role: input.role, invitedBy: actorUserId },
     now,
   );
@@ -356,6 +380,102 @@ export async function acceptCompanyInvitation(
     }
   });
   return { invitationId: invitation.id, companyId: invitation.companyId };
+}
+
+export async function activateAccessRequestInvitation(
+  token: string,
+  password: string,
+  now = new Date(),
+) {
+  if (!token || token.length > 256) throw new TeamInvitationError('INVITATION_INVALID');
+  const prisma = await getPrisma();
+  if (!prisma) throw new TeamInvitationError('INVITATION_INVALID');
+  const tokenHash = digest(token);
+  const invitation = await prisma.identityInvitation.findUnique({
+    where: { tokenHash },
+    include: { accessRequest: true },
+  });
+  if (
+    !invitation ||
+    invitation.acceptedAt ||
+    invitation.revokedAt ||
+    invitation.expiresAt <= now ||
+    invitation.organizationRole === 'OWNER' ||
+    invitation.accessRequest?.status !== 'APPROVED' ||
+    invitation.accessRequest.invitationId !== invitation.id
+  ) {
+    throw new TeamInvitationError('INVITATION_INVALID');
+  }
+  if (
+    await prisma.user.findFirst({
+      where: { emailNormalized: invitation.emailNormalized },
+      select: { id: true },
+    })
+  ) {
+    throw new TeamInvitationError('INVITATION_ACCOUNT_EXISTS');
+  }
+  const policy = validatePasswordPolicy(password, invitation.emailNormalized);
+  if (!policy.valid) return { status: 'POLICY_REJECTED' as const, error: policy.error };
+  const passwordHash = hashPassword(password);
+
+  return prisma.$transaction(async (database: Prisma.TransactionClient) => {
+    const current = await database.identityInvitation.findUnique({
+      where: { tokenHash },
+      include: { accessRequest: true },
+    });
+    if (
+      !current ||
+      current.acceptedAt ||
+      current.revokedAt ||
+      current.expiresAt <= now ||
+      current.organizationRole === 'OWNER' ||
+      current.accessRequest?.status !== 'APPROVED' ||
+      current.accessRequest.invitationId !== current.id
+    ) {
+      throw new TeamInvitationError('INVITATION_INVALID');
+    }
+
+    const user = await database.user.create({
+      data: {
+        email: current.emailNormalized,
+        emailNormalized: current.emailNormalized,
+        emailVerifiedAt: now,
+        name: current.accessRequest.name,
+        role: 'CLIENT',
+        active: true,
+        companyId: current.companyId,
+        credentials: {
+          create: {
+            kind: 'PASSWORD',
+            identifierNormalized: current.emailNormalized,
+            passwordHash,
+            passwordChangedAt: now,
+          },
+        },
+        memberships: {
+          create: {
+            companyId: current.companyId,
+            role: legacyRole(current.organizationRole),
+            organizationRole: current.organizationRole,
+            status: 'ACTIVE',
+            active: true,
+          },
+        },
+      },
+      select: { id: true },
+    });
+    const accepted = await database.identityInvitation.updateMany({
+      where: {
+        id: current.id,
+        acceptedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: { acceptedAt: now, acceptedBy: user.id },
+    });
+    if (accepted.count !== 1) throw new TeamInvitationError('INVITATION_INVALID');
+    return { status: 'ACCEPTED' as const, userId: user.id, companyId: current.companyId };
+  });
 }
 
 export async function revokeCompanyInvitation(session: AppSession, invitationId: string) {

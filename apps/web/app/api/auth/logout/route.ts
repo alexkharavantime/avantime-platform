@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+import { defaultLocale, isLocale, localePath } from '../../../../lib/i18n';
 import { isSameOriginMutation } from '../../../../lib/identity-auth';
 import { recordIdentitySecurityEvent } from '../../../../lib/identity-security-events';
 import {
@@ -11,6 +12,8 @@ import {
 } from '../../../../lib/session';
 
 export async function POST(request: Request) {
+  const localeHeader = request.headers.get('x-avantime-locale');
+  const locale = isLocale(localeHeader) ? localeHeader : defaultLocale;
   if (!isSameOriginMutation(request)) {
     return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
   }
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
       );
     }
   }
-  const response = NextResponse.redirect(new URL('/portal/login', request.url), 303);
+  const response = NextResponse.redirect(new URL(localePath(locale, '/portal/login'), request.url), 303);
   response.cookies.set(SESSION_COOKIE, '', expiredSessionCookieOptions());
   return response;
 }

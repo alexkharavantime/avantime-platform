@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { defaultLocale, isLocale, localePath } from '../../../../../../lib/i18n';
 import { beginOidcAuthorization, OidcValidationError } from '../../../../../../lib/oidc';
 import { safeReturnTo } from '../../../../../../lib/safe-return-to';
 import { getSession } from '../../../../../../lib/session';
@@ -11,6 +12,8 @@ function callbackUri(request: Request) {
 }
 
 export async function GET(request: Request, context: { params: Promise<{ providerKey: string }> }) {
+  const localeHeader = request.headers.get('x-avantime-locale');
+  const locale = isLocale(localeHeader) ? localeHeader : defaultLocale;
   const { providerKey } = await context.params;
   const session = await getSession();
   const searchParams = new URL(request.url).searchParams;
@@ -22,7 +25,7 @@ export async function GET(request: Request, context: { params: Promise<{ provide
     (validationRequested && !hasOrganizationPermission(session, 'identity.providers.manage'))
   ) {
     return NextResponse.redirect(
-      new URL('/portal/login?oidcError=link_session_required', request.url),
+      new URL(localePath(locale, '/portal/login?oidcError=link_session_required'), request.url),
       303,
     );
   }
@@ -44,6 +47,9 @@ export async function GET(request: Request, context: { params: Promise<{ provide
       error instanceof OidcValidationError && error.code === 'PROVIDER_UNAVAILABLE'
         ? 'provider_unavailable'
         : 'authorization_unavailable';
-    return NextResponse.redirect(new URL(`/portal/login?oidcError=${code}`, request.url), 303);
+    return NextResponse.redirect(
+      new URL(localePath(locale, `/portal/login?oidcError=${code}`), request.url),
+      303,
+    );
   }
 }

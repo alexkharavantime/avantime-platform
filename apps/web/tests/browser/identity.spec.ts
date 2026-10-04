@@ -161,6 +161,7 @@ test.describe.serial('production identity browser lifecycle', () => {
     await page.getByRole('button', { name: 'Изменить пароль' }).click();
     await expect(page).toHaveURL(/\/portal\/login$/u);
     currentPassword = resetPassword;
+
   });
 
   test('ADMIN policy is tenant-derived and email-only external linking is denied', async ({

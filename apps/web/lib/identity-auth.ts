@@ -3,6 +3,7 @@ import { getPrisma } from '@avantime/database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { getDemoIdentity } from './demo-auth';
+import { MFA_ENROLLMENT_CHALLENGE_TTL_MS } from './session-constants';
 import {
   evaluateMfaPolicy,
   isOrganizationLoginMethodAllowed,
@@ -14,7 +15,7 @@ import { safeReturnTo } from './safe-return-to';
 import type { MembershipStatus, OrganizationRole, SessionIdentity } from './session';
 
 const LOGIN_CHALLENGE_TTL_MS = 5 * 60_000;
-const LOGIN_CHALLENGE_MAX_ATTEMPTS = 5;
+export const LOGIN_CHALLENGE_MAX_ATTEMPTS = 5;
 
 class MfaReplayError extends Error {}
 
@@ -173,6 +174,7 @@ async function createLoginChallenge(
   redirectTo: string | undefined,
   now: Date,
   identityProviderId?: string,
+  ttlMs = LOGIN_CHALLENGE_TTL_MS,
 ) {
   const rawToken = randomBytes(32).toString('base64url');
   const membership = chooseMembership(user);
@@ -183,7 +185,7 @@ async function createLoginChallenge(
       companyId: membership?.companyId ?? null,
       identityProviderId: identityProviderId ?? null,
       redirectTo: safeReturnTo(redirectTo) ?? null,
-      expiresAt: new Date(now.getTime() + LOGIN_CHALLENGE_TTL_MS),
+      expiresAt: new Date(now.getTime() + ttlMs),
     },
   });
   return rawToken;
@@ -387,7 +389,14 @@ export async function authenticatePrimaryCredential(input: {
     if (decision.challengeRequired || decision.enrollmentRequired) {
       return {
         status: 'MFA_REQUIRED',
-        challengeToken: await createLoginChallenge(prisma, user, input.redirectTo, now),
+        challengeToken: await createLoginChallenge(
+          prisma,
+          user,
+          input.redirectTo,
+          now,
+          undefined,
+          decision.enrollmentRequired ? MFA_ENROLLMENT_CHALLENGE_TTL_MS : LOGIN_CHALLENGE_TTL_MS,
+        ),
         enrollmentRequired: decision.enrollmentRequired,
         userId: user.id,
         companyId: identity.companyId ?? null,
@@ -419,13 +428,68 @@ async function loadChallenge(prisma: PrismaClient, rawToken: string) {
             include: { company: { select: { name: true } } },
           },
           mfaMethods: {
-            where: { kind: 'TOTP', status: 'ACTIVE' },
+            where: { kind: 'TOTP', status: 'ACTIVE', disabledAt: null },
             select: { id: true, secretEncrypted: true, lastUsedCounter: true },
           },
         },
       },
     },
   });
+}
+
+export type InitialMfaEnrollmentContext = {
+  challengeId: string;
+  userId: string;
+  email: string;
+  companyId: string | null;
+};
+
+export async function authorizeInitialMfaEnrollment(
+  rawToken: string,
+  now = new Date(),
+): Promise<InitialMfaEnrollmentContext | null> {
+  if (rawToken.length < 32 || rawToken.length > 256) return null;
+  try {
+    const prisma = (await getPrisma()) as PrismaClient | null;
+    if (!prisma) return null;
+    const challenge = await loadChallenge(prisma, rawToken);
+    if (
+      !challenge ||
+      challenge.consumedAt ||
+      challenge.expiresAt <= now ||
+      challenge.attempts >= LOGIN_CHALLENGE_MAX_ATTEMPTS ||
+      challenge.identityProviderId ||
+      !challenge.user.active ||
+      challenge.user.disabledAt ||
+      challenge.user.mfaMethods.length > 0
+    ) {
+      return null;
+    }
+
+    const user = challenge.user as UserRow;
+    const identity = toIdentity(user, false);
+    if (!identity) return null;
+    const { policy, exemption } = await loadMfaPolicy(prisma, user, now);
+    const decision = evaluateMfaPolicy({
+      role: user.role,
+      organizationRole: identity.organizationRole,
+      hasActiveMfa: false,
+      policy,
+      exemption,
+      now,
+      requireAdminMfa: requireAdminMfa(),
+    });
+    if (!decision.enrollmentRequired) return null;
+
+    return {
+      challengeId: challenge.id,
+      userId: user.id,
+      email: user.email,
+      companyId: challenge.companyId ?? identity.companyId ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function authenticateMfaChallenge(input: {

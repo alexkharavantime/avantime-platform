@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { localePath, type Locale } from '../../lib/i18n';
 
 type SafeProvider = {
   id: string;
@@ -42,6 +43,12 @@ const defaultClaims = {
   hostedDomain: 'hd',
 };
 
+const copy: Record<Locale, Record<string, string>> = {
+  lv: { error: 'Darbību neizdevās pabeigt.', metadata: 'Discovery metadati ir apstiprināti. Reālā tenant validācija joprojām ir obligāta.', validation: 'Validācija un ieviešana', status: 'Statuss', version: 'Konfigurācijas versija', secretSet: 'iestatīts · atslēga', secretMissing: 'nav iestatīts', evidenceMissing: 'Reālā tenant validācija nav reģistrēta', checkMetadata: 'Pārbaudīt discovery metadatus', disable: 'Atspējot jaunas pieteikšanās', enable: 'Iespējot pēc validācijas', checkTenant: 'Pārbaudīt īsto tenant', linkIdentity: 'Saistīt pašreizējo identitāti', configuration: 'Pakalpojuma sniedzēja konfigurācija', secretHelp: 'Client secret netiek saglabāts šeit: norādiet tikai write-only atsauci no apstiprinātas noslēpumu glabātuves.', profile: 'Pakalpojuma sniedzēja veids', key: 'Stabilā atslēga', displayName: 'Parādāmais nosaukums', newSecret: 'Jauna client-secret atsauce', allowlist: 'Atļauto Redirect URI saraksts — pa vienam URI rindā', domains: 'Atļautie e-pasta/domēna nosaukumi', mapping: 'Organizācijas kartēšana', tenantPolicy: 'Tenant kartēšanas politika', claims: 'Apliecinājumu kartēšana', groups: 'Grupu kartēšana (tikai CLIENT)', sessionPolicy: 'Sesijas pēc atspējošanas', revokeSessions: 'Atsaukt pakalpojuma sesijas', preserveSessions: 'Saglabāt esošās sesijas', issuerChange: 'Apstiprinu izdevēja maiņu: pakalpojums tiks atspējots, un būs jāveic pilna atkārtota validācija.', saving: 'Saglabā…', save: 'Saglabāt konfigurāciju' },
+  ru: { error: 'Не удалось выполнить операцию.', metadata: 'Метаданные Discovery подтверждены. Реальная проверка tenant по-прежнему обязательна.', validation: 'Проверка и запуск', status: 'Статус', version: 'Версия конфигурации', secretSet: 'настроен · ключ', secretMissing: 'не настроен', evidenceMissing: 'Реальная проверка tenant не записана', checkMetadata: 'Проверить метаданные Discovery', disable: 'Отключить новые входы', enable: 'Включить после проверки', checkTenant: 'Проверить реальный tenant', linkIdentity: 'Связать текущую учётную запись', configuration: 'Конфигурация поставщика', secretHelp: 'Client secret здесь не сохраняется: укажите только write-only ссылку на одобренное хранилище секретов.', profile: 'Тип поставщика', key: 'Стабильный ключ', displayName: 'Отображаемое имя', newSecret: 'Новая ссылка на client secret', allowlist: 'Список разрешённых Redirect URI, по одному URI в строке', domains: 'Разрешённые email и домены', mapping: 'Связь с организацией', tenantPolicy: 'Политика сопоставления tenant', claims: 'Сопоставление claims', groups: 'Сопоставление групп (только CLIENT)', sessionPolicy: 'Сессии после отключения', revokeSessions: 'Отозвать сессии поставщика', preserveSessions: 'Сохранить текущие сессии', issuerChange: 'Подтверждаю смену issuer: поставщик будет отключён и потребует полной повторной проверки.', saving: 'Сохраняем…', save: 'Сохранить конфигурацию' },
+  en: { error: 'The operation could not be completed.', metadata: 'Discovery metadata confirmed. Real tenant validation is still required.', validation: 'Validation and rollout', status: 'Status', version: 'Configuration version', secretSet: 'configured · key', secretMissing: 'not configured', evidenceMissing: 'Real tenant validation is not recorded', checkMetadata: 'Check discovery metadata', disable: 'Disable new sign-ins', enable: 'Enable after validation', checkTenant: 'Validate real tenant', linkIdentity: 'Link current identity', configuration: 'Provider configuration', secretHelp: 'Client secrets are not stored here. Provide only a write-only reference from the approved secret boundary.', profile: 'Provider type', key: 'Stable key', displayName: 'Display name', newSecret: 'New client-secret reference', allowlist: 'Redirect URI allowlist, one URI per line', domains: 'Allowed email and hosted domains', mapping: 'Organization mapping', tenantPolicy: 'Tenant mapping policy', claims: 'Claim mapping', groups: 'Group mapping (CLIENT only)', sessionPolicy: 'Sessions after disable', revokeSessions: 'Revoke provider sessions', preserveSessions: 'Preserve existing sessions', issuerChange: 'I confirm this issuer change: the provider will be disabled and require full revalidation.', saving: 'Saving…', save: 'Save configuration' },
+};
+
 function prettyJson(value: Record<string, unknown>) {
   return JSON.stringify(value, null, 2);
 }
@@ -49,9 +56,11 @@ function prettyJson(value: Record<string, unknown>) {
 export function IdentityProviderForm({
   initial,
   callbackUri,
+  locale,
 }: {
   initial?: SafeProvider;
   callbackUri: string;
+  locale: Locale;
 }) {
   const router = useRouter();
   const [profile, setProfile] = useState<SafeProvider['profile']>(
@@ -85,6 +94,7 @@ export function IdentityProviderForm({
   const [controlledIssuerRevalidation, setControlledIssuerRevalidation] = useState(false);
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(false);
+  const text = copy[locale];
 
   async function request(path: string, method: 'POST' | 'PUT', body: unknown) {
     const response = await fetch(path, {
@@ -93,7 +103,7 @@ export function IdentityProviderForm({
       body: JSON.stringify(body),
     });
     const data = (await response.json()) as SafeProvider & { error?: string };
-    if (!response.ok) throw new Error(data.error ?? 'Операция не выполнена.');
+    if (!response.ok) throw new Error(text.error);
     return data;
   }
 
@@ -129,7 +139,7 @@ export function IdentityProviderForm({
     try {
       await operation();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Операция не выполнена.');
+      setMessage(error instanceof Error ? error.message : text.error);
     } finally {
       setPending(false);
     }
@@ -145,9 +155,7 @@ export function IdentityProviderForm({
             controlledIssuerRevalidation,
           })
         : await request('/api/account/security/identity-providers', 'POST', configuration());
-      router.push(
-        `/portal/settings/security/identity-providers/${encodeURIComponent(provider.id)}`,
-      );
+      router.push(localePath(locale, `/portal/settings/security/identity-providers/${encodeURIComponent(provider.id)}`));
       router.refresh();
     });
   }
@@ -158,9 +166,7 @@ export function IdentityProviderForm({
       await request(`/api/account/security/identity-providers/${initial.id}/metadata`, 'POST', {
         expectedVersion: initial.configurationVersion,
       });
-      setMessage(
-        'Discovery metadata подтверждены. Реальная tenant validation всё ещё обязательна.',
-      );
+      setMessage(text.metadata);
       router.refresh();
     });
   }
@@ -185,27 +191,27 @@ export function IdentityProviderForm({
       )}
       {initial && (
         <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-xl font-black">Validation и rollout</h2>
+          <h2 className="text-xl font-black">{text.validation}</h2>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="font-bold">Статус</dt>
+              <dt className="font-bold">{text.status}</dt>
               <dd>{initial.validationStatus}</dd>
             </div>
             <div>
-              <dt className="font-bold">Версия конфигурации</dt>
+              <dt className="font-bold">{text.version}</dt>
               <dd>{initial.configurationVersion}</dd>
             </div>
             <div>
               <dt className="font-bold">Secret reference</dt>
               <dd>
                 {initial.hasClientSecretReference
-                  ? `настроен · key ${initial.secretKeyVersion ?? 'unknown'}`
-                  : 'не настроен'}
+                  ? `${text.secretSet} ${initial.secretKeyVersion ?? 'unknown'}`
+                  : text.secretMissing}
               </dd>
             </div>
             <div>
               <dt className="font-bold">Evidence</dt>
-              <dd>{initial.validationEvidenceRef ?? 'реальная tenant validation не записана'}</dd>
+              <dd>{initial.validationEvidenceRef ?? text.evidenceMissing}</dd>
             </div>
           </dl>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -215,7 +221,7 @@ export function IdentityProviderForm({
               onClick={refreshMetadata}
               className="rounded-xl border border-slate-300 px-4 py-2 font-bold"
             >
-              Проверить discovery metadata
+              {text.checkMetadata}
             </button>
             <button
               type="button"
@@ -223,14 +229,14 @@ export function IdentityProviderForm({
               onClick={() => setEnabled(!initial.enabled)}
               className="rounded-xl bg-slate-950 px-4 py-2 font-bold text-white disabled:opacity-60"
             >
-              {initial.enabled ? 'Отключить новые входы' : 'Включить после validation'}
+              {initial.enabled ? text.disable : text.enable}
             </button>
             {!initial.enabled && initial.validationStatus === 'METADATA_VALIDATED' && (
               <a
                 href={`/api/auth/oidc/${encodeURIComponent(initial.key)}/authorize?mode=validate`}
                 className="rounded-xl border border-emerald-300 px-4 py-2 font-bold text-emerald-700"
               >
-                Проверить реальный tenant
+                {text.checkTenant}
               </a>
             )}
             {initial.enabled && (
@@ -238,7 +244,7 @@ export function IdentityProviderForm({
                 href={`/api/auth/oidc/${encodeURIComponent(initial.key)}/authorize?mode=link`}
                 className="rounded-xl border border-blue-300 px-4 py-2 font-bold text-blue-700"
               >
-                Связать текущую identity
+                {text.linkIdentity}
               </a>
             )}
           </div>
@@ -246,14 +252,11 @@ export function IdentityProviderForm({
       )}
 
       <form onSubmit={save} className="rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="text-xl font-black">Конфигурация провайдера</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Client secret не сохраняется здесь: укажите только write-only reference из approved secret
-          boundary.
-        </p>
+        <h2 className="text-xl font-black">{text.configuration}</h2>
+        <p className="mt-2 text-sm text-slate-600">{text.secretHelp}</p>
         <div className="mt-6 grid gap-5 md:grid-cols-2">
           <label>
-            <span className="mb-2 block text-sm font-bold">Тип провайдера</span>
+            <span className="mb-2 block text-sm font-bold">{text.profile}</span>
             <select
               value={profile}
               onChange={(event) => setProfile(event.target.value as SafeProvider['profile'])}
@@ -265,7 +268,7 @@ export function IdentityProviderForm({
             </select>
           </label>
           <label>
-            <span className="mb-2 block text-sm font-bold">Stable key</span>
+            <span className="mb-2 block text-sm font-bold">{text.key}</span>
             <input
               required
               value={key}
@@ -274,7 +277,7 @@ export function IdentityProviderForm({
             />
           </label>
           <label>
-            <span className="mb-2 block text-sm font-bold">Display name</span>
+            <span className="mb-2 block text-sm font-bold">{text.displayName}</span>
             <input
               required
               value={displayName}
@@ -310,7 +313,7 @@ export function IdentityProviderForm({
             />
           </label>
           <label className="md:col-span-2">
-            <span className="mb-2 block text-sm font-bold">Новый client-secret reference</span>
+            <span className="mb-2 block text-sm font-bold">{text.newSecret}</span>
             <input
               value={clientSecretReference}
               onChange={(event) => setClientSecretReference(event.target.value)}
@@ -321,7 +324,7 @@ export function IdentityProviderForm({
           </label>
           <label className="md:col-span-2">
             <span className="mb-2 block text-sm font-bold">
-              Redirect URI allowlist — по одному URI в строке
+              {text.allowlist}
             </span>
             <textarea
               required
@@ -332,7 +335,7 @@ export function IdentityProviderForm({
             />
           </label>
           <label>
-            <span className="mb-2 block text-sm font-bold">Allowed email/hosted domains</span>
+            <span className="mb-2 block text-sm font-bold">{text.domains}</span>
             <textarea
               rows={4}
               value={allowedDomains}
@@ -341,7 +344,7 @@ export function IdentityProviderForm({
             />
           </label>
           <label>
-            <span className="mb-2 block text-sm font-bold">Organization mapping</span>
+            <span className="mb-2 block text-sm font-bold">{text.mapping}</span>
             <select
               value={mappingMode}
               onChange={(event) =>
@@ -349,16 +352,16 @@ export function IdentityProviderForm({
               }
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
             >
-              <option value="STATIC">Static provider → organization</option>
-              <option value="PROVIDER_TENANT_CLAIM">Provider tenant claim</option>
-              <option value="HOSTED_DOMAIN">Hosted domain claim</option>
-              <option value="CLAIM">Allowlisted custom claim</option>
+              <option value="STATIC">{locale === 'ru' ? 'Поставщик → организация' : locale === 'lv' ? 'Pakalpojuma sniedzējs → organizācija' : 'Static provider → organization'}</option>
+              <option value="PROVIDER_TENANT_CLAIM">{locale === 'ru' ? 'Tenant claim поставщика' : locale === 'lv' ? 'Pakalpojuma sniedzēja tenant claim' : 'Provider tenant claim'}</option>
+              <option value="HOSTED_DOMAIN">{locale === 'ru' ? 'Claim домена' : locale === 'lv' ? 'Hostētā domēna claim' : 'Hosted domain claim'}</option>
+              <option value="CLAIM">{locale === 'ru' ? 'Разрешённый custom claim' : locale === 'lv' ? 'Atļauts pielāgots claim' : 'Allowlisted custom claim'}</option>
             </select>
           </label>
           {[
-            ['Tenant mapping policy', tenantMappingPolicy, setTenantMappingPolicy],
-            ['Claim mapping', claimMapping, setClaimMapping],
-            ['Group mapping (CLIENT only)', groupMapping, setGroupMapping],
+            [text.tenantPolicy, tenantMappingPolicy, setTenantMappingPolicy],
+            [text.claims, claimMapping, setClaimMapping],
+            [text.groups, groupMapping, setGroupMapping],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="md:col-span-2">
               <span className="mb-2 block text-sm font-bold">{label as string}</span>
@@ -373,7 +376,7 @@ export function IdentityProviderForm({
             </label>
           ))}
           <label>
-            <span className="mb-2 block text-sm font-bold">Sessions после disable</span>
+            <span className="mb-2 block text-sm font-bold">{text.sessionPolicy}</span>
             <select
               value={sessionPolicy}
               onChange={(event) =>
@@ -381,8 +384,8 @@ export function IdentityProviderForm({
               }
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
             >
-              <option value="REVOKE_ON_DISABLE">Отозвать provider sessions</option>
-              <option value="PRESERVE_EXISTING">Сохранить существующие sessions</option>
+              <option value="REVOKE_ON_DISABLE">{text.revokeSessions}</option>
+              <option value="PRESERVE_EXISTING">{text.preserveSessions}</option>
             </select>
           </label>
           {initial && initial.issuer !== issuer && (
@@ -392,8 +395,7 @@ export function IdentityProviderForm({
                 checked={controlledIssuerRevalidation}
                 onChange={(event) => setControlledIssuerRevalidation(event.target.checked)}
               />
-              Подтверждаю controlled issuer change: provider будет отключён и потребует полную
-              revalidation.
+              {text.issuerChange}
             </label>
           )}
         </div>
@@ -401,7 +403,7 @@ export function IdentityProviderForm({
           disabled={pending}
           className="mt-6 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-60"
         >
-          {pending ? 'Сохраняем…' : 'Сохранить конфигурацию'}
+          {pending ? text.saving : text.save}
         </button>
       </form>
     </div>

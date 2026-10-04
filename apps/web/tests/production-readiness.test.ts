@@ -38,6 +38,7 @@ function productionEnvironment() {
     IDENTITY_EMAIL_DRIVER: 'resend',
     MAIL_FROM: 'security@portal.example.com',
     RESEND_API_KEY: 'resend-key-with-more-than-20-characters',
+    ACCESS_REQUEST_NOTIFICATION_EMAIL: 'owner@portal.example.com',
     DATABASE_URL: 'postgresql://user:password@database.example.com/avantime?sslmode=verify-full',
     DOCUMENT_STORAGE_DRIVER: 's3',
     DOCUMENT_METADATA_DRIVER: 'postgresql',
@@ -260,6 +261,12 @@ test('production config rejects local adapters, placeholders, missing TLS, and p
     validateProductionConfiguration({
       ...productionEnvironment(),
       OIDC_ALLOWED_HOSTS: 'localhost',
+    }),
+  );
+  assert.throws(() =>
+    validateProductionConfiguration({
+      ...productionEnvironment(),
+      ACCESS_REQUEST_NOTIFICATION_EMAIL: 'not-an-email',
     }),
   );
 });

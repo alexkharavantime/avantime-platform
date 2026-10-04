@@ -17,18 +17,27 @@ import {
 export async function POST(request: Request) {
   const correlationId = request.headers.get('x-avantime-correlation-id') ?? crypto.randomUUID();
   if (!isSameOriginMutation(request)) {
-    return NextResponse.json({ error: 'Запрос отклонён.' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Запрос отклонён.', errorCode: 'AUTH_REQUEST_REJECTED' },
+      { status: 403 },
+    );
   }
   let body: { challengeToken?: unknown; code?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return NextResponse.json({ error: 'Неверный код подтверждения.' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Неверный код подтверждения.', errorCode: 'MFA_INVALID_CODE' },
+      { status: 401 },
+    );
   }
   const challengeToken = typeof body.challengeToken === 'string' ? body.challengeToken : '';
   const code = typeof body.code === 'string' ? body.code.trim() : '';
   if (!challengeToken || !code) {
-    return NextResponse.json({ error: 'Неверный код подтверждения.' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Неверный код подтверждения.', errorCode: 'MFA_INVALID_CODE' },
+      { status: 401 },
+    );
   }
 
   try {
@@ -48,12 +57,15 @@ export async function POST(request: Request) {
         notify: Boolean(securityContext.userId && securityContext.companyId),
       });
       return NextResponse.json(
-        { error: 'Слишком много попыток. Начните вход заново.' },
+        { error: 'Слишком много попыток. Начните вход заново.', errorCode: 'MFA_RATE_LIMITED' },
         { status: 429 },
       );
     }
   } catch {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
 
   const result = await authenticateMfaChallenge({ challengeToken, code });
@@ -77,12 +89,16 @@ export async function POST(request: Request) {
           result.status === 'EXPIRED'
             ? 'Сеанс подтверждения истёк. Начните вход заново.'
             : 'Неверный код подтверждения.',
+        errorCode: result.status === 'EXPIRED' ? 'MFA_CHALLENGE_EXPIRED' : 'MFA_INVALID_CODE',
       },
       { status: 401 },
     );
   }
   if (result.status === 'UNAVAILABLE') {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
 
   try {
@@ -113,6 +129,9 @@ export async function POST(request: Request) {
     });
     return response;
   } catch {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
 }

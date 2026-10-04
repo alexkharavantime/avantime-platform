@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+import { defaultLocale, isLocale, localePath } from '../../../../../lib/i18n';
 import { recordIdentitySecurityEvent } from '../../../../../lib/identity-security-events';
 import { consumeOidcAuthorization } from '../../../../../lib/oidc';
 import { completeOidcCallback, OIDC_MFA_COOKIE } from '../../../../../lib/oidc-flow';
@@ -18,8 +19,10 @@ function callbackUri(request: Request) {
 }
 
 function loginError(request: Request, code: string) {
+  const localeHeader = request.headers.get('x-avantime-locale');
+  const locale = isLocale(localeHeader) ? localeHeader : defaultLocale;
   const response = NextResponse.redirect(
-    new URL(`/portal/login?oidcError=${code}`, request.url),
+    new URL(localePath(locale, `/portal/login?oidcError=${code}`), request.url),
     303,
   );
   response.headers.set('Cache-Control', 'no-store');
@@ -28,6 +31,8 @@ function loginError(request: Request, code: string) {
 }
 
 export async function GET(request: Request) {
+  const localeHeader = request.headers.get('x-avantime-locale');
+  const locale = isLocale(localeHeader) ? localeHeader : defaultLocale;
   const url = new URL(request.url);
   const state = url.searchParams.get('state') ?? '';
   const code = url.searchParams.get('code') ?? '';
@@ -58,10 +63,10 @@ export async function GET(request: Request) {
       correlationId,
     });
     if (result.status === 'LINKED' || result.status === 'PROVIDER_VALIDATED') {
-      return NextResponse.redirect(new URL(result.returnTo, request.url), 303);
+      return NextResponse.redirect(new URL(localePath(locale, result.returnTo), request.url), 303);
     }
     if (result.status === 'MFA_REQUIRED') {
-      const target = new URL('/portal/login', request.url);
+      const target = new URL(localePath(locale, '/portal/login'), request.url);
       target.searchParams.set('oidcMfa', '1');
       if (result.enrollmentRequired) target.searchParams.set('enrollmentRequired', '1');
       if (result.returnTo) target.searchParams.set('returnTo', result.returnTo);
@@ -83,7 +88,7 @@ export async function GET(request: Request) {
     });
     const target =
       safeReturnTo(result.returnTo) ?? (result.identity.role === 'ADMIN' ? '/admin' : '/portal');
-    const response = NextResponse.redirect(new URL(target, request.url), 303);
+    const response = NextResponse.redirect(new URL(localePath(locale, target), request.url), 303);
     response.cookies.set(SESSION_COOKIE, created.token, sessionCookieOptions());
     response.headers.set('Cache-Control', 'no-store');
     await recordIdentitySecurityEvent({

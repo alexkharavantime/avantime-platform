@@ -14,6 +14,8 @@ const IDENTITY_SECURITY_ACTIONS = new Set([
   'identity.password.reset_completed',
   'identity.email_verification.requested',
   'identity.email_verification.completed',
+  'identity.email.change_requested',
+  'identity.email.changed',
   'identity.mfa.enrollment_started',
   'identity.mfa.enabled',
   'identity.mfa.disabled',
@@ -36,6 +38,7 @@ const IDENTITY_SECURITY_ACTIONS = new Set([
   'identity.invitation.revoked',
   'identity.access_request.submitted',
   'identity.access_request.email_verified',
+  'identity.access_request.verification_resent',
   'identity.access_request.approved',
   'identity.access_request.rejected',
 ] as const);

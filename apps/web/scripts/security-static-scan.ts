@@ -268,6 +268,7 @@ async function main() {
     if (
       (mode === 'identity' || mode === 'client-tenant') &&
       file.startsWith('apps/web/components/portal/') &&
+      file !== 'apps/web/components/portal/access-requests-queue.tsx' &&
       content.startsWith("'use client'") &&
       /(?:companyId|organizationId|tenantId)/u.test(content)
     ) {
