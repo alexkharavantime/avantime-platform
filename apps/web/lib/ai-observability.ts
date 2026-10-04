@@ -7,6 +7,20 @@ export type AiOperationalEventName =
   | 'retrieval_query'
   | 'rag_request';
 
+export type AiProviderDiagnostic = {
+  provider: 'openai' | 'gemini' | 'fake' | 'disabled' | 'unknown';
+  operation: 'embedding' | 'answer';
+  httpStatus?: number;
+  providerErrorName?: string;
+  providerErrorType?: string;
+  providerErrorCode?: string;
+  providerRequestId?: string;
+  responseStatus?: string;
+  responseErrorType?: string;
+  responseErrorCode?: string;
+  incompleteReason?: string;
+};
+
 export type AiOperationalEvent = {
   name: AiOperationalEventName;
   occurredAt: string;
@@ -19,6 +33,7 @@ export type AiOperationalEvent = {
   outputTokens?: number;
   estimatedCostEur?: number;
   errorCode?: string;
+  providerDiagnostic?: AiProviderDiagnostic;
 };
 
 export interface AiOperationalEventSink {

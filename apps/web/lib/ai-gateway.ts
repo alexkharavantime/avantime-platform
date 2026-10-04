@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-import type { AiOperationalEventSink } from './ai-observability';
+import type { AiOperationalEventSink, AiProviderDiagnostic } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
 import {
   MemoryAiCostController,
@@ -125,6 +125,7 @@ export class AiGatewayError extends Error {
     readonly code: AiGatewayErrorCode,
     readonly transient: boolean,
     safeMessage: string,
+    readonly providerDiagnostic?: AiProviderDiagnostic,
   ) {
     super(safeMessage);
     this.name = 'AiGatewayError';
@@ -160,16 +161,63 @@ function validateEmbeddingResult(
   }
 }
 
-function classifyProviderError(error: unknown): AiGatewayError {
+function safeDiagnosticToken(value: unknown, maximumLength = 64) {
+  if (typeof value !== 'string' || value.length > maximumLength) return undefined;
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(value) ? value : undefined;
+}
+
+function diagnosticProvider(provider: string): AiProviderDiagnostic['provider'] {
+  return provider === 'openai' ||
+    provider === 'gemini' ||
+    provider === 'fake' ||
+    provider === 'disabled'
+    ? provider
+    : 'unknown';
+}
+
+function classifyProviderError(
+  error: unknown,
+  provider: AiProviderDiagnostic['provider'],
+  operation: AiProviderDiagnostic['operation'],
+): AiGatewayError {
   if (error instanceof AiGatewayError) return error;
-  const status =
-    error && typeof error === 'object' && 'status' in error
-      ? Number((error as { status?: unknown }).status)
-      : undefined;
+  const record = error && typeof error === 'object' ? (error as Record<string, unknown>) : {};
+  const nestedError =
+    record.error && typeof record.error === 'object'
+      ? (record.error as Record<string, unknown>)
+      : {};
+  const status = typeof record.status === 'number' ? record.status : undefined;
+  const diagnostic: AiProviderDiagnostic = {
+    provider,
+    operation,
+    ...(status !== undefined ? { httpStatus: status } : {}),
+    ...(safeDiagnosticToken(record.name)
+      ? { providerErrorName: safeDiagnosticToken(record.name) }
+      : {}),
+    ...(safeDiagnosticToken(record.type ?? nestedError.type)
+      ? { providerErrorType: safeDiagnosticToken(record.type ?? nestedError.type) }
+      : {}),
+    ...(safeDiagnosticToken(record.code ?? nestedError.code)
+      ? { providerErrorCode: safeDiagnosticToken(record.code ?? nestedError.code) }
+      : {}),
+    ...(safeDiagnosticToken(record.requestID ?? record.request_id, 128)
+      ? { providerRequestId: safeDiagnosticToken(record.requestID ?? record.request_id, 128) }
+      : {}),
+  };
   if (status === 429 || (status !== undefined && status >= 500)) {
-    return new AiGatewayError('AI_PROVIDER_UNAVAILABLE', true, 'AI provider временно недоступен.');
+    return new AiGatewayError(
+      'AI_PROVIDER_UNAVAILABLE',
+      true,
+      'AI provider временно недоступен.',
+      diagnostic,
+    );
   }
-  return new AiGatewayError('AI_REQUEST_REJECTED', false, 'AI provider отклонил запрос.');
+  return new AiGatewayError(
+    'AI_REQUEST_REJECTED',
+    false,
+    'AI provider отклонил запрос.',
+    diagnostic,
+  );
 }
 
 async function withTimeout<T>(
@@ -342,6 +390,25 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
       },
       { signal },
     );
+    if ((response.status && response.status !== 'completed') || response.error) {
+      const diagnostic: AiProviderDiagnostic = {
+        provider: 'openai',
+        operation: 'answer',
+        ...(response.status ? { responseStatus: response.status } : {}),
+        ...(safeDiagnosticToken(response.error?.code)
+          ? { responseErrorCode: safeDiagnosticToken(response.error?.code) }
+          : {}),
+        ...(safeDiagnosticToken(response.incomplete_details?.reason)
+          ? { incompleteReason: safeDiagnosticToken(response.incomplete_details?.reason) }
+          : {}),
+      };
+      throw new AiGatewayError(
+        response.status === 'failed' ? 'AI_PROVIDER_UNAVAILABLE' : 'AI_INVALID_RESPONSE',
+        response.status === 'failed',
+        'AI provider не завершил генерацию ответа.',
+        diagnostic,
+      );
+    }
     const inputTokens = response.usage?.input_tokens ?? 0;
     const outputTokens = response.usage?.output_tokens ?? 0;
     return {
@@ -548,17 +615,20 @@ export class DefaultAiGateway implements AiGateway {
     );
     const startedAt = Date.now();
     try {
-      const result = await this.withRetry(() =>
-        withTimeout(this.configuration.answer.timeoutMs, (signal) =>
-          this.answerProvider.generate(
-            {
-              ...request,
-              model: this.configuration.answer.model,
-              maximumOutputTokens: this.configuration.answer.maximumOutputTokens,
-            },
-            signal,
+      const result = await this.withRetry(
+        () =>
+          withTimeout(this.configuration.answer.timeoutMs, (signal) =>
+            this.answerProvider.generate(
+              {
+                ...request,
+                model: this.configuration.answer.model,
+                maximumOutputTokens: this.configuration.answer.maximumOutputTokens,
+              },
+              signal,
+            ),
           ),
-        ),
+        diagnosticProvider(this.answerProvider.id),
+        'answer',
       );
       if (!result.answer.trim()) {
         throw new AiGatewayError('AI_INVALID_RESPONSE', false, 'AI provider не вернул ответ.');
@@ -578,7 +648,11 @@ export class DefaultAiGateway implements AiGateway {
       return result;
     } catch (error) {
       await this.costController.release(reservation);
-      const normalized = classifyProviderError(error);
+      const normalized = classifyProviderError(
+        error,
+        diagnosticProvider(this.answerProvider.id),
+        'answer',
+      );
       this.events.record({
         name: 'provider_call',
         occurredAt: new Date().toISOString(),
@@ -587,7 +661,17 @@ export class DefaultAiGateway implements AiGateway {
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
         errorCode: normalized.code,
+        providerDiagnostic: normalized.providerDiagnostic,
       });
+      if (normalized.providerDiagnostic) {
+        console.warn(
+          JSON.stringify({
+            event: 'ai_provider_failure',
+            errorCode: normalized.code,
+            ...normalized.providerDiagnostic,
+          }),
+        );
+      }
       throw normalized;
     }
   }
@@ -616,10 +700,13 @@ export class DefaultAiGateway implements AiGateway {
     );
     const startedAt = Date.now();
     try {
-      const result = await this.withRetry(() =>
-        withTimeout(this.configuration.embedding.timeoutMs, (signal) =>
-          this.embeddingProvider.embed(request, signal),
-        ),
+      const result = await this.withRetry(
+        () =>
+          withTimeout(this.configuration.embedding.timeoutMs, (signal) =>
+            this.embeddingProvider.embed(request, signal),
+          ),
+        diagnosticProvider(this.embeddingProvider.id),
+        'embedding',
       );
       validateEmbeddingResult(result, request.texts.length, request.dimensions);
       await this.recordUsage(reservation, result.usage, request.texts.length);
@@ -636,7 +723,11 @@ export class DefaultAiGateway implements AiGateway {
       return result;
     } catch (error) {
       await this.costController.release(reservation);
-      const normalized = classifyProviderError(error);
+      const normalized = classifyProviderError(
+        error,
+        diagnosticProvider(this.embeddingProvider.id),
+        'embedding',
+      );
       this.events.record({
         name: 'provider_call',
         occurredAt: new Date().toISOString(),
@@ -645,18 +736,32 @@ export class DefaultAiGateway implements AiGateway {
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
         errorCode: normalized.code,
+        providerDiagnostic: normalized.providerDiagnostic,
       });
+      if (normalized.providerDiagnostic) {
+        console.warn(
+          JSON.stringify({
+            event: 'ai_provider_failure',
+            errorCode: normalized.code,
+            ...normalized.providerDiagnostic,
+          }),
+        );
+      }
       throw normalized;
     }
   }
 
-  private async withRetry<T>(action: () => Promise<T>) {
+  private async withRetry<T>(
+    action: () => Promise<T>,
+    provider: AiProviderDiagnostic['provider'],
+    operation: AiProviderDiagnostic['operation'],
+  ) {
     let lastError: AiGatewayError | undefined;
     for (let attempt = 1; attempt <= this.configuration.limits.providerMaxAttempts; attempt += 1) {
       try {
         return await action();
       } catch (error) {
-        lastError = classifyProviderError(error);
+        lastError = classifyProviderError(error, provider, operation);
         if (!lastError.transient || attempt === this.configuration.limits.providerMaxAttempts) {
           throw lastError;
         }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -15,12 +15,14 @@ import {
   type RagAnswerProvider,
   type RagGenerationRequest,
 } from '../lib/ai-gateway';
+import { getRealAiBudgetAllowance } from '../scripts/real-ai-budget';
 import {
   assertApiRateLimit,
   ApiRateLimitError,
   resetApiRateLimitsForTests,
 } from '../lib/api-rate-limit';
 import { MemoryAiCostController } from '../lib/ai-control';
+import { InMemoryAiOperationalEventSink } from '../lib/ai-observability';
 import {
   enqueueDocumentEmbedding,
   hashChunkContent,
@@ -922,6 +924,144 @@ test('AI Gateway retries transient errors, does not retry permanent errors and e
     }),
     (error: unknown) => error instanceof AiGatewayError && error.code === 'AI_TIMEOUT',
   );
+});
+
+test('OpenAI failures retain safe diagnostics and reject incomplete Responses', async () => {
+  const configuration = loadRagConfiguration({
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_EMBEDDING_DIMENSIONS: '4',
+    RAG_ANSWER_DRIVER: 'openai',
+    OPENAI_API_KEY: 'offline-test-key',
+    AI_RATE_LIMIT_PER_MINUTE: '100',
+    AI_PROVIDER_MAX_ATTEMPTS: '1',
+  });
+  const responseBody: { value?: Record<string, unknown> } = {};
+  let responseStatus = 503;
+  const provider = new OpenAiGatewayProvider(
+    'offline-test-key',
+    async () =>
+      new Response(
+        JSON.stringify(
+          responseBody.value ?? {
+            error: {
+              message: 'sensitive provider message',
+              type: 'server_error',
+              code: 'upstream_busy',
+            },
+          },
+        ),
+        {
+          status: responseStatus,
+          headers: {
+            'content-type': 'application/json',
+            'x-request-id': 'req_safe123',
+          },
+        },
+      ),
+  );
+  const events = new InMemoryAiOperationalEventSink();
+  const gateway = new DefaultAiGateway(
+    configuration,
+    new DeterministicFakeAiProvider(),
+    provider,
+    events,
+  );
+  const request = {
+    tenant: tenantA,
+    question: 'synthetic test question',
+    language: 'en',
+    systemInstructions: 'synthetic test only',
+    sources: [],
+    correlationId: 'provider-diagnostic-test',
+  };
+
+  await assert.rejects(
+    gateway.generateRagAnswer(request),
+    (error: unknown) =>
+      error instanceof AiGatewayError &&
+      error.code === 'AI_PROVIDER_UNAVAILABLE' &&
+      error.providerDiagnostic?.httpStatus === 503 &&
+      error.providerDiagnostic.providerErrorType === 'server_error' &&
+      error.providerDiagnostic.providerErrorCode === 'upstream_busy' &&
+      error.providerDiagnostic.providerRequestId === 'req_safe123',
+  );
+  const failedEvent = events.list().find((event) => event.name === 'provider_call');
+  assert.equal(failedEvent?.providerDiagnostic?.providerRequestId, 'req_safe123');
+  assert.equal(JSON.stringify(failedEvent).includes('sensitive provider message'), false);
+
+  responseStatus = 200;
+  responseBody.value = {
+    id: 'resp_synthetic',
+    object: 'response',
+    created_at: 1,
+    model: 'gpt-5-mini',
+    status: 'incomplete',
+    error: { type: 'server_error', code: 'server_error', message: 'sensitive response message' },
+    incomplete_details: { reason: 'max_output_tokens' },
+    output: [],
+    usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 },
+  };
+  await assert.rejects(
+    gateway.generateRagAnswer({ ...request, correlationId: 'incomplete-response-test' }),
+    (error: unknown) =>
+      error instanceof AiGatewayError &&
+      error.code === 'AI_INVALID_RESPONSE' &&
+      error.providerDiagnostic?.responseStatus === 'incomplete' &&
+      error.providerDiagnostic.incompleteReason === 'max_output_tokens',
+  );
+  const incompleteEvent = events
+    .list()
+    .filter((event) => event.name === 'provider_call')
+    .at(-1);
+  assert.equal(incompleteEvent?.providerDiagnostic?.responseErrorCode, 'server_error');
+  assert.equal(JSON.stringify(incompleteEvent).includes('sensitive response message'), false);
+});
+
+test('real-AI budget carryover fails closed across fresh databases', async () => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), 'avantime-ai-budget-'));
+  const now = new Date('2026-10-04T12:00:00.000Z');
+  const artifacts = path.join(repositoryRoot, '.artifacts');
+  try {
+    assert.deepEqual(getRealAiBudgetAllowance(repositoryRoot, now), {
+      dailyRemainingEur: 0.25,
+      monthlyRemainingEur: 1,
+    });
+    await mkdir(artifacts);
+    const runDirectory = path.join(artifacts, `document-kb-real-ai-${'a'.repeat(32)}`);
+    await mkdir(runDirectory);
+    await writeFile(
+      path.join(runDirectory, 'usage-summary.json'),
+      JSON.stringify({
+        generatedAt: now.toISOString(),
+        budgetImpactEur: 0.1,
+        providerOperationCount: 1,
+      }),
+    );
+    assert.deepEqual(getRealAiBudgetAllowance(repositoryRoot, now), {
+      dailyRemainingEur: 0.15,
+      monthlyRemainingEur: 0.9,
+    });
+
+    await writeFile(
+      path.join(runDirectory, 'usage-summary.json'),
+      JSON.stringify({
+        generatedAt: now.toISOString(),
+        budgetImpactEur: 0.1,
+        providerOperationCount: 2,
+      }),
+    );
+    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /provider-operation limit/u);
+
+    await rm(path.join(runDirectory, 'usage-summary.json'));
+    await utimes(runDirectory, now, now);
+    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /no usage summary/u);
+    const previousMonth = new Date('2026-09-30T12:00:00.000Z');
+    await utimes(runDirectory, previousMonth, previousMonth);
+    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /no usage summary/u);
+  } finally {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  }
 });
 
 test('single-document reindex is dry-run safe and idempotent', async () => {

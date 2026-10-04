@@ -3,33 +3,33 @@
 Statuses are `Pending`, `Verified` or `Accepted risk`. Evidence must reference an
 immutable CI artifact, release digest, runbook record or approved ticket.
 
-| Area                             | Owner             | Status   | Blocking       | Evidence / verification                                                            |
-| -------------------------------- | ----------------- | -------- | -------------- | ---------------------------------------------------------------------------------- |
-| Infrastructure/network isolation | Platform          | Pending  | Yes            | Architecture review and private network test                                       |
-| DNS/TLS                          | Platform/Security | Pending  | Yes            | External TLS scan                                                                  |
-| Secrets and rotation             | Security          | Pending  | Yes            | `npm run production:config-check`                                                  |
-| PostgreSQL/pgvector              | DBA               | Pending  | Yes            | migrations, capacity and PITR evidence                                             |
-| Object storage                   | Platform          | Pending  | Yes            | private policy/versioning/backup evidence                                          |
-| Redis queue/rate limit           | Platform          | Pending  | Yes            | queue integration and TLS/auth check                                               |
-| Identity/MFA/session lifecycle   | Security          | Pending  | Yes            | TASK-009 migration, key rotation, admin enrollment and staging login/revoke smoke  |
+| Area                             | Owner             | Status   | Blocking       | Evidence / verification                                                                                                                                                                             |
+| -------------------------------- | ----------------- | -------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Infrastructure/network isolation | Platform          | Pending  | Yes            | Architecture review and private network test                                                                                                                                                        |
+| DNS/TLS                          | Platform/Security | Pending  | Yes            | External TLS scan                                                                                                                                                                                   |
+| Secrets and rotation             | Security          | Pending  | Yes            | `npm run production:config-check`                                                                                                                                                                   |
+| PostgreSQL/pgvector              | DBA               | Pending  | Yes            | migrations, capacity and PITR evidence                                                                                                                                                              |
+| Object storage                   | Platform          | Pending  | Yes            | private policy/versioning/backup evidence                                                                                                                                                           |
+| Redis queue/rate limit           | Platform          | Pending  | Yes            | queue integration and TLS/auth check                                                                                                                                                                |
+| Identity/MFA/session lifecycle   | Security          | Pending  | Yes            | TASK-009 migration, key rotation, admin enrollment and staging login/revoke smoke                                                                                                                   |
 | Identity email delivery          | Platform/Security | Pending  | Yes            | DNS/Resend owner and access unknown; planned sender `noreply@avantime.lv`; verify domain, publish provider records, configure secrets outside Git, then send/receive a synthetic end-to-end message |
-| Document workers/OCR             | Operations        | Pending  | Yes            | heartbeat and real OCR smoke                                                       |
-| Embedding workers                | Operations        | Pending  | Yes            | embedding/vector checks                                                            |
-| Knowledge index workers          | Operations        | Pending  | Yes            | article index heartbeat, lifecycle and retrieval smoke                             |
-| Notification workers             | Operations        | Pending  | Yes            | outbox heartbeat and approved-provider terminal receipt                            |
-| Jira outbound/inbound workers    | Operations        | Pending  | Yes            | both heartbeats, backlog/DLQ and approved test-project evidence                    |
-| AI providers                     | AI owner          | Pending  | Yes            | safe configuration/model/dimension check                                           |
-| Backups                          | DBA/Platform      | Pending  | Yes            | `npm run backup:dry-run`, freshness                                                |
-| Restore/DR                       | Incident owner    | Pending  | Yes            | isolated rehearsal and signed record                                               |
-| Monitoring/traces                | SRE               | Pending  | Yes            | dashboards and collector smoke                                                     |
-| Alerts/on-call                   | SRE               | Pending  | Yes            | alert delivery test                                                                |
-| Budgets/rate limits              | Product/Finance   | Pending  | Yes            | cost/budget report and policy approval                                             |
-| Security/dependencies            | Security          | Verified | No             | 2026-09-03 zero-finding npm audit and sequential fixable Critical/High image scans |
-| Data protection/residency        | DPO/Security      | Pending  | Yes            | approved retention/residency review                                                |
-| Incident response                | Incident owner    | Pending  | Yes            | tabletop exercise                                                                  |
-| Migration/rollback               | Release owner     | Pending  | Yes            | migration rehearsal and rollback drill                                             |
-| API/RAG smoke                    | QA                | Pending  | Yes            | health, retrieval, citation and no-leak tests                                      |
-| Initial SLOs                     | Product/SRE       | Pending  | No until pilot | measured staging report                                                            |
+| Document workers/OCR             | Operations        | Pending  | Yes            | heartbeat and real OCR smoke                                                                                                                                                                        |
+| Embedding workers                | Operations        | Pending  | Yes            | embedding/vector checks                                                                                                                                                                             |
+| Knowledge index workers          | Operations        | Pending  | Yes            | article index heartbeat, lifecycle and retrieval smoke                                                                                                                                              |
+| Notification workers             | Operations        | Pending  | Yes            | outbox heartbeat and approved-provider terminal receipt                                                                                                                                             |
+| Jira outbound/inbound workers    | Operations        | Pending  | Yes            | both heartbeats, backlog/DLQ and approved test-project evidence                                                                                                                                     |
+| AI providers                     | AI owner          | Pending  | Yes            | safe configuration/model/dimension check                                                                                                                                                            |
+| Backups                          | DBA/Platform      | Pending  | Yes            | `npm run backup:dry-run`, freshness                                                                                                                                                                 |
+| Restore/DR                       | Incident owner    | Pending  | Yes            | isolated rehearsal and signed record                                                                                                                                                                |
+| Monitoring/traces                | SRE               | Pending  | Yes            | dashboards and collector smoke                                                                                                                                                                      |
+| Alerts/on-call                   | SRE               | Pending  | Yes            | alert delivery test                                                                                                                                                                                 |
+| Budgets/rate limits              | Product/Finance   | Pending  | Yes            | cost/budget report and policy approval                                                                                                                                                              |
+| Security/dependencies            | Security          | Verified | No             | 2026-09-03 zero-finding npm audit and sequential fixable Critical/High image scans                                                                                                                  |
+| Data protection/residency        | DPO/Security      | Pending  | Yes            | approved retention/residency review                                                                                                                                                                 |
+| Incident response                | Incident owner    | Pending  | Yes            | tabletop exercise                                                                                                                                                                                   |
+| Migration/rollback               | Release owner     | Pending  | Yes            | migration rehearsal and rollback drill                                                                                                                                                              |
+| API/RAG smoke                    | QA                | Pending  | Yes            | health, retrieval, citation and no-leak tests                                                                                                                                                       |
+| Initial SLOs                     | Product/SRE       | Pending  | No until pilot | measured staging report                                                                                                                                                                             |
 
 ## Go-live decision
 
@@ -127,8 +127,7 @@ approve managed staging, validate real providers or authorize production go-live
   removed; sanitized Playwright artifacts remain under
   `.artifacts/document-kb-real-ai-dc3a42480e6548b78d77d59bbd72e1ac`.
   Follow-up: diagnose the `AI_REQUEST_REJECTED` source and retain a sanitized aggregate ledger
-  summary (operation count, tokens and estimated cost) before the isolated database is removed on
-  the next authorized run.
+  summary before the isolated database is removed on the next authorized run.
 - The separate PDF functionality browser smoke used a deterministic fake answer only to exercise
   test plumbing; it is not evidence of real AI answer quality. The ignored repository-root `.env`
   contains an OpenAI key (presence checked only); persistent embedding/answer drivers remain `fake`
@@ -140,6 +139,23 @@ approve managed staging, validate real providers or authorize production go-live
   as processed in this environment. Real OpenAI/Gemini answers, numeric reasoning, citation-page
   verification with a live model and provider-backed tenant isolation remain unverified. These
   results do not change production/staging `Pending` rows.
+
+## Responses diagnostics follow-up (2026-10-04)
+
+- The OpenAI gateway now retains bounded scalar diagnostics for HTTP failures (status, provider
+  name/type/code and request ID), logs no message, headers or payload, and rejects Responses
+  outcomes other than `completed`. Offline regression coverage verifies HTTP 503 metadata and an
+  `incomplete` response; `tests/hybrid-rag.test.ts` passed 24/24. This does not identify the
+  provider-side cause of the earlier HTTP 503 because no new provider call was made.
+- The real-AI runner now writes a sanitized aggregate usage/reservation summary before temporary
+  database cleanup, attempts artifact sanitization and resource cleanup independently, and carries
+  forward the daily/monthly estimated budget and all-time 13-operation ceiling across fresh
+  databases. Any prior real-AI artifact without a summary causes the next run to fail closed,
+  regardless of age. The real-provider runner path has not yet been exercised with this update.
+- Read-only local budget/cost commands completed against the root `.env` database and returned no
+  policy rows and no retained usage rows. They cannot account for charges from already deleted
+  temporary databases, so remaining provider spend is unverified. No additional external AI calls
+  were made in this follow-up; the AI provider and API/RAG smoke rows remain `Pending`.
 
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
@@ -197,6 +213,7 @@ approve managed staging, validate real providers or authorize production go-live
   issue additional provider requests. Estimated cost controls are not a provider invoice guarantee;
   use provider-side project quotas as an additional hard cap. Ordinary tests continue to inject
   fake providers.
+
 - The existing pgvector column is unbounded `vector` with a database check that its vector length
   equals the row's `dimensions`; rows also store model and version. No dimension or model migration
   is indicated by this schema review, and no existing database/index was changed. A future isolated
@@ -214,15 +231,15 @@ approve managed staging, validate real providers or authorize production go-live
   The second states, “Backups are retained for 14 days.” Neither makes claims about another 1C
   version. Expected controls (not yet run):
   1. “Во сколько начинается ночное обслуживание в 1C:ERP 2.5.14?” Expected answer: `21:45`,
-    citing the first PDF.
+     citing the first PDF.
   2. “К какому времени запускают плановые работы в ERP 2.5.14?” Expected answer: `21:45`,
-    citing the same passage despite the paraphrase.
+     citing the same passage despite the paraphrase.
   3. “Укажи время ночного обслуживания и срок хранения резервных копий.” Expected answer must
-    include both `21:45` and `14 days`, with citations to both PDFs.
+     include both `21:45` and `14 days`, with citations to both PDFs.
   4. “Какой PowerShell cmdlet выполняет обновление схемы?” Expected result: `no_answer`, no
-    invented command or citation.
+     invented command or citation.
   5. “Подтверждают ли эти инструкции порядок для 1C:ERP 3.0?” Expected answer: applicability to
-    3.0 is not established; cite only the version-scoped 2.5.14 documents if cited.
+     3.0 is not established; cite only the version-scoped 2.5.14 documents if cited.
 - For each control, record retrieval separately from generation: whether the expected passage
   appeared in top-K, whether the answer matches the oracle, whether each citation excerpt matches
   the source text, and whether the citation link opens for tenant A. Repeat tenant-B search, ask,

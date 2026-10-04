@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PrismaClient } from '@prisma/client';
 
+import { getRealAiBudgetAllowance } from './real-ai-budget';
 import { sanitizePlaywrightArtifacts } from './sanitize-playwright-artifacts';
 
 const webDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,7 +33,9 @@ function requireRealAiConfiguration() {
   const answerDriver = process.env.RAG_ANSWER_DRIVER;
   const supportedDrivers = ['openai', 'gemini'];
   if (!supportedDrivers.includes(embeddingDriver ?? '')) {
-    throw new Error('Set DOCUMENT_EMBEDDING_DRIVER to an approved real provider in repository-root .env.');
+    throw new Error(
+      'Set DOCUMENT_EMBEDDING_DRIVER to an approved real provider in repository-root .env.',
+    );
   }
   if (!supportedDrivers.includes(answerDriver ?? '')) {
     throw new Error('Set RAG_ANSWER_DRIVER to an approved real provider in repository-root .env.');
@@ -66,13 +69,16 @@ function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources |
   if (realAiMode) {
     requireRealAiConfiguration();
     if (process.env.BROWSER_DATABASE_URL || process.env.BROWSER_DATABASE_NAME) {
-      throw new Error('The real-AI smoke does not accept caller-supplied browser database overrides.');
+      throw new Error(
+        'The real-AI smoke does not accept caller-supplied browser database overrides.',
+      );
     }
   }
 
   if (process.env.BROWSER_DATABASE_URL || process.env.BROWSER_DATABASE_NAME) return;
   if (!process.env.DATABASE_URL) {
-    if (realAiMode) throw new Error('Set DATABASE_URL to local database avantime in repository-root .env.');
+    if (realAiMode)
+      throw new Error('Set DATABASE_URL to local database avantime in repository-root .env.');
     return;
   }
 
@@ -89,7 +95,9 @@ function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources |
     !['localhost', '127.0.0.1', '[::1]'].includes(sourceUrl.hostname) ||
     databaseName !== 'avantime'
   ) {
-    throw new Error('Automatic browser database setup requires loopback PostgreSQL database avantime.');
+    throw new Error(
+      'Automatic browser database setup requires loopback PostgreSQL database avantime.',
+    );
   }
 
   const runId = randomUUID().replaceAll('-', '');
@@ -110,7 +118,9 @@ function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources |
     'playwright-results',
   );
   if (existsSync(dataDirectory) || existsSync(path.dirname(artifactDirectory))) {
-    throw new Error('The generated real-AI resource directory already exists; refusing to reuse it.');
+    throw new Error(
+      'The generated real-AI resource directory already exists; refusing to reuse it.',
+    );
   }
   process.env.BROWSER_DATA_DIRECTORY = dataDirectory;
   process.env.BROWSER_ARTIFACT_DIRECTORY = artifactDirectory;
@@ -141,7 +151,9 @@ async function cleanupRealAiResources(resources: RealAiBrowserResources) {
     path.basename(path.dirname(resolvedArtifacts)) !== path.basename(resolvedDirectory) ||
     path.basename(resolvedArtifacts) !== 'playwright-results'
   ) {
-    throw new Error('Refusing real-AI test artifact cleanup outside its unique .artifacts directory.');
+    throw new Error(
+      'Refusing real-AI test artifact cleanup outside its unique .artifacts directory.',
+    );
   }
   try {
     const sourceUrl = new URL(process.env.DATABASE_URL ?? '');
@@ -167,7 +179,138 @@ async function cleanupRealAiResources(resources: RealAiBrowserResources) {
   } finally {
     if (existsSync(resolvedDirectory)) await rm(resolvedDirectory, { recursive: true });
   }
+}
 
+async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
+  const databaseUrl = process.env.BROWSER_DATABASE_URL;
+  if (!databaseUrl) throw new Error('Temporary browser database URL is unavailable.');
+  const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
+  try {
+    const operations = await prisma.$queryRaw<
+      Array<{
+        requestType: string;
+        provider: string;
+        status: string;
+        operationCount: number;
+        inputTokens: string;
+        outputTokens: string;
+        embeddingUnits: string;
+        estimatedCostEur: number;
+        actualCostEur: number | null;
+      }>
+    >`
+      SELECT
+        "requestType",
+        "provider",
+        "status",
+        COUNT(*)::int AS "operationCount",
+        COALESCE(SUM("inputTokens"), 0)::text AS "inputTokens",
+        COALESCE(SUM("outputTokens"), 0)::text AS "outputTokens",
+        COALESCE(SUM("embeddingUnits"), 0)::text AS "embeddingUnits",
+        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "estimatedCostEur",
+        CASE WHEN COUNT("actualCostEur") = 0 THEN NULL
+          ELSE SUM("actualCostEur")::float8 END AS "actualCostEur"
+      FROM "AiUsageLedger"
+      GROUP BY "requestType", "provider", "status"
+      ORDER BY "requestType", "provider", "status"
+    `;
+    const reservations = await prisma.$queryRaw<
+      Array<{
+        requestType: string;
+        provider: string;
+        status: string;
+        reservationCount: number;
+        reservedCostEur: number;
+      }>
+    >`
+      SELECT "requestType", "provider", "status", COUNT(*)::int AS "reservationCount",
+        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "reservedCostEur"
+      FROM "AiBudgetReservation"
+      GROUP BY "requestType", "provider", "status"
+      ORDER BY "requestType", "provider", "status"
+    `;
+    const summary = {
+      generatedAt: new Date().toISOString(),
+      operations: operations.map((operation) => ({
+        requestType: ['document_embedding', 'query_embedding', 'rag_answer'].includes(
+          operation.requestType,
+        )
+          ? operation.requestType
+          : 'other',
+        provider: ['openai', 'gemini', 'fake', 'disabled'].includes(operation.provider)
+          ? operation.provider
+          : 'other',
+        status: ['SUCCEEDED', 'FAILED'].includes(operation.status) ? operation.status : 'other',
+        operationCount: operation.operationCount,
+        inputTokens: Number(operation.inputTokens),
+        outputTokens: Number(operation.outputTokens),
+        embeddingUnits: Number(operation.embeddingUnits),
+        estimatedCostEur: operation.estimatedCostEur,
+        actualCostEur: operation.actualCostEur,
+      })),
+      reservations: reservations.map((reservation) => ({
+        requestType: ['document_embedding', 'query_embedding', 'rag_answer'].includes(
+          reservation.requestType,
+        )
+          ? reservation.requestType
+          : 'other',
+        provider: ['openai', 'gemini', 'fake', 'disabled'].includes(reservation.provider)
+          ? reservation.provider
+          : 'other',
+        status: ['RESERVED', 'RECONCILED', 'FAILED', 'CANCELLED'].includes(reservation.status)
+          ? reservation.status
+          : 'other',
+        reservationCount: reservation.reservationCount,
+        reservedCostEur: reservation.reservedCostEur,
+      })),
+      budgetImpactEur: Number(
+        (
+          operations.reduce(
+            (total, operation) =>
+              total + Math.max(operation.actualCostEur ?? 0, operation.estimatedCostEur),
+            0,
+          ) +
+          reservations.reduce(
+            (total, reservation) =>
+              total + (reservation.status === 'RECONCILED' ? 0 : reservation.reservedCostEur),
+            0,
+          )
+        ).toFixed(6),
+      ),
+      providerOperationCount:
+        operations.reduce(
+          (total, operation) =>
+            total +
+            (['openai', 'gemini'].includes(operation.provider) ? operation.operationCount : 0),
+          0,
+        ) +
+        reservations.reduce(
+          (total, reservation) =>
+            total +
+            (['openai', 'gemini'].includes(reservation.provider) &&
+            reservation.status !== 'RECONCILED'
+              ? reservation.reservationCount
+              : 0),
+          0,
+        ),
+    };
+    const summaryPath = path.join(path.dirname(resources.artifactDirectory), 'usage-summary.json');
+    await mkdir(path.dirname(summaryPath), { recursive: true, mode: 0o700 });
+    await writeFile(summaryPath, JSON.stringify(summary, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    console.info(
+      JSON.stringify({
+        event: 'real_ai_smoke_usage_summary',
+        outputFile: path.basename(summaryPath),
+        operationGroups: summary.operations.length,
+      }),
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 async function main() {
@@ -181,9 +324,18 @@ async function main() {
   }
 
   const resources = configureBrowserDatabase(realAiMode);
+  const realAiBudget = realAiMode
+    ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
+    : undefined;
   const childEnvironment: NodeJS.ProcessEnv = {
     ...process.env,
     ...(realAiMode ? { NODE_ENV: 'test' as const } : {}),
+    ...(realAiBudget
+      ? {
+          AI_DAILY_BUDGET_EUR: String(realAiBudget.dailyRemainingEur),
+          AI_MONTHLY_BUDGET_EUR: String(realAiBudget.monthlyRemainingEur),
+        }
+      : {}),
   };
   if (!realAiMode) {
     delete childEnvironment.OPENAI_API_KEY;
@@ -205,18 +357,48 @@ async function main() {
       const selectedArguments = realAiMode
         ? [...testArguments, '--grep', '@real-ai']
         : testArguments;
-      const result = run(process.execPath, [
-        require.resolve('@playwright/test/cli'),
-        'test',
-        ...selectedArguments,
-      ], childEnvironment);
+      const result = run(
+        process.execPath,
+        [require.resolve('@playwright/test/cli'), 'test', ...selectedArguments],
+        childEnvironment,
+      );
       exitCode = result.status ?? 1;
     }
   } finally {
-    try {
-      if (artifactDirectory) await sanitizePlaywrightArtifacts(artifactDirectory);
-    } finally {
-      if (resources) await cleanupRealAiResources(resources);
+    const finalization = {
+      usageSummary: resources ? 'pending' : 'skipped',
+      artifactSanitization: artifactDirectory ? 'pending' : 'skipped',
+      resourceCleanup: resources ? 'pending' : 'skipped',
+    };
+    if (resources) {
+      try {
+        await exportRealAiUsageSummary(resources);
+        finalization.usageSummary = 'written';
+      } catch {
+        finalization.usageSummary = 'failed';
+        exitCode = 1;
+      }
+    }
+    if (artifactDirectory) {
+      try {
+        await sanitizePlaywrightArtifacts(artifactDirectory);
+        finalization.artifactSanitization = 'completed';
+      } catch {
+        finalization.artifactSanitization = 'failed';
+        exitCode = 1;
+      }
+    }
+    if (resources) {
+      try {
+        await cleanupRealAiResources(resources);
+        finalization.resourceCleanup = 'completed';
+      } catch {
+        finalization.resourceCleanup = 'failed';
+        exitCode = 1;
+      }
+    }
+    if (Object.values(finalization).includes('failed')) {
+      console.error(JSON.stringify({ event: 'browser_test_finalization', ...finalization }));
     }
   }
   process.exitCode = exitCode;
