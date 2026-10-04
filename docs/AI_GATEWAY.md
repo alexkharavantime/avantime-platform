@@ -6,7 +6,7 @@ AI Gateway — единственная server-side граница вызова 
 
 `AiGateway` использует независимые контракты `EmbeddingProvider` и `RagAnswerProvider`. Прикладные сервисы и API не импортируют SDK провайдеров и не формируют provider-specific payload. Централизованная конфигурация выбирает:
 
-- `fake` — детерминированный provider для development, unit и integration tests;
+- `fake` — детерминированный provider только для явно настроенных локальных сценариев и tests;
 - `openai` — embeddings и Responses API;
 - `gemini` — embeddings и generation через существующий Gemini SDK;
 - `disabled` — явное отключение вне production.
@@ -18,6 +18,7 @@ AI Gateway — единственная server-side граница вызова 
 Gateway применяет:
 
 - timeout и один повтор только для transient ошибок;
+- от одной до двух попыток provider request (`AI_PROVIDER_MAX_ATTEMPTS`, по умолчанию `2`);
 - Redis-backed tenant/user/provider burst, minute/day limits в production;
 - race-safe daily/monthly/provider budget reservation в EUR;
 - лимиты input context и output tokens;
@@ -25,6 +26,40 @@ Gateway применяет:
 - отдельную readiness-проверку embedding и answer providers.
 
 Development limits могут храниться в памяти одного процесса. TASK-005 добавляет production Redis limiter, PostgreSQL append-only usage/cost ledger и budget reservation до provider call. Автоматический provider fallback остаётся отдельным решением.
+
+## Local OpenAI verification
+
+The development web app loads environment files from the repository root through
+`apps/web/next.config.ts`. The dedicated real-AI browser runner also explicitly loads the
+repository-root `.env`. Worker scripts normally inherit the environment of their launcher and do
+not load `.env` themselves; use `npm run documents:embedding-worker:local -w @avantime/web` for a
+local embedding worker. Containerized staging and production workers receive settings from their
+deployment environment files or runtime environment.
+
+Keep the repository-root `.env` ignored by Git and leave `.env.example` on fake defaults. For a
+deliberate OpenAI run, select `openai` for `DOCUMENT_EMBEDDING_DRIVER` and `RAG_ANSWER_DRIVER`.
+The existing adapter defaults are `text-embedding-3-small` with 1536 dimensions and `gpt-5-mini`;
+these are controlled by `DOCUMENT_EMBEDDING_MODEL`, `DOCUMENT_EMBEDDING_DIMENSIONS`, and
+`RAG_ANSWER_MODEL`. `OPENAI_MODEL` is not used by the document RAG adapter.
+
+Run the isolated, synthetic-data smoke explicitly with
+`npm run test:browser:real-ai -w @avantime/web`. It requires a loopback `DATABASE_URL` for the
+local `avantime` database, creates and cleans a unique test database and storage directory, and
+does not accept caller-supplied database overrides. The fixture uses two synthetic one-page PDFs,
+five questions, exactly 12 planned provider operations, one Gateway attempt with OpenAI SDK retries
+disabled per operation, and 250 output tokens per answer. The test-only PostgreSQL reservation
+controller applies one shared EUR 0.25/day and EUR 1/month cap across the web and worker processes
+before each provider call. The configured per-request-type rate caps are 10 requests/minute,
+5/day, and a burst of 3; questions are spaced to honor the burst window. Cross-tenant ACL checks
+use lexical retrieval and direct document routes so they do not issue additional provider queries.
+Ordinary unit tests keep the `fake` provider; ordinary browser runs strip provider API keys.
+
+OpenAI readiness checks only that credentials are configured: listing models requires a separate
+read permission not needed by the Responses and Embeddings endpoints. The real-AI smoke, not the
+readiness probe, verifies those endpoint permissions. Its PostgreSQL reservations use Avantime's
+estimated costs and are shared across the isolated web/worker processes; ordinary development may
+use in-memory limits. Neither is a guaranteed provider invoice ceiling. Use a dedicated OpenAI
+project with a low usage alert as an additional external safeguard.
 
 ## Production fail-fast
 

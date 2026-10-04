@@ -8,6 +8,7 @@ import {
   AiGatewayError,
   DefaultAiGateway,
   DeterministicFakeAiProvider,
+  OpenAiGatewayProvider,
   assembleProviderContext,
   type EmbeddingProvider,
   type EmbeddingRequest,
@@ -37,6 +38,7 @@ import {
 import { loadRagConfiguration } from '../lib/rag-configuration';
 import {
   DefaultHybridRetriever,
+  DefaultLexicalRetriever,
   type HybridRetriever,
   type LexicalRetriever,
   type RetrievalResult,
@@ -842,6 +844,41 @@ test('AI Gateway retries transient errors, does not retry permanent errors and e
   });
   assert.equal(transientCalls, 2);
 
+  const singleAttemptConfiguration = loadRagConfiguration({
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_EMBEDDING_DIMENSIONS: '4',
+    RAG_ANSWER_DRIVER: 'fake',
+    AI_RATE_LIMIT_PER_MINUTE: '100',
+    AI_PROVIDER_MAX_ATTEMPTS: '1',
+  });
+  let singleAttemptCalls = 0;
+  const singleAttemptProvider: EmbeddingProvider = {
+    ...transient,
+    id: 'single-attempt',
+    embed: async () => {
+      singleAttemptCalls += 1;
+      throw new AiGatewayError('AI_PROVIDER_UNAVAILABLE', true, 'Unavailable.');
+    },
+  };
+  await assert.rejects(
+    new DefaultAiGateway(
+      singleAttemptConfiguration,
+      singleAttemptProvider,
+      new DeterministicFakeAiProvider(),
+    ).createQueryEmbedding({
+      tenant: tenantA,
+      query: 'single attempt',
+      correlationId: 'single-attempt-test',
+    }),
+    (error: unknown) => error instanceof AiGatewayError && error.code === 'AI_PROVIDER_UNAVAILABLE',
+  );
+  assert.equal(singleAttemptCalls, 1);
+  assert.throws(
+    () => loadRagConfiguration({ NODE_ENV: 'test', AI_PROVIDER_MAX_ATTEMPTS: '3' }),
+    /AI_PROVIDER_MAX_ATTEMPTS/u,
+  );
+
   let permanentCalls = 0;
   const permanent: EmbeddingProvider = {
     ...transient,
@@ -928,6 +965,119 @@ test('single-document reindex is dry-run safe and idempotent', async () => {
     );
   } finally {
     await current.cleanup();
+  }
+});
+
+test('non-test RAG defaults disable AI while test defaults retain fake providers', () => {
+  const development = loadRagConfiguration({ NODE_ENV: 'development' });
+  assert.equal(development.embedding.driver, 'disabled');
+  assert.equal(development.answer.driver, 'disabled');
+
+  const tests = loadRagConfiguration({ NODE_ENV: 'test' });
+  assert.equal(tests.embedding.driver, 'fake');
+  assert.equal(tests.answer.driver, 'fake');
+});
+
+test('OpenAI readiness does not require model-read permission or make a provider request', async () => {
+  let requestCount = 0;
+  const provider = new OpenAiGatewayProvider('scoped-test-key', async () => {
+    requestCount += 1;
+    throw new Error('Unexpected provider request during readiness.');
+  });
+
+  assert.deepEqual(await provider.checkAvailability(), {
+    configured: true,
+    available: true,
+    capabilities: { embeddings: true, answers: true },
+  });
+  assert.equal(requestCount, 0);
+});
+
+test('OpenAI real-AI smoke disables SDK retries for quota errors', async () => {
+  const previousSmokeFlag = process.env.BROWSER_REAL_AI_KB_SMOKE;
+  process.env.BROWSER_REAL_AI_KB_SMOKE = '1';
+  let requestCount = 0;
+  try {
+    const provider = new OpenAiGatewayProvider('scoped-test-key', async () => {
+      requestCount += 1;
+      return new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    await assert.rejects(
+      provider.embed(
+        {
+          tenant: tenantA,
+          texts: ['synthetic input'],
+          model: 'text-embedding-3-small',
+          dimensions: 1_536,
+          purpose: 'document',
+          correlationId: 'real-ai-quota-retry-test',
+        },
+        new AbortController().signal,
+      ),
+    );
+    assert.equal(requestCount, 1);
+  } finally {
+    if (previousSmokeFlag === undefined) delete process.env.BROWSER_REAL_AI_KB_SMOKE;
+    else process.env.BROWSER_REAL_AI_KB_SMOKE = previousSmokeFlag;
+  }
+});
+
+test('lexical search works without AI and answer generation fails closed', async () => {
+  const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'avantime-no-ai-'));
+  const environment = {
+    NODE_ENV: 'test',
+    DOCUMENT_DATA_DIR: dataDirectory,
+    DOCUMENT_EMBEDDING_DRIVER: 'disabled',
+    DOCUMENT_VECTOR_DRIVER: 'memory',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
+    RAG_ANSWER_DRIVER: 'disabled',
+  };
+  const services = createDocumentServices(loadDocumentConfiguration(environment), {
+    ragConfiguration: loadRagConfiguration(environment),
+    rag: { environment, knowledgeSemanticSource: null },
+  });
+
+  try {
+    assert.ok(services.rag);
+    await addCompletedDocument(services, tenantA, 'local-search-document', [
+      chunk('local-search-chunk', 0, 'Invoice QA-193 has a synthetic total of 32.50 EUR.'),
+    ]);
+    const lexical = new DefaultLexicalRetriever(
+      services.metadata,
+      services.processing,
+      services.rag.configuration,
+    );
+    const results = await lexical.retrieve({
+      tenant: tenantA,
+      query: 'QA-193 32.50 EUR',
+      correlationId: 'disabled-ai-lexical-search',
+    });
+    assert.equal(results[0]?.documentId, 'local-search-document');
+
+    const answers = new DefaultRagAnswerService(
+      {
+        retrieve: async () => {
+          throw new Error('Disabled answer generation must not retrieve or embed the query.');
+        },
+      },
+      services.rag.citationBuilder,
+      services.rag.gateway,
+      services.rag.configuration,
+    );
+    await assert.rejects(
+      answers.answer({
+        tenant: tenantA,
+        question: 'What is invoice QA-193 total?',
+        correlationId: 'disabled-ai-answer',
+      }),
+      (error: unknown) =>
+        error instanceof AiGatewayError && error.code === 'AI_CONFIGURATION_INVALID',
+    );
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
   }
 });
 

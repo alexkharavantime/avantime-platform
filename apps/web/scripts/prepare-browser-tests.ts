@@ -1,5 +1,5 @@
 import { createHash, pbkdf2Sync } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +32,10 @@ function validateDatabaseUrl() {
   if (!['127.0.0.1', 'localhost'].includes(url.hostname)) {
     throw new Error('Browser tests may only reset a loopback PostgreSQL database.');
   }
-  if (databaseName !== BROWSER_DATABASE_NAME) {
+  if (
+    databaseName !== BROWSER_DATABASE_NAME ||
+    !/^avantime_browser_integration(?:_[a-z0-9-]+)?$/iu.test(databaseName)
+  ) {
     throw new Error(`Browser tests may only reset ${BROWSER_DATABASE_NAME}.`);
   }
   if (process.env.NODE_ENV === 'production') {
@@ -60,14 +63,20 @@ function runPrisma(args: string[]) {
   }
 }
 
-async function resetDatabase(databaseUrl: URL) {
+async function createIsolatedDatabase(databaseUrl: URL) {
   const adminUrl = new URL(databaseUrl);
   adminUrl.pathname = '/postgres';
   adminUrl.search = '';
   const admin = new PrismaClient({ datasourceUrl: adminUrl.toString() });
   try {
-    await admin.$queryRaw`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${BROWSER_DATABASE_NAME} AND pid <> pg_backend_pid()`;
-    await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${BROWSER_DATABASE_NAME}"`);
+    const existing = await admin.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_database WHERE datname = ${BROWSER_DATABASE_NAME}
+      ) AS exists
+    `;
+    if (existing[0]?.exists) {
+      throw new Error('Browser integration database already exists; refusing to overwrite it.');
+    }
     await admin.$executeRawUnsafe(`CREATE DATABASE "${BROWSER_DATABASE_NAME}"`);
   } finally {
     await admin.$disconnect();
@@ -604,8 +613,7 @@ async function seedDatabase() {
 
 async function main() {
   const databaseUrl = validateDatabaseUrl();
-  await rm(BROWSER_DATA_DIRECTORY, { recursive: true, force: true });
-  await resetDatabase(databaseUrl);
+  await createIsolatedDatabase(databaseUrl);
   runPrisma([
     'db',
     'execute',

@@ -49,7 +49,11 @@ import {
   RedisEmbeddingJobQueue,
   type RedisCommandClient,
 } from './redis-lease-queue';
-import { PostgreSQLAiCostController, RedisAiRateLimiter } from './ai-control';
+import {
+  MemoryAiRateLimiter,
+  PostgreSQLAiCostController,
+  RedisAiRateLimiter,
+} from './ai-control';
 
 export type DocumentPersistenceServices = {
   storage: DocumentStorage;
@@ -169,6 +173,10 @@ export function createDocumentServices(
     ...baseRagConfiguration,
     dataDirectory: configuration.dataDirectory,
   };
+  const realAiBrowserTrial =
+    process.env.NODE_ENV === 'test' &&
+    process.env.BROWSER_REAL_AI_KB_SMOKE === '1' &&
+    !ragConfiguration.production;
   const configuredRagDependencies: RagServiceDependencies = {
     ...(ragConfiguration.embeddingQueue.driver === 'redis'
       ? {
@@ -177,11 +185,11 @@ export function createDocumentServices(
             (redisClient ? new RedisEmbeddingJobQueue(redisClient) : undefined),
         }
       : {}),
-    ...(ragConfiguration.production
+    ...(ragConfiguration.production || realAiBrowserTrial
       ? {
           rateLimiter:
             dependencies.rag?.rateLimiter ??
-            (redisClient ? new RedisAiRateLimiter(redisClient) : undefined),
+            (redisClient ? new RedisAiRateLimiter(redisClient) : new MemoryAiRateLimiter()),
           costController:
             dependencies.rag?.costController ??
             new PostgreSQLAiCostController(

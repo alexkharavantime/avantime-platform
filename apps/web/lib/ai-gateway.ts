@@ -297,9 +297,15 @@ export class DisabledAiProvider implements EmbeddingProvider, RagAnswerProvider 
 export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvider {
   readonly id = 'openai';
   private readonly client: OpenAI;
+  private readonly configured: boolean;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(apiKey: string, fetchImplementation?: typeof globalThis.fetch) {
+    this.configured = apiKey.trim().length > 0;
+    this.client = new OpenAI({
+      apiKey,
+      maxRetries: process.env.BROWSER_REAL_AI_KB_SMOKE === '1' ? 0 : 2,
+      ...(fetchImplementation ? { fetch: fetchImplementation } : {}),
+    });
   }
 
   async embed(request: EmbeddingRequest, signal: AbortSignal): Promise<EmbeddingResult> {
@@ -350,26 +356,14 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   }
 
   async checkAvailability(): Promise<AiProviderAvailability> {
-    try {
-      await this.client.models.list();
-      return {
-        configured: true,
-        available: true,
-        capabilities: {
-          embeddings: true,
-          answers: true,
-        },
-      };
-    } catch {
-      return {
-        configured: true,
-        available: false,
-        capabilities: {
-          embeddings: true,
-          answers: true,
-        },
-      };
-    }
+    return {
+      configured: this.configured,
+      available: this.configured,
+      capabilities: {
+        embeddings: true,
+        answers: true,
+      },
+    };
   }
 }
 
@@ -658,12 +652,14 @@ export class DefaultAiGateway implements AiGateway {
 
   private async withRetry<T>(action: () => Promise<T>) {
     let lastError: AiGatewayError | undefined;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    for (let attempt = 1; attempt <= this.configuration.limits.providerMaxAttempts; attempt += 1) {
       try {
         return await action();
       } catch (error) {
         lastError = classifyProviderError(error);
-        if (!lastError.transient || attempt === 2) throw lastError;
+        if (!lastError.transient || attempt === this.configuration.limits.providerMaxAttempts) {
+          throw lastError;
+        }
       }
     }
     throw lastError;

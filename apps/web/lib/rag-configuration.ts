@@ -48,6 +48,7 @@ export type RagConfiguration = {
     timeoutMs: number;
   };
   limits: {
+    providerMaxAttempts: number;
     queryMaximumCharacters: number;
     rateLimitPerMinute: number;
     rateLimitPerDay: number;
@@ -149,10 +150,15 @@ export function loadRagConfiguration(
   const production =
     environment.NODE_ENV === 'production' &&
     !(environment.APP_ENV === 'staging' && environment.STAGING_MODE === 'local');
+  const defaultProviderDriver = environment.NODE_ENV === 'test' ? 'fake' : 'disabled';
+  const providerMaxAttempts = parseEnum(environment, 'AI_PROVIDER_MAX_ATTEMPTS', '2', [
+    '1',
+    '2',
+  ] as const);
   const embeddingDriver = parseEnum(
     environment,
     'DOCUMENT_EMBEDDING_DRIVER',
-    production ? 'disabled' : 'fake',
+    defaultProviderDriver,
     AI_PROVIDER_DRIVERS,
   );
   const vectorDriver = parseEnum(
@@ -164,7 +170,7 @@ export function loadRagConfiguration(
   const answerDriver = parseEnum(
     environment,
     'RAG_ANSWER_DRIVER',
-    production ? 'disabled' : 'fake',
+    defaultProviderDriver,
     AI_PROVIDER_DRIVERS,
   );
   const embeddingQueueDriver = parseEnum(
@@ -296,6 +302,7 @@ export function loadRagConfiguration(
       timeoutMs: parsePositiveInteger(environment, 'RAG_TIMEOUT_MS', 45_000),
     },
     limits: {
+      providerMaxAttempts: Number(providerMaxAttempts),
       queryMaximumCharacters: parsePositiveInteger(environment, 'RAG_QUERY_MAX_CHARACTERS', 2_000),
       rateLimitPerMinute: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_MINUTE', 30),
       rateLimitPerDay: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_DAY', 5_000),

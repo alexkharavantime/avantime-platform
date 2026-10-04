@@ -1,4 +1,4 @@
-import type { AiGateway, AiUsage, RagContextSource } from './ai-gateway';
+import { AiGatewayError, type AiGateway, type AiUsage, type RagContextSource } from './ai-gateway';
 import type { AiOperationalEventSink } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
 import type { DocumentTenantContext } from './document-model';
@@ -207,6 +207,13 @@ export class DefaultRagAnswerService implements RagAnswerService {
       question.includes('\0')
     ) {
       throw new Error('RAG question length is invalid.');
+    }
+    if (this.configuration.answer.driver === 'disabled') {
+      throw new AiGatewayError(
+        'AI_CONFIGURATION_INVALID',
+        false,
+        'AI answer provider is disabled.',
+      );
     }
     const results = await this.retriever.retrieve({
       tenant: request.tenant,

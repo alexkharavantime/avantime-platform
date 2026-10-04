@@ -2,17 +2,34 @@ import path from 'node:path';
 
 const webDirectory =
   path.basename(process.cwd()) === 'web' ? process.cwd() : path.resolve(process.cwd(), 'apps/web');
+const durableDocumentKbSmoke = process.env.BROWSER_DOCUMENT_KB_SMOKE === '1';
+const realAiDocumentKbSmoke = process.env.BROWSER_REAL_AI_KB_SMOKE === '1';
 
-export const BROWSER_DATABASE_NAME = 'avantime_browser_integration';
-export const BROWSER_BASE_URL = 'http://127.0.0.1:3410';
+function realAiProviderEnvironment() {
+  if (!realAiDocumentKbSmoke) return {};
+  const environment: Record<string, string> = {};
+  const drivers = [process.env.DOCUMENT_EMBEDDING_DRIVER, process.env.RAG_ANSWER_DRIVER];
+  if (drivers.includes('openai') && process.env.OPENAI_API_KEY) {
+    environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  }
+  if (drivers.includes('gemini') && process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    environment.GOOGLE_GENERATIVE_AI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  }
+  return environment;
+}
+
+export const BROWSER_DATABASE_NAME =
+  process.env.BROWSER_DATABASE_NAME ?? 'avantime_browser_integration';
+export const BROWSER_BASE_URL = 'http://localhost:3410';
 export const BROWSER_DATABASE_URL =
   process.env.BROWSER_DATABASE_URL ??
   `postgresql://avantime_test:avantime_test_only@127.0.0.1:55432/${BROWSER_DATABASE_NAME}?schema=public`;
-export const BROWSER_DATA_DIRECTORY = path.resolve(webDirectory, '../../.tmp/browser-data');
-export const BROWSER_ARTIFACT_DIRECTORY = path.resolve(
-  webDirectory,
-  '../../.artifacts/playwright-results',
-);
+export const BROWSER_DATA_DIRECTORY = process.env.BROWSER_DATA_DIRECTORY
+  ? path.resolve(process.env.BROWSER_DATA_DIRECTORY)
+  : path.resolve(webDirectory, '../../.tmp/browser-data');
+export const BROWSER_ARTIFACT_DIRECTORY = process.env.BROWSER_ARTIFACT_DIRECTORY
+  ? path.resolve(process.env.BROWSER_ARTIFACT_DIRECTORY)
+  : path.resolve(webDirectory, '../../.artifacts/playwright-results');
 
 export const browserIdentities = {
   tenantA: {
@@ -111,7 +128,33 @@ export const browserServerEnvironment: Record<string, string> = {
   DOCUMENT_OCR_DRIVER: 'disabled',
   DOCUMENT_OCR_REQUIRED_FOR_READINESS: 'false',
   DOCUMENT_EMBEDDING_DRIVER: 'fake',
-  DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
-  DOCUMENT_VECTOR_DRIVER: 'memory',
+  DOCUMENT_EMBEDDING_QUEUE_DRIVER: durableDocumentKbSmoke ? 'postgresql' : 'local',
+  DOCUMENT_VECTOR_DRIVER: durableDocumentKbSmoke ? 'pgvector' : 'memory',
   DOCUMENT_ANSWER_DRIVER: 'fake',
+  ...(realAiDocumentKbSmoke
+    ? {
+        DOCUMENT_EMBEDDING_DRIVER: process.env.DOCUMENT_EMBEDDING_DRIVER ?? 'fake',
+        DOCUMENT_EMBEDDING_MODEL: process.env.DOCUMENT_EMBEDDING_MODEL ?? '',
+        DOCUMENT_EMBEDDING_DIMENSIONS: process.env.DOCUMENT_EMBEDDING_DIMENSIONS ?? '',
+        DOCUMENT_EMBEDDING_VERSION: 'browser-real-ai-v1',
+        DOCUMENT_EMBEDDING_BATCH_SIZE: '4',
+        DOCUMENT_EMBEDDING_MAX_ATTEMPTS: '1',
+        DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'postgresql',
+        DOCUMENT_VECTOR_DRIVER: 'pgvector',
+        BROWSER_REAL_AI_KB_SMOKE: '1',
+        RAG_ANSWER_DRIVER: process.env.RAG_ANSWER_DRIVER ?? 'fake',
+        RAG_ANSWER_MODEL: process.env.RAG_ANSWER_MODEL ?? '',
+        RAG_MAX_CONTEXT_CHARACTERS: '3000',
+        RAG_MAX_OUTPUT_TOKENS: '250',
+        RAG_TIMEOUT_MS: '30000',
+        AI_DAILY_BUDGET_EUR: '0.25',
+        AI_MONTHLY_BUDGET_EUR: '1.00',
+        AI_RATE_LIMIT_PER_MINUTE: '10',
+        AI_RATE_LIMIT_PER_DAY: '5',
+        AI_RATE_LIMIT_BURST: '3',
+        AI_PROVIDER_MAX_ATTEMPTS: '1',
+        DOCUMENT_PROCESSING_MAX_ATTEMPTS: '1',
+        ...realAiProviderEnvironment(),
+      }
+    : {}),
 };
