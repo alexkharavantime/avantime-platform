@@ -939,6 +939,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     DOCUMENT_EMBEDDING_DRIVER: 'fake',
     DOCUMENT_EMBEDDING_DIMENSIONS: '4',
     RAG_ANSWER_DRIVER: 'openai',
+    RAG_MAX_OUTPUT_TOKENS: '1024',
     OPENAI_API_KEY: 'offline-test-key',
     AI_RATE_LIMIT_PER_MINUTE: '100',
     AI_PROVIDER_MAX_ATTEMPTS: '1',
@@ -947,32 +948,39 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
   let responseStatus = 503;
   let requestUrl: string | undefined;
   let requestMethod: string | undefined;
+  let requestPayload: Record<string, unknown> | undefined;
   const previousBaseUrl = process.env.OPENAI_BASE_URL;
   let provider: OpenAiGatewayProvider | undefined;
   try {
     process.env.OPENAI_BASE_URL = 'https://api.openai.com/';
-    provider = new OpenAiGatewayProvider('offline-test-key', async (input, init) => {
-      requestUrl = input instanceof Request ? input.url : input.toString();
-      requestMethod = (input instanceof Request ? input.method : init?.method)?.toUpperCase();
-      return new Response(
-        JSON.stringify(
-          responseBody.value ?? {
-            error: {
-              message: 'sensitive provider message',
-              type: 'server_error',
-              code: 'upstream_busy',
+    provider = new OpenAiGatewayProvider(
+      'offline-test-key',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        requestUrl = request.url;
+        requestMethod = request.method.toUpperCase();
+        requestPayload = (await request.clone().json()) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify(
+            responseBody.value ?? {
+              error: {
+                message: 'sensitive provider message',
+                type: 'server_error',
+                code: 'upstream_busy',
+              },
+            },
+          ),
+          {
+            status: responseStatus,
+            headers: {
+              'content-type': 'application/json',
+              'x-request-id': 'req_safe123',
             },
           },
-        ),
-        {
-          status: responseStatus,
-          headers: {
-            'content-type': 'application/json',
-            'x-request-id': 'req_safe123',
-          },
-        },
-      );
-    });
+        );
+      },
+      'minimal',
+    );
   } finally {
     if (previousBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
     else process.env.OPENAI_BASE_URL = previousBaseUrl;
@@ -993,6 +1001,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     systemInstructions: 'synthetic test only',
     sources: [],
     correlationId: 'provider-diagnostic-test',
+    maximumOutputTokens: 1024,
   };
 
   await assert.rejects(
@@ -1007,6 +1016,9 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
   );
   assert.equal(requestMethod, 'POST');
   assert.equal(requestUrl, 'https://api.openai.com/v1/responses');
+  assert.equal(requestPayload?.model, 'gpt-5-mini');
+  assert.equal(requestPayload?.max_output_tokens, 1024);
+  assert.deepEqual(requestPayload?.reasoning, { effort: 'minimal' });
   const failedEvent = events.list().find((event) => event.name === 'provider_call');
   assert.equal(failedEvent?.providerDiagnostic?.providerRequestId, 'req_safe123');
   assert.equal(JSON.stringify(failedEvent).includes('sensitive provider message'), false);
@@ -1060,7 +1072,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     .list()
     .filter((event) => event.name === 'provider_call')
     .at(-1);
-  assert.equal(notFoundEvent?.reservedCostEur, 0.004011);
+  assert.equal(notFoundEvent?.reservedCostEur, 0.004107);
   assert.equal(JSON.stringify(notFoundEvent).includes('sensitive provider message'), false);
 });
 

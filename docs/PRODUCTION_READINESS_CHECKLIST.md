@@ -204,6 +204,18 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
 - No retry or PDF smoke followed this result. The corrected endpoint is verified to reach the API,
   but successful AI answer generation and the two-PDF/five-question RAG scenario remain unverified.
 
+## Bounded generation retry preflight (2026-10-05)
+
+- The one-shot diagnostic is configured for `gpt-5-mini`, `max_output_tokens: 1024`,
+  `reasoning.effort: minimal`, one gateway attempt and zero SDK retries. Offline mocked-fetch coverage
+  verifies those model and payload parameters are serialized by the existing gateway.
+- The conservative reservation is EUR 0.008228, below the separately authorized EUR 0.01 cap.
+  The ordinary cumulative daily/monthly preflight returned `AI_USAGE_SUMMARY_UNAVAILABLE` because
+  prior provider usage/cost history contains unknown values. No provider request was made, and no
+  prior summaries or counters were changed. Do not treat the new in-memory session cap as cumulative
+  budget evidence; complete historical usage data is required before another request.
+- Completion of the synthetic generation and PDF RAG smoke remain unverified.
+
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
 - Presence-only inspection of the local Next.js environment found `DATABASE_URL` and one

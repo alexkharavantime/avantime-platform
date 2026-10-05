@@ -361,9 +361,15 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   private readonly client: OpenAI;
   private readonly requestStatuses = new Map<string, number>();
   private readonly configured: boolean;
+  private readonly reasoningEffort?: 'minimal';
 
-  constructor(apiKey: string, fetchImplementation?: typeof globalThis.fetch) {
+  constructor(
+    apiKey: string,
+    fetchImplementation?: typeof globalThis.fetch,
+    reasoningEffort?: 'minimal',
+  ) {
     this.configured = apiKey.trim().length > 0;
+    this.reasoningEffort = reasoningEffort;
     const fetcher = fetchImplementation ?? globalThis.fetch;
     this.client = new OpenAI({
       apiKey,
@@ -415,6 +421,9 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   }
 
   async generate(request: RagGenerationRequest, signal: AbortSignal): Promise<RagGenerationResult> {
+    const reasoningEffort =
+      this.reasoningEffort ??
+      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 'low' : undefined);
     const response = await this.client.responses.create(
       {
         model: request.model,
@@ -422,9 +431,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
         instructions: request.systemInstructions,
         input: assembleProviderContext(request),
         max_output_tokens: request.maximumOutputTokens,
-        ...(process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1'
-          ? { reasoning: { effort: 'low' as const } }
-          : {}),
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       },
       { signal },
     );

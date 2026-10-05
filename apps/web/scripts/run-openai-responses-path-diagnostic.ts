@@ -14,12 +14,15 @@ import {
 import { MemoryAiCostController, MemoryAiRateLimiter } from '../lib/ai-control';
 import { InMemoryAiOperationalEventSink } from '../lib/ai-observability';
 import { loadRagConfiguration } from '../lib/rag-configuration';
+import { getRealAiBudgetAllowance } from './real-ai-budget';
 
 const expectedUrl = 'https://api.openai.com/v1/responses';
 const requestedModel = 'gpt-5-mini';
 const budgetLimitEur = 0.01;
-const maximumOutputTokens = 64;
+const maximumOutputTokens = 1024;
+const reasoningEffort = 'minimal' as const;
 const question = 'Reply exactly: 21:45.';
+const expectedAnswer = '21:45.';
 const instructions = 'Synthetic check. Return only the requested value.';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -27,6 +30,7 @@ type SafeUsage = {
   inputTokens: number;
   outputTokens: number;
   totalTokens?: number;
+  reasoningTokens?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -56,10 +60,13 @@ function responseUsage(value: unknown): SafeUsage | undefined {
   const inputTokens = value.input_tokens;
   const outputTokens = value.output_tokens;
   const totalTokens = value.total_tokens;
+  const outputDetails = isRecord(value.output_tokens_details) ? value.output_tokens_details : {};
+  const reasoningTokens = outputDetails.reasoning_tokens;
   if (
     !Number.isSafeInteger(inputTokens) ||
     !Number.isSafeInteger(outputTokens) ||
-    (totalTokens !== undefined && !Number.isSafeInteger(totalTokens))
+    (totalTokens !== undefined && !Number.isSafeInteger(totalTokens)) ||
+    (reasoningTokens !== undefined && !Number.isSafeInteger(reasoningTokens))
   ) {
     return undefined;
   }
@@ -67,6 +74,7 @@ function responseUsage(value: unknown): SafeUsage | undefined {
     inputTokens: inputTokens as number,
     outputTokens: outputTokens as number,
     ...(typeof totalTokens === 'number' ? { totalTokens } : {}),
+    ...(typeof reasoningTokens === 'number' ? { reasoningTokens } : {}),
   };
 }
 
@@ -88,6 +96,7 @@ async function main() {
     RAG_ANSWER_DRIVER: 'openai',
     RAG_ANSWER_MODEL: requestedModel,
     RAG_MAX_OUTPUT_TOKENS: String(maximumOutputTokens),
+    BROWSER_REAL_AI_REASONING_EFFORT: reasoningEffort,
     AI_PROVIDER_MAX_ATTEMPTS: '1',
     AI_DAILY_BUDGET_EUR: '0.25',
     AI_MONTHLY_BUDGET_EUR: '1.00',
@@ -103,6 +112,7 @@ async function main() {
     keyPresent: true,
     keySource: inheritedKey ? 'inherited-process-environment' : 'repository-root-.env',
     model: requestedModel,
+    reasoningEffort,
     method: 'POST',
     url: targetUrl,
     inputCharacters: question.length + instructions.length,
@@ -118,14 +128,57 @@ async function main() {
   if (
     targetUrl !== expectedUrl ||
     environment.RAG_ANSWER_MODEL !== requestedModel ||
+    environment.RAG_MAX_OUTPUT_TOKENS !== '1024' ||
+    environment.BROWSER_REAL_AI_REASONING_EFFORT !== 'minimal' ||
     environment.AI_PROVIDER_MAX_ATTEMPTS !== '1' ||
     reservationEstimateEur <= 0 ||
     reservationEstimateEur > budgetLimitEur
   ) {
     throw new Error('Diagnostic preflight rejected the URL, model, retry count, or budget.');
   }
+
+  let cumulativeBudget;
+  try {
+    cumulativeBudget = getRealAiBudgetAllowance(repositoryRoot);
+  } catch {
+    console.log(
+      JSON.stringify(
+        {
+          mode: 'preflight-blocked',
+          ...preflight,
+          ordinaryBudgetStatus: 'unknown',
+          blockCode: 'AI_USAGE_SUMMARY_UNAVAILABLE',
+        },
+        null,
+        2,
+      ),
+    );
+    process.exitCode = 2;
+    return;
+  }
+  const preflightReport = {
+    ...preflight,
+    ordinaryDailyBudgetRemainingEur: cumulativeBudget.dailyRemainingEur,
+    ordinaryMonthlyBudgetRemainingEur: cumulativeBudget.monthlyRemainingEur,
+  };
+  if (
+    reservationEstimateEur > cumulativeBudget.dailyRemainingEur ||
+    reservationEstimateEur > cumulativeBudget.monthlyRemainingEur
+  ) {
+    console.log(
+      JSON.stringify(
+        { mode: 'preflight-blocked', ...preflightReport, blockCode: 'AI_BUDGET_EXCEEDED' },
+        null,
+        2,
+      ),
+    );
+    process.exitCode = 2;
+    return;
+  }
+  environment.AI_DAILY_BUDGET_EUR = String(cumulativeBudget.dailyRemainingEur);
+  environment.AI_MONTHLY_BUDGET_EUR = String(cumulativeBudget.monthlyRemainingEur);
   if (process.argv.includes('--preflight-only')) {
-    console.log(JSON.stringify({ mode: 'preflight-only', ...preflight }, null, 2));
+    console.log(JSON.stringify({ mode: 'preflight-only', ...preflightReport }, null, 2));
     return;
   }
 
@@ -148,6 +201,7 @@ async function main() {
   let providerErrorParam: string | undefined;
   let bodyUsage: SafeUsage | undefined;
   let answer: string | undefined;
+  let providerParametersVerified = false;
   let returnedUsage:
     { inputTokens: number; outputTokens: number; estimatedCostEur: number } | undefined;
   let safeGatewayError:
@@ -155,42 +209,60 @@ async function main() {
 
   const configuration = loadRagConfiguration(environment);
   const events = new InMemoryAiOperationalEventSink();
-  const provider = new OpenAiGatewayProvider(apiKey, async (input, init) => {
-    const request = input instanceof Request ? input : new Request(input, init);
-    const parsedUrl = new URL(request.url);
-    const safeUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
-    if (
-      request.method !== 'POST' ||
-      safeUrl !== expectedUrl ||
-      parsedUrl.search ||
-      parsedUrl.hash ||
-      parsedUrl.username ||
-      parsedUrl.password
-    ) {
-      throw new Error('Diagnostic request target did not match the approved endpoint.');
-    }
-    if (outboundAttempts >= 1) {
-      throw new Error('Diagnostic outbound operation cap exceeded.');
-    }
-    outboundAttempts += 1;
-    const response = await globalThis.fetch(input, init);
-    httpStatus = response.status;
-    requestId = safeToken(response.headers.get('x-request-id'));
-    const body: unknown = await response
-      .clone()
-      .json()
-      .catch(() => undefined);
-    if (isRecord(body)) {
-      responseStatus = safeToken(body.status);
-      bodyUsage = responseUsage(body.usage);
-      if (isRecord(body.error)) {
-        providerErrorType = safeToken(body.error.type);
-        providerErrorCode = safeToken(body.error.code);
-        providerErrorParam = safeParam(body.error.param);
+  const provider = new OpenAiGatewayProvider(
+    apiKey,
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const parsedUrl = new URL(request.url);
+      const safeUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+      if (
+        request.method !== 'POST' ||
+        safeUrl !== expectedUrl ||
+        parsedUrl.search ||
+        parsedUrl.hash ||
+        parsedUrl.username ||
+        parsedUrl.password
+      ) {
+        throw new Error('Diagnostic request target did not match the approved endpoint.');
       }
-    }
-    return response;
-  });
+      const payload: unknown = await request
+        .clone()
+        .json()
+        .catch(() => undefined);
+      if (
+        !isRecord(payload) ||
+        payload.model !== requestedModel ||
+        payload.max_output_tokens !== maximumOutputTokens ||
+        !isRecord(payload.reasoning) ||
+        payload.reasoning.effort !== reasoningEffort
+      ) {
+        throw new Error('Diagnostic provider parameters did not match the approved request.');
+      }
+      providerParametersVerified = true;
+      if (outboundAttempts >= 1) {
+        throw new Error('Diagnostic outbound operation cap exceeded.');
+      }
+      outboundAttempts += 1;
+      const response = await globalThis.fetch(input, init);
+      httpStatus = response.status;
+      requestId = safeToken(response.headers.get('x-request-id'));
+      const body: unknown = await response
+        .clone()
+        .json()
+        .catch(() => undefined);
+      if (isRecord(body)) {
+        responseStatus = safeToken(body.status);
+        bodyUsage = responseUsage(body.usage);
+        if (isRecord(body.error)) {
+          providerErrorType = safeToken(body.error.type);
+          providerErrorCode = safeToken(body.error.code);
+          providerErrorParam = safeParam(body.error.param);
+        }
+      }
+      return response;
+    },
+    reasoningEffort,
+  );
   const gateway = new DefaultAiGateway(
     configuration,
     new DeterministicFakeAiProvider(),
@@ -250,11 +322,14 @@ async function main() {
   const result = {
     sessionId,
     attemptedAt: new Date().toISOString(),
-    ...preflight,
+    ...preflightReport,
     outboundAttempts,
     httpStatus: httpStatus ?? null,
     responseStatus: responseStatus ?? null,
     hasNonEmptyText: Boolean(answer?.trim()),
+    answerText: answer?.trim() ?? null,
+    answerMatchesExpected: answer?.trim() === expectedAnswer,
+    providerParametersVerified,
     usage: returnedUsage
       ? {
           inputTokens: returnedUsage.inputTokens,
@@ -299,7 +374,14 @@ async function main() {
   console.log(
     JSON.stringify({ ...result, artifact: path.relative(repositoryRoot, outputPath) }, null, 2),
   );
-  if (outboundAttempts !== 1 || !answer?.trim()) process.exitCode = 1;
+  if (
+    outboundAttempts !== 1 ||
+    !providerParametersVerified ||
+    responseStatus !== 'completed' ||
+    answer?.trim() !== expectedAnswer
+  ) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch(() => {
