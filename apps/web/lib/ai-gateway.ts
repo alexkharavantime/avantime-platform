@@ -170,6 +170,14 @@ function safeDiagnosticToken(value: unknown, maximumLength = 64) {
   return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(value) ? value : undefined;
 }
 
+export function normalizeOpenAiBaseUrl(baseUrl?: string) {
+  const normalized = new URL(baseUrl?.trim() || 'https://api.openai.com/v1');
+  if (normalized.origin === 'https://api.openai.com' && normalized.pathname === '/') {
+    normalized.pathname = '/v1';
+  }
+  return normalized.toString().replace(/\/$/u, '');
+}
+
 function diagnosticProvider(provider: string): AiProviderDiagnostic['provider'] {
   return provider === 'openai' ||
     provider === 'gemini' ||
@@ -359,6 +367,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
     const fetcher = fetchImplementation ?? globalThis.fetch;
     this.client = new OpenAI({
       apiKey,
+      baseURL: normalizeOpenAiBaseUrl(process.env.OPENAI_BASE_URL),
       maxRetries: process.env.BROWSER_REAL_AI_KB_SMOKE === '1' ? 0 : 2,
       fetch: async (input, init) => {
         const response = await fetcher(input, init);

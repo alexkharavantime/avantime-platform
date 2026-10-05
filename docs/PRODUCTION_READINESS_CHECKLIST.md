@@ -174,11 +174,22 @@ approve managed staging, validate real providers or authorize production go-live
   with root path `/` over HTTPS. This does not establish the cause of the 404: the retained event
   has no provider error type/code or request ID, and no response usage. Provider/model availability
   or access therefore remains unresolved. No additional provider request was made.
+- Local SDK inspection confirms `responses.create()` issues `POST /responses` and the SDK uses
+  `OPENAI_BASE_URL` verbatim. With the recorded canonical host and root path, the constructed URL
+  was `https://api.openai.com/responses`, omitting `/v1`; this is a confirmed endpoint configuration
+  defect and the most likely cause of the 404, although the provider response body was not retained
+  to prove its exact rejection reason. The gateway now normalizes only the canonical API root to
+  `/v1`, preserving already-versioned and custom proxy URLs. A mocked-fetch regression asserts the
+  final method and URL without network access.
 - Offline regression coverage now reads bounded `error.type`/`error.code` and `x-request-id` from
   SDK errors and records the pre-call reservation as `reservedCostEur`, separately from actual
   usage-derived `estimatedCostEur`. It verifies an HTTP 404 without logging the provider message;
   it does not retroactively recover diagnostics or charges from this run. Real-provider/API/RAG
   smoke remains `Pending`.
+- The diagnostic runner now uses the same cumulative daily/monthly preflight as the ordinary
+  real-AI runner. The preflight is currently blocked by this session's `null` cost/count summary;
+  a new provider attempt or fresh session would reset unknown budget/session accounting and was not
+  started. A complete usage/cost ledger is required before any further external request.
 
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 

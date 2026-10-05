@@ -398,10 +398,9 @@ async function main() {
   }
 
   const resources = configureBrowserDatabase(realAiMode, diagnosticMode);
-  const realAiBudget =
-    realAiMode && !diagnosticMode
-      ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
-      : undefined;
+  const realAiBudget = realAiMode
+    ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
+    : undefined;
   const childEnvironment: NodeJS.ProcessEnv = {
     ...process.env,
     ...(realAiMode ? { NODE_ENV: 'test' as const } : {}),

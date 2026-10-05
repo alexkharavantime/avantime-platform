@@ -10,6 +10,7 @@ import {
   DeterministicFakeAiProvider,
   OpenAiGatewayProvider,
   assembleProviderContext,
+  normalizeOpenAiBaseUrl,
   type EmbeddingProvider,
   type EmbeddingRequest,
   type RagAnswerProvider,
@@ -930,6 +931,9 @@ test('AI Gateway retries transient errors, does not retry permanent errors and e
 });
 
 test('OpenAI failures retain safe diagnostics and reject incomplete Responses', async () => {
+  assert.equal(normalizeOpenAiBaseUrl('https://api.openai.com/'), 'https://api.openai.com/v1');
+  assert.equal(normalizeOpenAiBaseUrl('https://api.openai.com/v1'), 'https://api.openai.com/v1');
+  assert.equal(normalizeOpenAiBaseUrl('https://proxy.example/v1'), 'https://proxy.example/v1');
   const configuration = loadRagConfiguration({
     NODE_ENV: 'test',
     DOCUMENT_EMBEDDING_DRIVER: 'fake',
@@ -941,10 +945,16 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
   });
   const responseBody: { value?: Record<string, unknown> } = {};
   let responseStatus = 503;
-  const provider = new OpenAiGatewayProvider(
-    'offline-test-key',
-    async () =>
-      new Response(
+  let requestUrl: string | undefined;
+  let requestMethod: string | undefined;
+  const previousBaseUrl = process.env.OPENAI_BASE_URL;
+  let provider: OpenAiGatewayProvider | undefined;
+  try {
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/';
+    provider = new OpenAiGatewayProvider('offline-test-key', async (input, init) => {
+      requestUrl = input instanceof Request ? input.url : input.toString();
+      requestMethod = (input instanceof Request ? input.method : init?.method)?.toUpperCase();
+      return new Response(
         JSON.stringify(
           responseBody.value ?? {
             error: {
@@ -961,13 +971,19 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
             'x-request-id': 'req_safe123',
           },
         },
-      ),
-  );
+      );
+    });
+  } finally {
+    if (previousBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
+    else process.env.OPENAI_BASE_URL = previousBaseUrl;
+  }
+  assert.ok(provider);
+  const openAiProvider = provider;
   const events = new InMemoryAiOperationalEventSink();
   const gateway = new DefaultAiGateway(
     configuration,
     new DeterministicFakeAiProvider(),
-    provider,
+    openAiProvider,
     events,
   );
   const request = {
@@ -989,6 +1005,8 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
       error.providerDiagnostic.providerErrorCode === 'upstream_busy' &&
       error.providerDiagnostic.providerRequestId === 'req_safe123',
   );
+  assert.equal(requestMethod, 'POST');
+  assert.equal(requestUrl, 'https://api.openai.com/v1/responses');
   const failedEvent = events.list().find((event) => event.name === 'provider_call');
   assert.equal(failedEvent?.providerDiagnostic?.providerRequestId, 'req_safe123');
   assert.equal(JSON.stringify(failedEvent).includes('sensitive provider message'), false);
@@ -1083,6 +1101,16 @@ test('real-AI budget carryover fails closed across fresh databases', async () =>
       dailyRemainingEur: 0.15,
       monthlyRemainingEur: 0.9,
     });
+
+    await writeFile(
+      path.join(runDirectory, 'usage-summary.json'),
+      JSON.stringify({
+        generatedAt: now.toISOString(),
+        budgetImpactEur: null,
+        providerOperationCount: null,
+      }),
+    );
+    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /invalid/u);
 
     await rm(path.join(runDirectory, 'usage-summary.json'));
     await utimes(runDirectory, now, now);
