@@ -205,6 +205,7 @@ export function createDocumentServices(
               ragConfiguration.limits.monthlyBudgetEur,
               undefined,
               ragConfiguration.limits.sessionProviderOperationLimit,
+              ragConfiguration.limits.sessionBudgetLimitEur,
             ),
         }
       : {}),

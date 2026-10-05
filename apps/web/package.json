@@ -22,6 +22,7 @@
     "documents:migration-rehearsal": "node --import tsx scripts/document-migration-rehearsal.ts",
     "documents:integration-clean": "tsx scripts/cleanup-document-integration.ts",
     "test:integration": "node --import tsx scripts/run-document-integration-tests.ts",
+    "test:ai-session-integration": "node --import tsx scripts/run-ai-session-budget-integration.ts",
     "test:ocr-integration": "RUN_DOCUMENT_OCR_INTEGRATION_TESTS=1 tsx --test tests/integration/document-ocr.integration.test.ts",
     "documents:ocr-check": "tsx scripts/check-document-ocr.ts",
     "documents:intelligence-health": "tsx scripts/check-document-health.ts",
@@ -98,6 +99,7 @@
     "test:browser": "node --import tsx scripts/run-browser-tests.ts",
     "test:browser:headed": "node --import tsx scripts/run-browser-tests.ts --headed",
     "test:browser:real-ai": "node --import tsx scripts/run-browser-tests.ts --real-ai",
+    "test:browser:real-ai:diagnostic": "node --import tsx scripts/run-browser-tests.ts --real-ai-diagnostic",
     "test:accessibility": "node --import tsx scripts/run-browser-tests.ts --grep @accessibility",
     "test:browser:report": "playwright show-report ../../.artifacts/playwright-report"
   },

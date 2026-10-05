@@ -1020,6 +1020,30 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
   assert.equal(incompleteEvent?.providerDiagnostic?.responseErrorCode, 'server_error');
   assert.equal(incompleteEvent?.providerDiagnostic?.httpStatus, 200);
   assert.equal(JSON.stringify(incompleteEvent).includes('sensitive response message'), false);
+
+  responseStatus = 404;
+  responseBody.value = {
+    error: {
+      type: 'invalid_request_error',
+      code: 'model_not_found',
+      message: 'sensitive provider message',
+    },
+  };
+  await assert.rejects(
+    gateway.generateRagAnswer({ ...request, correlationId: 'not-found-response-test' }),
+    (error: unknown) =>
+      error instanceof AiGatewayError &&
+      error.providerDiagnostic?.httpStatus === 404 &&
+      error.providerDiagnostic.providerErrorType === 'invalid_request_error' &&
+      error.providerDiagnostic.providerErrorCode === 'model_not_found' &&
+      error.providerDiagnostic.providerRequestId === 'req_safe123',
+  );
+  const notFoundEvent = events
+    .list()
+    .filter((event) => event.name === 'provider_call')
+    .at(-1);
+  assert.equal(notFoundEvent?.reservedCostEur, 0.004011);
+  assert.equal(JSON.stringify(notFoundEvent).includes('sensitive provider message'), false);
 });
 
 test('real-AI budget carryover fails closed across fresh databases', async () => {
@@ -1114,6 +1138,7 @@ test('real-AI session operation limit counts reconciled calls and JSONL diagnost
       correlationId: 'safe-correlation',
       outcome: 'failure',
       attemptCount: 1,
+      reservedCostEur: 0.004011,
       errorCode: 'AI_REQUEST_REJECTED',
       providerDiagnostic: {
         provider: 'openai',
@@ -1129,10 +1154,22 @@ test('real-AI session operation limit counts reconciled calls and JSONL diagnost
     assert.match(line, /"httpStatus":503/u);
     assert.match(line, /"stage":"rag_answer"/u);
     assert.match(line, /"providerRequestId":"req_safe123"/u);
+    assert.match(line, /"reservedCostEur":0.004011/u);
     assert.doesNotMatch(line, /secret|payload|headers/u);
   } finally {
     await rm(outputDirectory, { recursive: true, force: true });
   }
+});
+
+test('the explicit diagnostic mode alone enables its isolated euro cap', () => {
+  const ordinary = loadRagConfiguration({ NODE_ENV: 'test', BROWSER_REAL_AI_KB_SMOKE: '1' });
+  const diagnostic = loadRagConfiguration({
+    NODE_ENV: 'test',
+    BROWSER_REAL_AI_KB_SMOKE: '1',
+    BROWSER_REAL_AI_DIAGNOSTIC_MODE: '1',
+  });
+  assert.equal(ordinary.limits.sessionBudgetLimitEur, undefined);
+  assert.equal(diagnostic.limits.sessionBudgetLimitEur, 0.05);
 });
 
 test('single-document reindex is dry-run safe and idempotent', async () => {

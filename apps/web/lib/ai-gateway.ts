@@ -108,7 +108,9 @@ export interface AiGateway {
     },
   ): Promise<EmbeddingResult>;
   generateRagAnswer(
-    request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'>,
+    request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'> & {
+      maximumOutputTokens?: number;
+    },
   ): Promise<RagGenerationResult>;
   checkReadiness(): Promise<AiGatewayReadiness>;
 }
@@ -188,6 +190,8 @@ function classifyProviderError(
     record.error && typeof record.error === 'object'
       ? (record.error as Record<string, unknown>)
       : {};
+  const headers = record.headers as { get?: (name: string) => string | null } | undefined;
+  const requestId = record.requestID ?? record.request_id ?? headers?.get?.('x-request-id');
   const status = typeof record.status === 'number' ? record.status : undefined;
   const diagnostic: AiProviderDiagnostic = {
     provider,
@@ -202,8 +206,8 @@ function classifyProviderError(
     ...(safeDiagnosticToken(record.code ?? nestedError.code)
       ? { providerErrorCode: safeDiagnosticToken(record.code ?? nestedError.code) }
       : {}),
-    ...(safeDiagnosticToken(record.requestID ?? record.request_id, 128)
-      ? { providerRequestId: safeDiagnosticToken(record.requestID ?? record.request_id, 128) }
+    ...(safeDiagnosticToken(requestId, 128)
+      ? { providerRequestId: safeDiagnosticToken(requestId, 128) }
       : {}),
   };
   if (status === 429 || (status !== undefined && status >= 500)) {
@@ -409,6 +413,9 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
         instructions: request.systemInstructions,
         input: assembleProviderContext(request),
         max_output_tokens: request.maximumOutputTokens,
+        ...(process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1'
+          ? { reasoning: { effort: 'low' as const } }
+          : {}),
       },
       { signal },
     );
@@ -603,6 +610,7 @@ export class DefaultAiGateway implements AiGateway {
         configuration.limits.monthlyBudgetEur,
         now,
         configuration.limits.sessionProviderOperationLimit,
+        configuration.limits.sessionBudgetLimitEur,
       );
   }
 
@@ -629,7 +637,20 @@ export class DefaultAiGateway implements AiGateway {
     });
   }
 
-  async generateRagAnswer(request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'>) {
+  async generateRagAnswer(
+    request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'> & {
+      maximumOutputTokens?: number;
+    },
+  ) {
+    const maximumOutputTokens =
+      request.maximumOutputTokens ?? this.configuration.answer.maximumOutputTokens;
+    if (
+      !Number.isSafeInteger(maximumOutputTokens) ||
+      maximumOutputTokens <= 0 ||
+      maximumOutputTokens > this.configuration.answer.maximumOutputTokens
+    ) {
+      throw new AiGatewayError('AI_REQUEST_REJECTED', false, 'AI output token limit is invalid.');
+    }
     const estimatedInput = estimateTokens([
       request.question,
       request.systemInstructions,
@@ -641,7 +662,7 @@ export class DefaultAiGateway implements AiGateway {
       this.configuration.answer.model,
       'rag_answer',
       request.correlationId,
-      estimateCost(estimatedInput, this.configuration.answer.maximumOutputTokens),
+      this.estimateReservedCost(estimateCost(estimatedInput, maximumOutputTokens)),
     );
     const startedAt = Date.now();
     let attemptCount = 0;
@@ -653,7 +674,7 @@ export class DefaultAiGateway implements AiGateway {
               {
                 ...request,
                 model: this.configuration.answer.model,
-                maximumOutputTokens: this.configuration.answer.maximumOutputTokens,
+                maximumOutputTokens,
               },
               signal,
             ),
@@ -675,6 +696,7 @@ export class DefaultAiGateway implements AiGateway {
         outcome: 'success',
         durationMs: Date.now() - startedAt,
         attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
@@ -717,6 +739,7 @@ export class DefaultAiGateway implements AiGateway {
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
         attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
         errorCode: normalized.code,
         providerDiagnostic: normalized.providerDiagnostic,
       });
@@ -753,7 +776,7 @@ export class DefaultAiGateway implements AiGateway {
       request.model,
       requestType,
       request.correlationId,
-      estimateCost(estimateTokens(request.texts), 0),
+      this.estimateReservedCost(estimateCost(estimateTokens(request.texts), 0)),
     );
     const startedAt = Date.now();
     let attemptCount = 0;
@@ -778,6 +801,7 @@ export class DefaultAiGateway implements AiGateway {
         outcome: 'success',
         durationMs: Date.now() - startedAt,
         attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
         inputTokens: result.usage.inputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
         providerDiagnostic: {
@@ -819,6 +843,7 @@ export class DefaultAiGateway implements AiGateway {
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
         attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
         errorCode: normalized.code,
         providerDiagnostic: normalized.providerDiagnostic,
       });
@@ -903,14 +928,24 @@ export class DefaultAiGateway implements AiGateway {
     usage: AiUsage,
     embeddingUnits: number,
   ) {
+    const estimatedCostEur =
+      this.configuration.limits.sessionBudgetLimitEur === undefined
+        ? usage.estimatedCostEur
+        : Math.max(reservation.estimatedCostEur, Number((usage.estimatedCostEur * 2).toFixed(6)));
     await this.costController.reconcile({
       reservation,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       embeddingUnits,
-      estimatedCostEur: usage.estimatedCostEur,
+      estimatedCostEur,
       status: 'SUCCEEDED',
     });
+  }
+
+  private estimateReservedCost(estimatedCostEur: number) {
+    return this.configuration.limits.sessionBudgetLimitEur === undefined
+      ? estimatedCostEur
+      : Number((estimatedCostEur * 2).toFixed(6));
   }
 }
 

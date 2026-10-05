@@ -157,12 +157,14 @@ export class MemoryAiCostController implements AiCostController {
   private readonly reservations = new Map<string, AiBudgetReservation>();
   private readonly usage = new Map<string, number>();
   private sessionProviderOperations = 0;
+  private sessionProviderSpendEur = 0;
 
   constructor(
     private readonly dailyLimitEur: number,
     private readonly monthlyLimitEur = dailyLimitEur > 0 ? dailyLimitEur * 31 : 0,
     private readonly now: () => Date = () => new Date(),
     private readonly sessionProviderOperationLimit?: number,
+    private readonly sessionBudgetLimitEur?: number,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
@@ -170,6 +172,16 @@ export class MemoryAiCostController implements AiCostController {
     if (
       this.sessionProviderOperationLimit !== undefined &&
       this.sessionProviderOperations >= this.sessionProviderOperationLimit
+    ) {
+      return null;
+    }
+    const sessionReserved = [...this.reservations.values()]
+      .filter((item) => item.provider === 'openai' || item.provider === 'gemini')
+      .reduce((sum, item) => sum + item.reservedCostEur, 0);
+    if (
+      this.sessionBudgetLimitEur !== undefined &&
+      this.sessionProviderSpendEur + sessionReserved + request.estimatedCostEur >
+        this.sessionBudgetLimitEur
     ) {
       return null;
     }
@@ -207,6 +219,9 @@ export class MemoryAiCostController implements AiCostController {
     if (!this.reservations.delete(key)) return;
     const date = this.now().toISOString();
     const cost = event.actualCostEur ?? event.estimatedCostEur;
+    if (event.reservation.provider === 'openai' || event.reservation.provider === 'gemini') {
+      this.sessionProviderSpendEur += Math.max(event.actualCostEur ?? 0, event.estimatedCostEur);
+    }
     this.usage.set(
       `${event.reservation.tenant.companyId}:${date.slice(0, 10)}`,
       (this.usage.get(`${event.reservation.tenant.companyId}:${date.slice(0, 10)}`) ?? 0) + cost,
@@ -239,6 +254,7 @@ export class PostgreSQLAiCostController implements AiCostController {
     private readonly defaultMonthlyLimitEur: number,
     private readonly reservationTtlMs = 300_000,
     private readonly sessionProviderOperationLimit?: number,
+    private readonly sessionBudgetLimitEur?: number,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
@@ -254,17 +270,36 @@ export class PostgreSQLAiCostController implements AiCostController {
           ? request.tenant.companyId
           : 'real-ai-provider-operation-session',
       );
-      if (this.sessionProviderOperationLimit !== undefined) {
-        const [session] = await transaction.$queryRawUnsafe<Array<{ providerOperations: number }>>(
+      if (
+        this.sessionProviderOperationLimit !== undefined ||
+        this.sessionBudgetLimitEur !== undefined
+      ) {
+        const [session] = await transaction.$queryRawUnsafe<
+          Array<{ providerOperations: number; providerSpendEur: number }>
+        >(
           `SELECT (
              (SELECT COUNT(*) FROM "AiUsageLedger"
               WHERE "provider" IN ('openai', 'gemini')) +
              (SELECT COUNT(*) FROM "AiBudgetReservation"
               WHERE "provider" IN ('openai', 'gemini')
                 AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED'))
-           )::int AS "providerOperations"`,
+           )::int AS "providerOperations",
+           COALESCE((
+             SELECT SUM(GREATEST(COALESCE("actualCostEur", 0), "estimatedCostEur"))
+             FROM "AiUsageLedger" WHERE "provider" IN ('openai', 'gemini')
+           ), 0)::float8 + COALESCE((
+             SELECT SUM("estimatedCostEur") FROM "AiBudgetReservation"
+             WHERE "provider" IN ('openai', 'gemini')
+               AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+           ), 0)::float8 AS "providerSpendEur"`,
         );
-        if (!session || session.providerOperations >= this.sessionProviderOperationLimit) {
+        if (
+          !session ||
+          (this.sessionProviderOperationLimit !== undefined &&
+            session.providerOperations >= this.sessionProviderOperationLimit) ||
+          (this.sessionBudgetLimitEur !== undefined &&
+            session.providerSpendEur + request.estimatedCostEur > this.sessionBudgetLimitEur)
+        ) {
           return null;
         }
       }

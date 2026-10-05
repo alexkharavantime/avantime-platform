@@ -24,6 +24,7 @@ function run(command: string, args: string[], environment: NodeJS.ProcessEnv = p
 
 type RealAiBrowserResources = {
   sessionId: string;
+  diagnosticMode: boolean;
   databaseName: string;
   dataDirectory: string;
   artifactDirectory: string;
@@ -61,9 +62,23 @@ function requireRealAiConfiguration() {
   }
 }
 
-function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources | undefined {
+function configureBrowserDatabase(
+  realAiMode: boolean,
+  diagnosticMode: boolean,
+): RealAiBrowserResources | undefined {
   const rootEnvironmentFile = path.resolve(webDirectory, '../../.env');
   if (existsSync(rootEnvironmentFile)) process.loadEnvFile(rootEnvironmentFile);
+
+  if (diagnosticMode) {
+    process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE = '1';
+    process.env.DOCUMENT_EMBEDDING_DRIVER = 'openai';
+    process.env.DOCUMENT_EMBEDDING_MODEL = 'text-embedding-3-small';
+    process.env.DOCUMENT_EMBEDDING_DIMENSIONS = '1536';
+    process.env.RAG_ANSWER_DRIVER = 'openai';
+    process.env.RAG_ANSWER_MODEL = 'gpt-5-mini';
+  } else {
+    delete process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE;
+  }
 
   if (process.env.BROWSER_REAL_AI_KB_SMOKE === '1' && !realAiMode) {
     throw new Error('BROWSER_REAL_AI_KB_SMOKE is reserved for the dedicated --real-ai runner.');
@@ -132,6 +147,7 @@ function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources |
   process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE = diagnosticsFile;
   return {
     sessionId: runId,
+    diagnosticMode,
     databaseName: browserDatabaseName,
     dataDirectory,
     artifactDirectory,
@@ -243,7 +259,9 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
       : 0;
     const summary = {
       sessionId: resources.sessionId,
+      diagnosticMode: resources.diagnosticMode,
       sessionProviderOperationLimit: 13,
+      ...(resources.diagnosticMode ? { sessionBudgetLimitEur: 0.05 } : {}),
       providerEventFile: path.basename(resources.diagnosticsFile),
       providerEventCount: diagnosticEvents,
       generatedAt: new Date().toISOString(),
@@ -320,6 +338,11 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
     console.info(
       JSON.stringify({
         event: 'real_ai_smoke_usage_summary',
+        sessionId: resources.sessionId,
+        diagnosticMode: resources.diagnosticMode,
+        budgetImpactEur: summary.budgetImpactEur,
+        providerOperationCount: summary.providerOperationCount,
+        providerEventCount: summary.providerEventCount,
         outputFile: path.basename(summaryPath),
         operationGroups: summary.operations.length,
       }),
@@ -329,9 +352,44 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
   }
 }
 
+async function writeUnavailableRealAiUsageSummary(resources: RealAiBrowserResources) {
+  const summaryPath = path.join(path.dirname(resources.artifactDirectory), 'usage-summary.json');
+  const diagnosticEvents = existsSync(resources.diagnosticsFile)
+    ? (await readFile(resources.diagnosticsFile, 'utf8')).split('\n').filter((line) => line.trim())
+        .length
+    : 0;
+  await mkdir(path.dirname(summaryPath), { recursive: true, mode: 0o700 });
+  await writeFile(
+    summaryPath,
+    JSON.stringify(
+      {
+        sessionId: resources.sessionId,
+        diagnosticMode: resources.diagnosticMode,
+        sessionProviderOperationLimit: 13,
+        ...(resources.diagnosticMode ? { sessionBudgetLimitEur: 0.05 } : {}),
+        providerEventFile: path.basename(resources.diagnosticsFile),
+        providerEventCount: diagnosticEvents,
+        generatedAt: new Date().toISOString(),
+        summaryStatus: 'unavailable',
+        summaryErrorCode: 'AI_USAGE_SUMMARY_UNAVAILABLE',
+        budgetImpactEur: null,
+        providerOperationCount: null,
+        operations: null,
+        reservations: null,
+      },
+      null,
+      2,
+    ),
+    { encoding: 'utf8', flag: 'wx', mode: 0o600 },
+  );
+}
+
 async function main() {
-  const realAiMode = process.argv.includes('--real-ai');
-  const testArguments = process.argv.slice(2).filter((argument) => argument !== '--real-ai');
+  const diagnosticMode = process.argv.includes('--real-ai-diagnostic');
+  const realAiMode = process.argv.includes('--real-ai') || diagnosticMode;
+  const testArguments = process.argv
+    .slice(2)
+    .filter((argument) => !['--real-ai', '--real-ai-diagnostic'].includes(argument));
   if (process.env.BROWSER_REAL_AI_KB_SMOKE === '1' && !realAiMode) {
     throw new Error('Use the dedicated test:browser:real-ai command to enable real AI.');
   }
@@ -339,13 +397,15 @@ async function main() {
     throw new Error('The dedicated real-AI browser command does not accept Playwright overrides.');
   }
 
-  const resources = configureBrowserDatabase(realAiMode);
-  const realAiBudget = realAiMode
-    ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
-    : undefined;
+  const resources = configureBrowserDatabase(realAiMode, diagnosticMode);
+  const realAiBudget =
+    realAiMode && !diagnosticMode
+      ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
+      : undefined;
   const childEnvironment: NodeJS.ProcessEnv = {
     ...process.env,
     ...(realAiMode ? { NODE_ENV: 'test' as const } : {}),
+    ...(diagnosticMode ? { AI_DAILY_BUDGET_EUR: '0.25', AI_MONTHLY_BUDGET_EUR: '1.00' } : {}),
     ...(realAiBudget
       ? {
           AI_DAILY_BUDGET_EUR: String(realAiBudget.dailyRemainingEur),
@@ -353,6 +413,18 @@ async function main() {
         }
       : {}),
   };
+  if (diagnosticMode && resources) {
+    console.info(
+      JSON.stringify({
+        event: 'real_ai_diagnostic_session_started',
+        sessionId: resources.sessionId,
+        sessionBudgetLimitEur: 0.05,
+        dailyBudgetEur: 0.25,
+        monthlyBudgetEur: 1,
+        maxProviderOperations: 13,
+      }),
+    );
+  }
   if (!realAiMode) {
     delete childEnvironment.OPENAI_API_KEY;
     delete childEnvironment.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -393,6 +465,11 @@ async function main() {
       } catch {
         finalization.usageSummary = 'failed';
         exitCode = 1;
+        try {
+          await writeUnavailableRealAiUsageSummary(resources);
+        } catch {
+          finalization.usageSummary = 'failed';
+        }
       }
     }
     if (artifactDirectory) {

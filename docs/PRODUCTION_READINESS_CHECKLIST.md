@@ -163,6 +163,23 @@ approve managed staging, validate real providers or authorize production go-live
   per-run ledgers for all activity in those periods. No diagnostic or smoke provider call was made
   in this follow-up; provider and API/RAG smoke rows remain `Pending`.
 
+## Diagnostic Responses 404 follow-up
+
+- Diagnostic session `8d1591cd2e334cac95d2284c661eda64` made exactly one Responses attempt and
+  received HTTP 404 (`AI_REQUEST_REJECTED`). The run stopped immediately; the two-PDF/five-question
+  smoke was not run. Sanitized artifacts were retained before temporary-resource cleanup. The
+  fallback summary reports `summaryStatus: unavailable`, with unknown usage, operation count and
+  budget impact represented as `null`, not zero.
+- Presence-safe endpoint inspection found the configured OpenAI base URL host is `api.openai.com`,
+  with root path `/` over HTTPS. This does not establish the cause of the 404: the retained event
+  has no provider error type/code or request ID, and no response usage. Provider/model availability
+  or access therefore remains unresolved. No additional provider request was made.
+- Offline regression coverage now reads bounded `error.type`/`error.code` and `x-request-id` from
+  SDK errors and records the pre-call reservation as `reservedCostEur`, separately from actual
+  usage-derived `estimatedCostEur`. It verifies an HTTP 404 without logging the provider message;
+  it does not retroactively recover diagnostics or charges from this run. Real-provider/API/RAG
+  smoke remains `Pending`.
+
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
 - Presence-only inspection of the local Next.js environment found `DATABASE_URL` and one

@@ -11,6 +11,7 @@ import type { DocumentTenantContext } from '../../lib/document-model';
 import type { DocumentMetadataDatabaseClient } from '../../lib/document-repositories';
 import { loadRagConfiguration } from '../../lib/rag-configuration';
 import type { VectorDatabaseClient } from '../../lib/vector-repository';
+import { buildRagSystemInstructions } from '../../lib/rag-answer';
 import {
   BROWSER_DATA_DIRECTORY,
   BROWSER_DATABASE_NAME,
@@ -210,13 +211,37 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   expect(ragConfiguration.embeddingQueue.driver).toBe('postgresql');
   expect(ragConfiguration.limits.providerMaxAttempts).toBe(1);
   expect(ragConfiguration.limits.sessionProviderOperationLimit).toBe(13);
+  if (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1') {
+    expect(ragConfiguration.limits.sessionBudgetLimitEur).toBe(0.05);
+    expect(process.env.BROWSER_REAL_AI_SESSION_ID).toMatch(/^[a-f0-9]{32}$/u);
+    const diagnostic = await services.rag!.gateway.generateRagAnswer({
+      tenant: tenantA,
+      question: 'At what time does synthetic nightly maintenance start?',
+      language: 'en',
+      systemInstructions: buildRagSystemInstructions('en'),
+      maximumOutputTokens: 96,
+      sources: [
+        {
+          sourceId: 'S1',
+          sourceType: 'DOCUMENT',
+          documentId: 'synthetic-diagnostic-document',
+          chunkId: 'synthetic-diagnostic-chunk',
+          title: 'Synthetic diagnostic fixture',
+          excerpt: 'Synthetic diagnostic fact only: nightly maintenance starts at 21:45.',
+        },
+      ],
+      correlationId: `diagnostic-${process.env.BROWSER_REAL_AI_SESSION_ID}`,
+    });
+    expect(diagnostic.answer).toContain('21:45');
+    expect(diagnostic.usage.outputTokens).toBeLessThanOrEqual(96);
+  }
   expect(ragConfiguration.limits.rateLimitPerMinute).toBe(10);
   expect(ragConfiguration.limits.rateLimitPerDay).toBe(5);
   expect(ragConfiguration.limits.burstLimit).toBe(3);
   expect(ragConfiguration.limits.dailyBudgetEur).toBe(0.25);
   expect(ragConfiguration.limits.monthlyBudgetEur).toBe(1);
   expect(ragConfiguration.answer.maximumOutputTokens).toBe(250);
-  expect(ragConfiguration.answer.maximumContextCharacters).toBe(3_000);
+  expect(ragConfiguration.answer.maximumContextCharacters).toBe(1_500);
   expect(
     controlQuestions.every(
       (question) => question.text.length <= ragConfiguration.limits.queryMaximumCharacters,
@@ -398,9 +423,16 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     expect(estimatedAnswerCost).toBeLessThanOrEqual(0.25);
     expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(0.25);
     expect(ledger?.inputTokens ?? 0).toBeLessThanOrEqual(20_000);
-    expect(ledger?.outputTokens ?? 0).toBeLessThanOrEqual(1_250);
-    expect(ledger?.operationCount ?? 0).toBe(12);
-    expect(ledger?.openAiOperationCount ?? 0).toBe(12);
+    expect(ledger?.outputTokens ?? 0).toBeLessThanOrEqual(
+      1_250 + (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 96 : 0),
+    );
+    const expectedProviderOperations =
+      12 + (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 1 : 0);
+    expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(
+      ragConfiguration.limits.sessionBudgetLimitEur ?? 0.25,
+    );
+    expect(ledger?.operationCount ?? 0).toBe(expectedProviderOperations);
+    expect(ledger?.openAiOperationCount ?? 0).toBe(expectedProviderOperations);
     expect(ledger?.tenantBAnswerOperations ?? 0).toBe(0);
     console.info(
       JSON.stringify({
