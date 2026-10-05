@@ -14,7 +14,6 @@ import {
 import { MemoryAiCostController, MemoryAiRateLimiter } from '../lib/ai-control';
 import { InMemoryAiOperationalEventSink } from '../lib/ai-observability';
 import { loadRagConfiguration } from '../lib/rag-configuration';
-import { getRealAiBudgetAllowance } from './real-ai-budget';
 
 const expectedUrl = 'https://api.openai.com/v1/responses';
 const requestedModel = 'gpt-5-mini';
@@ -137,46 +136,11 @@ async function main() {
     throw new Error('Diagnostic preflight rejected the URL, model, retry count, or budget.');
   }
 
-  let cumulativeBudget;
-  try {
-    cumulativeBudget = getRealAiBudgetAllowance(repositoryRoot);
-  } catch {
-    console.log(
-      JSON.stringify(
-        {
-          mode: 'preflight-blocked',
-          ...preflight,
-          ordinaryBudgetStatus: 'unknown',
-          blockCode: 'AI_USAGE_SUMMARY_UNAVAILABLE',
-        },
-        null,
-        2,
-      ),
-    );
-    process.exitCode = 2;
-    return;
-  }
   const preflightReport = {
     ...preflight,
-    ordinaryDailyBudgetRemainingEur: cumulativeBudget.dailyRemainingEur,
-    ordinaryMonthlyBudgetRemainingEur: cumulativeBudget.monthlyRemainingEur,
+    budgetScope: 'independent-one-shot-diagnostic',
+    ordinaryCumulativeBudgetApplied: false,
   };
-  if (
-    reservationEstimateEur > cumulativeBudget.dailyRemainingEur ||
-    reservationEstimateEur > cumulativeBudget.monthlyRemainingEur
-  ) {
-    console.log(
-      JSON.stringify(
-        { mode: 'preflight-blocked', ...preflightReport, blockCode: 'AI_BUDGET_EXCEEDED' },
-        null,
-        2,
-      ),
-    );
-    process.exitCode = 2;
-    return;
-  }
-  environment.AI_DAILY_BUDGET_EUR = String(cumulativeBudget.dailyRemainingEur);
-  environment.AI_MONTHLY_BUDGET_EUR = String(cumulativeBudget.monthlyRemainingEur);
   if (process.argv.includes('--preflight-only')) {
     console.log(JSON.stringify({ mode: 'preflight-only', ...preflightReport }, null, 2));
     return;
@@ -292,6 +256,7 @@ async function main() {
       correlationId: `path-diagnostic-${sessionId}`,
     });
     answer = result.answer;
+    requestId = requestId ?? safeToken(result.providerDiagnostic?.providerRequestId);
     returnedUsage = {
       inputTokens: result.usage.inputTokens,
       outputTokens: result.usage.outputTokens,
@@ -326,6 +291,7 @@ async function main() {
     outboundAttempts,
     httpStatus: httpStatus ?? null,
     responseStatus: responseStatus ?? null,
+    requestId: requestId ?? diagnostic?.providerRequestId ?? null,
     hasNonEmptyText: Boolean(answer?.trim()),
     answerText: answer?.trim() ?? null,
     answerMatchesExpected: answer?.trim() === expectedAnswer,

@@ -186,10 +186,10 @@ approve managed staging, validate real providers or authorize production go-live
   usage-derived `estimatedCostEur`. It verifies an HTTP 404 without logging the provider message;
   it does not retroactively recover diagnostics or charges from this run. Real-provider/API/RAG
   smoke remains `Pending`.
-- The diagnostic runner now uses the same cumulative daily/monthly preflight as the ordinary
-  real-AI runner. The preflight is currently blocked by this session's `null` cost/count summary;
-  a new provider attempt or fresh session would reset unknown budget/session accounting and was not
-  started. A complete usage/cost ledger is required before any further external request.
+- At that point, the diagnostic runner's cumulative daily/monthly preflight was blocked by this
+  session's `null` cost/count summary. The later single-request exception is explicitly scoped to
+  the diagnostic CLI below; ordinary real-AI runs still require complete cumulative usage/cost
+  history and continue to fail closed on unknown values.
 
 ## Post-fix Responses path check (2026-10-05)
 
@@ -210,11 +210,20 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
   `reasoning.effort: minimal`, one gateway attempt and zero SDK retries. Offline mocked-fetch coverage
   verifies those model and payload parameters are serialized by the existing gateway.
 - The conservative reservation is EUR 0.008228, below the separately authorized EUR 0.01 cap.
-  The ordinary cumulative daily/monthly preflight returned `AI_USAGE_SUMMARY_UNAVAILABLE` because
-  prior provider usage/cost history contains unknown values. No provider request was made, and no
-  prior summaries or counters were changed. Do not treat the new in-memory session cap as cumulative
-  budget evidence; complete historical usage data is required before another request.
-- Completion of the synthetic generation and PDF RAG smoke remain unverified.
+  The explicitly authorized one-shot diagnostic now marks its scope as independent and does not
+  apply the ordinary cumulative daily/monthly preflight. Ordinary application requests and the PDF
+  smoke remain subject to their existing limits. Unknown historical usage/cost and all prior
+  summaries remain unchanged; this isolated in-memory cap is not evidence of cumulative budget
+  compliance.
+- One real request returned HTTP 200, `response.status: completed`, and the exact expected text
+  `21:45.`. Serialized provider parameters were verified before fetch; there was one outbound
+  attempt and zero SDK retries. Provider usage was 52 input tokens, 22 output tokens and 0 reasoning
+  tokens. The usage-derived estimate is EUR 0.000140, reservation estimate EUR 0.008228, and actual
+  charge remains unknown (`null`).
+- The successful response's request ID was not persisted by this CLI version and cannot be recovered
+  without another provider request; the artifact explicitly records it as unavailable. The CLI now
+  persists request IDs on successful responses for future runs. The synthetic generation criterion
+  is met; answers grounded in the two PDFs and their citations remain unverified.
 
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
