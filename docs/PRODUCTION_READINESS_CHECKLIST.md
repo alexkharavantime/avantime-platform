@@ -191,6 +191,19 @@ approve managed staging, validate real providers or authorize production go-live
   a new provider attempt or fresh session would reset unknown budget/session accounting and was not
   started. A complete usage/cost ledger is required before any further external request.
 
+## Post-fix Responses path check (2026-10-05)
+
+- One explicitly authorized synthetic Responses request used `POST
+https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output tokens, one gateway
+  attempt and zero SDK retries. The separate cap was EUR 0.01; the gateway reservation estimate was
+  EUR 0.000548, within that cap. No document data or working database was used.
+- The API returned HTTP 200 with response status `incomplete` and `max_output_tokens`; no non-empty
+  answer text was returned. Provider-reported usage was 52 input and 64 output tokens. The local
+  usage-derived cost estimate is EUR 0.000308; the reservation estimate is EUR 0.000548; actual
+  provider charge remains unknown. Safe result: `.artifacts/openai-responses-path-diagnostic-29031730e92d4257b7cd9f7ef9399cd8/result.json`.
+- No retry or PDF smoke followed this result. The corrected endpoint is verified to reach the API,
+  but successful AI answer generation and the two-PDF/five-question RAG scenario remain unverified.
+
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
 - Presence-only inspection of the local Next.js environment found `DATABASE_URL` and one
