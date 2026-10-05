@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -22,7 +22,10 @@ import {
   resetApiRateLimitsForTests,
 } from '../lib/api-rate-limit';
 import { MemoryAiCostController } from '../lib/ai-control';
-import { InMemoryAiOperationalEventSink } from '../lib/ai-observability';
+import {
+  InMemoryAiOperationalEventSink,
+  JsonlAiOperationalEventSink,
+} from '../lib/ai-observability';
 import {
   enqueueDocumentEmbedding,
   hashChunkContent,
@@ -1015,6 +1018,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     .filter((event) => event.name === 'provider_call')
     .at(-1);
   assert.equal(incompleteEvent?.providerDiagnostic?.responseErrorCode, 'server_error');
+  assert.equal(incompleteEvent?.providerDiagnostic?.httpStatus, 200);
   assert.equal(JSON.stringify(incompleteEvent).includes('sensitive response message'), false);
 });
 
@@ -1048,10 +1052,13 @@ test('real-AI budget carryover fails closed across fresh databases', async () =>
       JSON.stringify({
         generatedAt: now.toISOString(),
         budgetImpactEur: 0.1,
-        providerOperationCount: 2,
+        providerOperationCount: 13,
       }),
     );
-    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /provider-operation limit/u);
+    assert.deepEqual(getRealAiBudgetAllowance(repositoryRoot, now), {
+      dailyRemainingEur: 0.15,
+      monthlyRemainingEur: 0.9,
+    });
 
     await rm(path.join(runDirectory, 'usage-summary.json'));
     await utimes(runDirectory, now, now);
@@ -1061,6 +1068,70 @@ test('real-AI budget carryover fails closed across fresh databases', async () =>
     assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /no usage summary/u);
   } finally {
     await rm(repositoryRoot, { recursive: true, force: true });
+  }
+});
+
+test('real-AI session operation limit counts reconciled calls and JSONL diagnostics are allowlisted', async () => {
+  const outputDirectory = await mkdtemp(path.join(os.tmpdir(), 'avantime-ai-events-'));
+  try {
+    const controller = new MemoryAiCostController(1, 1, () => new Date(), 1);
+    const reservation = await controller.reserve({
+      tenant: tenantA,
+      provider: 'openai',
+      model: 'test-model',
+      requestType: 'rag_answer',
+      correlationId: 'first-attempt',
+      idempotencyKey: 'first-attempt',
+      estimatedCostEur: 0.01,
+    });
+    assert.ok(reservation);
+    await controller.reconcile({
+      reservation,
+      inputTokens: 10,
+      outputTokens: 2,
+      embeddingUnits: 0,
+      estimatedCostEur: 0.01,
+      status: 'SUCCEEDED',
+    });
+    assert.equal(
+      await controller.reserve({
+        tenant: tenantB,
+        provider: 'openai',
+        model: 'test-model',
+        requestType: 'rag_answer',
+        correlationId: 'second-attempt',
+        idempotencyKey: 'second-attempt',
+        estimatedCostEur: 0.01,
+      }),
+      null,
+    );
+
+    const outputPath = path.join(outputDirectory, 'provider-events.jsonl');
+    new JsonlAiOperationalEventSink(outputPath).record({
+      name: 'provider_call',
+      occurredAt: new Date().toISOString(),
+      companyId: 'company-a',
+      correlationId: 'safe-correlation',
+      outcome: 'failure',
+      attemptCount: 1,
+      errorCode: 'AI_REQUEST_REJECTED',
+      providerDiagnostic: {
+        provider: 'openai',
+        operation: 'answer',
+        stage: 'rag_answer',
+        httpStatus: 503,
+        providerErrorCode: 'upstream_busy',
+        providerRequestId: 'req_safe123',
+        attemptCount: 1,
+      },
+    });
+    const line = await readFile(outputPath, 'utf8');
+    assert.match(line, /"httpStatus":503/u);
+    assert.match(line, /"stage":"rag_answer"/u);
+    assert.match(line, /"providerRequestId":"req_safe123"/u);
+    assert.doesNotMatch(line, /secret|payload|headers/u);
+  } finally {
+    await rm(outputDirectory, { recursive: true, force: true });
   }
 });
 

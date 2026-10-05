@@ -1,3 +1,6 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
+
 export type AiOperationalEventName =
   | 'embedding_job_queued'
   | 'embedding_job_completed'
@@ -10,6 +13,7 @@ export type AiOperationalEventName =
 export type AiProviderDiagnostic = {
   provider: 'openai' | 'gemini' | 'fake' | 'disabled' | 'unknown';
   operation: 'embedding' | 'answer';
+  stage?: 'document_embedding' | 'query_embedding' | 'rag_answer';
   httpStatus?: number;
   providerErrorName?: string;
   providerErrorType?: string;
@@ -19,6 +23,7 @@ export type AiProviderDiagnostic = {
   responseErrorType?: string;
   responseErrorCode?: string;
   incompleteReason?: string;
+  attemptCount?: number;
 };
 
 export type AiOperationalEvent = {
@@ -28,6 +33,7 @@ export type AiOperationalEvent = {
   correlationId: string;
   outcome: 'success' | 'failure' | 'no_answer';
   durationMs?: number;
+  attemptCount?: number;
   count?: number;
   inputTokens?: number;
   outputTokens?: number;
@@ -38,6 +44,74 @@ export type AiOperationalEvent = {
 
 export interface AiOperationalEventSink {
   record(event: AiOperationalEvent): void;
+}
+
+function safeToken(value: unknown, maximumLength = 128) {
+  return typeof value === 'string' &&
+    value.length <= maximumLength &&
+    /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/u.test(value)
+    ? value
+    : undefined;
+}
+
+function safeProviderDiagnostic(diagnostic: AiProviderDiagnostic) {
+  return {
+    provider: diagnostic.provider,
+    operation: diagnostic.operation,
+    ...(diagnostic.stage ? { stage: diagnostic.stage } : {}),
+    ...(Number.isSafeInteger(diagnostic.httpStatus) ? { httpStatus: diagnostic.httpStatus } : {}),
+    ...(
+      [
+        'providerErrorName',
+        'providerErrorType',
+        'providerErrorCode',
+        'providerRequestId',
+        'responseStatus',
+        'responseErrorType',
+        'responseErrorCode',
+        'incompleteReason',
+      ] as const
+    ).reduce<Record<string, string>>((safe, key) => {
+      const token = safeToken(diagnostic[key]);
+      if (token) safe[key] = token;
+      return safe;
+    }, {}),
+    ...(Number.isSafeInteger(diagnostic.attemptCount) && diagnostic.attemptCount! > 0
+      ? { attemptCount: diagnostic.attemptCount }
+      : {}),
+  };
+}
+
+export class JsonlAiOperationalEventSink implements AiOperationalEventSink {
+  constructor(private readonly outputPath: string) {}
+
+  record(event: AiOperationalEvent) {
+    const safeEvent = {
+      name: event.name,
+      occurredAt: event.occurredAt,
+      ...(safeToken(event.companyId) ? { companyId: event.companyId } : {}),
+      ...(safeToken(event.correlationId) ? { correlationId: event.correlationId } : {}),
+      outcome: event.outcome,
+      ...(Number.isFinite(event.durationMs) ? { durationMs: event.durationMs } : {}),
+      ...(Number.isSafeInteger(event.attemptCount) && event.attemptCount! > 0
+        ? { attemptCount: event.attemptCount }
+        : {}),
+      ...(Number.isSafeInteger(event.inputTokens) ? { inputTokens: event.inputTokens } : {}),
+      ...(Number.isSafeInteger(event.outputTokens) ? { outputTokens: event.outputTokens } : {}),
+      ...(Number.isFinite(event.estimatedCostEur) && event.estimatedCostEur! >= 0
+        ? { estimatedCostEur: event.estimatedCostEur }
+        : {}),
+      ...(safeToken(event.errorCode) ? { errorCode: event.errorCode } : {}),
+      ...(event.providerDiagnostic
+        ? { providerDiagnostic: safeProviderDiagnostic(event.providerDiagnostic) }
+        : {}),
+    };
+    mkdirSync(path.dirname(this.outputPath), { recursive: true, mode: 0o700 });
+    appendFileSync(this.outputPath, `${JSON.stringify(safeEvent)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+  }
 }
 
 export class InMemoryAiOperationalEventSink implements AiOperationalEventSink {

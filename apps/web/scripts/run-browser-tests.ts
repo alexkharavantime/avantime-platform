@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -23,9 +23,11 @@ function run(command: string, args: string[], environment: NodeJS.ProcessEnv = p
 }
 
 type RealAiBrowserResources = {
+  sessionId: string;
   databaseName: string;
   dataDirectory: string;
   artifactDirectory: string;
+  diagnosticsFile: string;
 };
 
 function requireRealAiConfiguration() {
@@ -117,6 +119,7 @@ function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources |
     `document-kb-real-ai-${runId}`,
     'playwright-results',
   );
+  const diagnosticsFile = path.join(path.dirname(artifactDirectory), 'provider-events.jsonl');
   if (existsSync(dataDirectory) || existsSync(path.dirname(artifactDirectory))) {
     throw new Error(
       'The generated real-AI resource directory already exists; refusing to reuse it.',
@@ -125,10 +128,14 @@ function configureBrowserDatabase(realAiMode: boolean): RealAiBrowserResources |
   process.env.BROWSER_DATA_DIRECTORY = dataDirectory;
   process.env.BROWSER_ARTIFACT_DIRECTORY = artifactDirectory;
   process.env.BROWSER_REAL_AI_KB_SMOKE = '1';
+  process.env.BROWSER_REAL_AI_SESSION_ID = runId;
+  process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE = diagnosticsFile;
   return {
+    sessionId: runId,
     databaseName: browserDatabaseName,
     dataDirectory,
     artifactDirectory,
+    diagnosticsFile,
   };
 }
 
@@ -229,7 +236,16 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
       GROUP BY "requestType", "provider", "status"
       ORDER BY "requestType", "provider", "status"
     `;
+    const diagnosticEvents = existsSync(resources.diagnosticsFile)
+      ? (await readFile(resources.diagnosticsFile, 'utf8'))
+          .split('\n')
+          .filter((line) => line.trim()).length
+      : 0;
     const summary = {
+      sessionId: resources.sessionId,
+      sessionProviderOperationLimit: 13,
+      providerEventFile: path.basename(resources.diagnosticsFile),
+      providerEventCount: diagnosticEvents,
       generatedAt: new Date().toISOString(),
       operations: operations.map((operation) => ({
         requestType: ['document_embedding', 'query_embedding', 'rag_answer'].includes(
@@ -355,7 +371,7 @@ async function main() {
       exitCode = prepare.status ?? 1;
     } else {
       const selectedArguments = realAiMode
-        ? [...testArguments, '--grep', '@real-ai']
+        ? [...testArguments, '--grep', '@real-ai', '--retries', '0']
         : testArguments;
       const result = run(
         process.execPath,

@@ -49,6 +49,7 @@ export type RagConfiguration = {
   };
   limits: {
     providerMaxAttempts: number;
+    sessionProviderOperationLimit?: number;
     queryMaximumCharacters: number;
     rateLimitPerMinute: number;
     rateLimitPerDay: number;
@@ -303,6 +304,9 @@ export function loadRagConfiguration(
     },
     limits: {
       providerMaxAttempts: Number(providerMaxAttempts),
+      ...(environment.BROWSER_REAL_AI_KB_SMOKE === '1'
+        ? { sessionProviderOperationLimit: 13 }
+        : {}),
       queryMaximumCharacters: parsePositiveInteger(environment, 'RAG_QUERY_MAX_CHARACTERS', 2_000),
       rateLimitPerMinute: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_MINUTE', 30),
       rateLimitPerDay: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_DAY', 5_000),

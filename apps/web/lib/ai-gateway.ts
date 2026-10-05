@@ -39,6 +39,7 @@ export type EmbeddingResult = {
   model: string;
   dimensions: number;
   usage: AiUsage;
+  providerDiagnostic?: AiProviderDiagnostic;
 };
 
 export type RagContextSource = {
@@ -68,6 +69,7 @@ export type RagGenerationResult = {
   answer: string;
   model: string;
   usage: AiUsage;
+  providerDiagnostic?: AiProviderDiagnostic;
 };
 
 export type AiProviderAvailability = {
@@ -345,15 +347,34 @@ export class DisabledAiProvider implements EmbeddingProvider, RagAnswerProvider 
 export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvider {
   readonly id = 'openai';
   private readonly client: OpenAI;
+  private readonly requestStatuses = new Map<string, number>();
   private readonly configured: boolean;
 
   constructor(apiKey: string, fetchImplementation?: typeof globalThis.fetch) {
     this.configured = apiKey.trim().length > 0;
+    const fetcher = fetchImplementation ?? globalThis.fetch;
     this.client = new OpenAI({
       apiKey,
       maxRetries: process.env.BROWSER_REAL_AI_KB_SMOKE === '1' ? 0 : 2,
-      ...(fetchImplementation ? { fetch: fetchImplementation } : {}),
+      fetch: async (input, init) => {
+        const response = await fetcher(input, init);
+        const requestId = response.headers.get('x-request-id');
+        if (requestId) this.requestStatuses.set(requestId, response.status);
+        return response;
+      },
     });
+  }
+
+  private responseDiagnostic(requestId: unknown, operation: AiProviderDiagnostic['operation']) {
+    const safeRequestId = safeDiagnosticToken(requestId, 128);
+    const httpStatus = safeRequestId ? this.requestStatuses.get(safeRequestId) : undefined;
+    if (safeRequestId) this.requestStatuses.delete(safeRequestId);
+    return {
+      provider: 'openai' as const,
+      operation,
+      ...(httpStatus !== undefined ? { httpStatus } : {}),
+      ...(safeRequestId ? { providerRequestId: safeRequestId } : {}),
+    };
   }
 
   async embed(request: EmbeddingRequest, signal: AbortSignal): Promise<EmbeddingResult> {
@@ -371,6 +392,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
       vectors: response.data.map((item) => item.embedding),
       model: response.model,
       dimensions: request.dimensions,
+      providerDiagnostic: this.responseDiagnostic(response._request_id, 'embedding'),
       usage: {
         inputTokens,
         outputTokens: 0,
@@ -390,11 +412,14 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
       },
       { signal },
     );
+    const responseError = response.error as unknown as Record<string, unknown> | null;
     if ((response.status && response.status !== 'completed') || response.error) {
       const diagnostic: AiProviderDiagnostic = {
-        provider: 'openai',
-        operation: 'answer',
+        ...this.responseDiagnostic(response._request_id, 'answer'),
         ...(response.status ? { responseStatus: response.status } : {}),
+        ...(safeDiagnosticToken(responseError?.type)
+          ? { responseErrorType: safeDiagnosticToken(responseError?.type) }
+          : {}),
         ...(safeDiagnosticToken(response.error?.code)
           ? { responseErrorCode: safeDiagnosticToken(response.error?.code) }
           : {}),
@@ -414,6 +439,10 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
     return {
       answer: response.output_text?.trim() ?? '',
       model: request.model,
+      providerDiagnostic: {
+        ...this.responseDiagnostic(response._request_id, 'answer'),
+        responseStatus: response.status,
+      },
       usage: {
         inputTokens,
         outputTokens,
@@ -573,6 +602,7 @@ export class DefaultAiGateway implements AiGateway {
         configuration.limits.dailyBudgetEur,
         configuration.limits.monthlyBudgetEur,
         now,
+        configuration.limits.sessionProviderOperationLimit,
       );
   }
 
@@ -614,8 +644,9 @@ export class DefaultAiGateway implements AiGateway {
       estimateCost(estimatedInput, this.configuration.answer.maximumOutputTokens),
     );
     const startedAt = Date.now();
+    let attemptCount = 0;
     try {
-      const result = await this.withRetry(
+      const retried = await this.withRetry(
         () =>
           withTimeout(this.configuration.answer.timeoutMs, (signal) =>
             this.answerProvider.generate(
@@ -630,6 +661,8 @@ export class DefaultAiGateway implements AiGateway {
         diagnosticProvider(this.answerProvider.id),
         'answer',
       );
+      const { result, attemptCount: attempts } = retried;
+      attemptCount = attempts;
       if (!result.answer.trim()) {
         throw new AiGatewayError('AI_INVALID_RESPONSE', false, 'AI provider не вернул ответ.');
       }
@@ -641,17 +674,40 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'success',
         durationMs: Date.now() - startedAt,
+        attemptCount,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
+        providerDiagnostic: {
+          ...(result.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.answerProvider.id),
+            operation: 'answer',
+          }),
+          stage: 'rag_answer',
+          attemptCount,
+        },
       });
       return result;
     } catch (error) {
       await this.costController.release(reservation);
-      const normalized = classifyProviderError(
+      const classified = classifyProviderError(
         error,
         diagnosticProvider(this.answerProvider.id),
         'answer',
+      );
+      attemptCount ||= classified.providerDiagnostic?.attemptCount ?? 0;
+      const normalized = new AiGatewayError(
+        classified.code,
+        classified.transient,
+        classified.message,
+        {
+          ...(classified.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.answerProvider.id),
+            operation: 'answer',
+          }),
+          stage: 'rag_answer',
+          attemptCount,
+        },
       );
       this.events.record({
         name: 'provider_call',
@@ -660,6 +716,7 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
+        attemptCount,
         errorCode: normalized.code,
         providerDiagnostic: normalized.providerDiagnostic,
       });
@@ -699,8 +756,9 @@ export class DefaultAiGateway implements AiGateway {
       estimateCost(estimateTokens(request.texts), 0),
     );
     const startedAt = Date.now();
+    let attemptCount = 0;
     try {
-      const result = await this.withRetry(
+      const retried = await this.withRetry(
         () =>
           withTimeout(this.configuration.embedding.timeoutMs, (signal) =>
             this.embeddingProvider.embed(request, signal),
@@ -708,6 +766,8 @@ export class DefaultAiGateway implements AiGateway {
         diagnosticProvider(this.embeddingProvider.id),
         'embedding',
       );
+      const { result, attemptCount: attempts } = retried;
+      attemptCount = attempts;
       validateEmbeddingResult(result, request.texts.length, request.dimensions);
       await this.recordUsage(reservation, result.usage, request.texts.length);
       this.events.record({
@@ -717,16 +777,39 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'success',
         durationMs: Date.now() - startedAt,
+        attemptCount,
         inputTokens: result.usage.inputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
+        providerDiagnostic: {
+          ...(result.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.embeddingProvider.id),
+            operation: 'embedding',
+          }),
+          stage: requestType,
+          attemptCount,
+        },
       });
       return result;
     } catch (error) {
       await this.costController.release(reservation);
-      const normalized = classifyProviderError(
+      const classified = classifyProviderError(
         error,
         diagnosticProvider(this.embeddingProvider.id),
         'embedding',
+      );
+      attemptCount ||= classified.providerDiagnostic?.attemptCount ?? 0;
+      const normalized = new AiGatewayError(
+        classified.code,
+        classified.transient,
+        classified.message,
+        {
+          ...(classified.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.embeddingProvider.id),
+            operation: 'embedding',
+          }),
+          stage: requestType,
+          attemptCount,
+        },
       );
       this.events.record({
         name: 'provider_call',
@@ -735,6 +818,7 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
+        attemptCount,
         errorCode: normalized.code,
         providerDiagnostic: normalized.providerDiagnostic,
       });
@@ -755,13 +839,17 @@ export class DefaultAiGateway implements AiGateway {
     action: () => Promise<T>,
     provider: AiProviderDiagnostic['provider'],
     operation: AiProviderDiagnostic['operation'],
-  ) {
+  ): Promise<{ result: T; attemptCount: number }> {
     let lastError: AiGatewayError | undefined;
     for (let attempt = 1; attempt <= this.configuration.limits.providerMaxAttempts; attempt += 1) {
       try {
-        return await action();
+        return { result: await action(), attemptCount: attempt };
       } catch (error) {
-        lastError = classifyProviderError(error, provider, operation);
+        const classified = classifyProviderError(error, provider, operation);
+        lastError = new AiGatewayError(classified.code, classified.transient, classified.message, {
+          ...(classified.providerDiagnostic ?? { provider, operation }),
+          attemptCount: attempt,
+        });
         if (!lastError.transient || attempt === this.configuration.limits.providerMaxAttempts) {
           throw lastError;
         }

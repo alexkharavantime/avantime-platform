@@ -209,6 +209,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   expect(ragConfiguration.vector.driver).toBe('pgvector');
   expect(ragConfiguration.embeddingQueue.driver).toBe('postgresql');
   expect(ragConfiguration.limits.providerMaxAttempts).toBe(1);
+  expect(ragConfiguration.limits.sessionProviderOperationLimit).toBe(13);
   expect(ragConfiguration.limits.rateLimitPerMinute).toBe(10);
   expect(ragConfiguration.limits.rateLimitPerDay).toBe(5);
   expect(ragConfiguration.limits.burstLimit).toBe(3);
@@ -222,7 +223,9 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     ),
   ).toBe(true);
   expect(documents.length + controlQuestions.length * 2).toBe(12);
-  expect(documents.length + controlQuestions.length * 2).toBeLessThanOrEqual(14);
+  expect(documents.length + controlQuestions.length * 2).toBeLessThanOrEqual(
+    ragConfiguration.limits.sessionProviderOperationLimit!,
+  );
 
   const documentIds = new Map<(typeof documents)[number]['key'], string>();
   let estimatedAnswerCost = 0;

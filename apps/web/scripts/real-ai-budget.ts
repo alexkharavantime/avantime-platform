@@ -7,7 +7,7 @@ export function getRealAiBudgetAllowance(repositoryRoot: string, now = new Date(
   const day = now.toISOString().slice(0, 10);
   const month = day.slice(0, 7);
   const artifactsRoot = path.join(repositoryRoot, '.artifacts');
-  const priorSpend = { daily: 0, monthly: 0, providerOperations: 0 };
+  const priorSpend = { daily: 0, monthly: 0 };
   const runDirectories = (
     existsSync(artifactsRoot) ? readdirSync(artifactsRoot, { withFileTypes: true }) : []
   )
@@ -44,16 +44,12 @@ export function getRealAiBudgetAllowance(repositoryRoot: string, now = new Date(
     const generatedDay = summary.generatedAt.slice(0, 10);
     if (generatedDay === day) priorSpend.daily += Number(summary.budgetImpactEur);
     if (generatedDay.slice(0, 7) === month) priorSpend.monthly += Number(summary.budgetImpactEur);
-    priorSpend.providerOperations += Number(summary.providerOperationCount);
   }
 
   const dailyRemainingEur = Number(Math.max(0, dailyLimitEur - priorSpend.daily).toFixed(6));
   const monthlyRemainingEur = Number(Math.max(0, monthlyLimitEur - priorSpend.monthly).toFixed(6));
   if (dailyRemainingEur <= 0 || monthlyRemainingEur <= 0) {
     throw new Error('The cumulative real-AI budget is exhausted; refusing another provider run.');
-  }
-  if (priorSpend.providerOperations + 12 > 13) {
-    throw new Error('The cumulative real-AI provider-operation limit is exhausted.');
   }
   return { dailyRemainingEur, monthlyRemainingEur };
 }

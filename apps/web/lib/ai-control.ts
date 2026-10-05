@@ -156,15 +156,23 @@ export class MemoryAiCostController implements AiCostController {
   readonly kind = 'memory';
   private readonly reservations = new Map<string, AiBudgetReservation>();
   private readonly usage = new Map<string, number>();
+  private sessionProviderOperations = 0;
 
   constructor(
     private readonly dailyLimitEur: number,
     private readonly monthlyLimitEur = dailyLimitEur > 0 ? dailyLimitEur * 31 : 0,
     private readonly now: () => Date = () => new Date(),
+    private readonly sessionProviderOperationLimit?: number,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
     assertCost(request.estimatedCostEur, 'estimatedCostEur');
+    if (
+      this.sessionProviderOperationLimit !== undefined &&
+      this.sessionProviderOperations >= this.sessionProviderOperationLimit
+    ) {
+      return null;
+    }
     const existing = this.reservations.get(`${request.tenant.companyId}:${request.idempotencyKey}`);
     if (existing) return null;
     const now = this.now().toISOString();
@@ -188,6 +196,7 @@ export class MemoryAiCostController implements AiCostController {
       id: crypto.randomUUID(),
       reservedCostEur: request.estimatedCostEur,
     };
+    this.sessionProviderOperations += 1;
     this.reservations.set(`${request.tenant.companyId}:${request.idempotencyKey}`, reservation);
     return reservation;
   }
@@ -229,6 +238,7 @@ export class PostgreSQLAiCostController implements AiCostController {
     private readonly defaultDailyLimitEur: number,
     private readonly defaultMonthlyLimitEur: number,
     private readonly reservationTtlMs = 300_000,
+    private readonly sessionProviderOperationLimit?: number,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
@@ -240,8 +250,24 @@ export class PostgreSQLAiCostController implements AiCostController {
     return database.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        request.tenant.companyId,
+        this.sessionProviderOperationLimit === undefined
+          ? request.tenant.companyId
+          : 'real-ai-provider-operation-session',
       );
+      if (this.sessionProviderOperationLimit !== undefined) {
+        const [session] = await transaction.$queryRawUnsafe<Array<{ providerOperations: number }>>(
+          `SELECT (
+             (SELECT COUNT(*) FROM "AiUsageLedger"
+              WHERE "provider" IN ('openai', 'gemini')) +
+             (SELECT COUNT(*) FROM "AiBudgetReservation"
+              WHERE "provider" IN ('openai', 'gemini')
+                AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED'))
+           )::int AS "providerOperations"`,
+        );
+        if (!session || session.providerOperations >= this.sessionProviderOperationLimit) {
+          return null;
+        }
+      }
       const [totals] = await transaction.$queryRawUnsafe<
         Array<{
           dailyLimit: number;

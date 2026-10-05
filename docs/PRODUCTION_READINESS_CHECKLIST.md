@@ -148,14 +148,20 @@ approve managed staging, validate real providers or authorize production go-live
   `incomplete` response; `tests/hybrid-rag.test.ts` passed 24/24. This does not identify the
   provider-side cause of the earlier HTTP 503 because no new provider call was made.
 - The real-AI runner now writes a sanitized aggregate usage/reservation summary before temporary
-  database cleanup, attempts artifact sanitization and resource cleanup independently, and carries
-  forward the daily/monthly estimated budget and all-time 13-operation ceiling across fresh
-  databases. Any prior real-AI artifact without a summary causes the next run to fail closed,
-  regardless of age. The real-provider runner path has not yet been exercised with this update.
-- Read-only local budget/cost commands completed against the root `.env` database and returned no
-  policy rows and no retained usage rows. They cannot account for charges from already deleted
-  temporary databases, so remaining provider spend is unverified. No additional external AI calls
-  were made in this follow-up; the AI provider and API/RAG smoke rows remain `Pending`.
+  database cleanup and writes an allowlisted provider-event JSONL beside it with operation stage,
+  attempt count, HTTP status, safe error fields, request ID and available usage. The 13-operation
+  ceiling is enforced inside each unique temporary database; historical operation counts do not
+  consume a new run's ceiling. Gateway and SDK attempts are limited to one, and Playwright retries
+  are disabled for this scenario. Missing or invalid historical summaries still fail closed for
+  overlapping daily/monthly budget periods.
+- Daily/monthly provider spend remains unverified. The 2026-10-03 run recorded an estimated
+  EUR 0.00003 failed reservation, but the separate 429 diagnostic's charge is unknown. The
+  2026-10-04 run has no retained usage summary: two successful document embeddings are known, but
+  their usage/cost and the failed 503 operation's charge are not. Any other provider spend under
+  the same account/project and periods is also unavailable locally. Required evidence is a
+  complete provider usage/cost export for the applicable day and month, or complete retained
+  per-run ledgers for all activity in those periods. No diagnostic or smoke provider call was made
+  in this follow-up; provider and API/RAG smoke rows remain `Pending`.
 
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 

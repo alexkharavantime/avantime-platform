@@ -49,11 +49,8 @@ import {
   RedisEmbeddingJobQueue,
   type RedisCommandClient,
 } from './redis-lease-queue';
-import {
-  MemoryAiRateLimiter,
-  PostgreSQLAiCostController,
-  RedisAiRateLimiter,
-} from './ai-control';
+import { MemoryAiRateLimiter, PostgreSQLAiCostController, RedisAiRateLimiter } from './ai-control';
+import { JsonlAiOperationalEventSink } from './ai-observability';
 
 export type DocumentPersistenceServices = {
   storage: DocumentStorage;
@@ -177,7 +174,17 @@ export function createDocumentServices(
     process.env.NODE_ENV === 'test' &&
     process.env.BROWSER_REAL_AI_KB_SMOKE === '1' &&
     !ragConfiguration.production;
+  if (realAiBrowserTrial && !process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE) {
+    throw new Error('The real-AI provider diagnostics output path is required.');
+  }
   const configuredRagDependencies: RagServiceDependencies = {
+    ...(realAiBrowserTrial
+      ? {
+          events:
+            dependencies.rag?.events ??
+            new JsonlAiOperationalEventSink(process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE!),
+        }
+      : {}),
     ...(ragConfiguration.embeddingQueue.driver === 'redis'
       ? {
           embeddingQueue:
@@ -196,6 +203,8 @@ export function createDocumentServices(
               dependencies.rag?.loadDatabase ?? (async () => await getPrisma()),
               ragConfiguration.limits.dailyBudgetEur,
               ragConfiguration.limits.monthlyBudgetEur,
+              undefined,
+              ragConfiguration.limits.sessionProviderOperationLimit,
             ),
         }
       : {}),

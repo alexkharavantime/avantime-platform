@@ -195,6 +195,48 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
     );
     assert.equal(Number(ledger[0].count), 1);
 
+    const [existingProviderOperations] = await database.$queryRawUnsafe<Array<{ count: number }>>(
+      `SELECT (
+         (SELECT COUNT(*) FROM "AiUsageLedger" WHERE "provider" IN ('openai', 'gemini')) +
+         (SELECT COUNT(*) FROM "AiBudgetReservation"
+          WHERE "provider" IN ('openai', 'gemini')
+            AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED'))
+       )::int AS "count"`,
+    );
+    const sessionCost = new PostgreSQLAiCostController(
+      loadDatabase,
+      1,
+      10,
+      300_000,
+      existingProviderOperations.count + 1,
+    );
+    const sessionRequest = {
+      ...reservationRequest,
+      provider: 'openai',
+      model: 'text-embedding-3-small',
+      estimatedCostEur: 0,
+      correlationId: `session-${suffix}-1`,
+      idempotencyKey: `session-${suffix}-1`,
+    };
+    const sessionReservation = await sessionCost.reserve(sessionRequest);
+    assert.ok(sessionReservation);
+    await sessionCost.reconcile({
+      reservation: sessionReservation,
+      inputTokens: 0,
+      outputTokens: 0,
+      embeddingUnits: 0,
+      estimatedCostEur: 0,
+      status: 'SUCCEEDED',
+    });
+    assert.equal(
+      await sessionCost.reserve({
+        ...sessionRequest,
+        correlationId: `session-${suffix}-2`,
+        idempotencyKey: `session-${suffix}-2`,
+      }),
+      null,
+    );
+
     const audit = new PostgreSQLProductionAuditTrail(loadDatabase);
     await audit.append({
       companyId: tenant.companyId,
