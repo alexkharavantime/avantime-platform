@@ -225,6 +225,52 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
   persists request IDs on successful responses for future runs. The synthetic generation criterion
   is met; answers grounded in the two PDFs and their citations remain unverified.
 
+## Two-PDF real-AI smoke attempt (2026-10-05)
+
+- One diagnostic browser smoke was launched with a unique loopback database, a EUR 0.05 session cap,
+  a maximum of 13 provider operations, EUR 0.25/day and EUR 1/month child limits, one provider
+  attempt, and zero Playwright retries. This launch skipped the historical daily/monthly allowance
+  preflight; that was contrary to the operator's latest instruction. The runner has since been
+  changed so all real-AI modes require the historical allowance check. No further provider request
+  was made.
+- The initial `gpt-5-mini` Responses probe used `max_output_tokens: 96` and returned HTTP 200 with
+  `response.status: incomplete`, reason `max_output_tokens`. The provider-event artifact records
+  exactly one attempt and a pre-call reservation estimate of EUR 0.00109. Provider-reported token
+  usage and actual charge are unavailable (`null`), not zero.
+- The smoke stopped before uploading either synthetic PDF. No document embeddings, five control
+  questions, live answer citations, or tenant-B checks ran. PDF RAG is not confirmed and the API/RAG
+  readiness row remains `Pending`.
+- The aggregate usage summary is `unavailable` because its reservation query referenced a
+  `requestType` column absent from `AiBudgetReservation`. The runner now aggregates reservations by
+  the existing `provider` and `status` columns. The failed run's sanitized event remains at
+  `.artifacts/document-kb-real-ai-c4f7fa69818542e39e39d97f11d98161/provider-events.jsonl`; its
+  fallback summary remains at
+  `.artifacts/document-kb-real-ai-c4f7fa69818542e39e39d97f11d98161/usage-summary.json`. The unique
+  temporary database and storage were cleaned up. The generated database identifier was also
+  shortened to fit PostgreSQL's 63-character identifier limit.
+- Offline RAG payload verification now confirms the application default serializes model
+  `gpt-5-mini`, `max_output_tokens: 512`, and `reasoning.effort: minimal`; the repeated 96-token
+  connectivity/generation probe has been removed. The existing successful CLI request at
+  `1024/minimal` remains separate evidence and is not treated as proof of document RAG quality.
+- For the remaining stage cap, the known prior failed reservation of EUR 0.00109 is seeded into the
+  next isolated database as one failed operation. The planned run is 12 new operations, 13 total.
+  At 512 output tokens the conservative total reservation estimate is EUR 0.029238, including the
+  prior reservation, below the existing EUR 0.05 cap; this is not provider-reported actual cost.
+- Offline mocked-fetch coverage verifies successful and HTTP 200/incomplete Responses retain
+  provider request ID, status, incomplete reason, usage tokens, estimated cost and reservation in
+  JSONL, with `actualCostEur: null`. PostgreSQL-only integration verified the usage/reservation
+  summary queries against the schema before database cleanup, preserved null actual cost, aggregated
+  a fully known actual charge separately, and confirmed failed usage/reservations count against both
+  ordinary daily and monthly caps. `summaryStatus: available` distinguishes a readable ledger with
+  unknown actual charge from `summaryStatus: unavailable` after a ledger-read failure.
+- The real cumulative preflight still blocks any provider run. It fails closed on
+  `.artifacts/document-kb-real-ai-8d1591cd2e334cac95d2284c661eda64/usage-summary.json` (`unavailable`,
+  one HTTP 404 event with no reservation amount) and also finds missing summaries under
+  `document-kb-real-ai-ae2b2a911673474cb70a43245f745985` and
+  `document-kb-real-ai-dc3a42480e6548b78d77d59bbd72e1ac`. These historical costs/counts cannot be
+  reconstructed from retained evidence. No bypass was added; both daily/monthly preflight and the
+  API/RAG `Pending` status remain in force.
+
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
 - Presence-only inspection of the local Next.js environment found `DATABASE_URL` and one
@@ -248,7 +294,8 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
   should not be used for the pilot without a fresh-database compatibility/quality check. Google
   documents `gemini-3.6-flash` as Stable ([model list](https://ai.google.dev/gemini-api/docs/models));
   embedding sizes are documented [here](https://ai.google.dev/gemini-api/docs/embeddings).
-  Gemini and the OpenAI Responses adapter remain unverified in a live call.
+  The OpenAI Responses adapter has a successful standalone generation check, but live PDF RAG is
+  unverified; Gemini remains unverified in a live call.
   Set `DOCUMENT_EMBEDDING_DRIVER`, `RAG_ANSWER_DRIVER` and the corresponding model settings;
   provide `OPENAI_API_KEY` and/or
   `GOOGLE_GENERATIVE_AI_API_KEY` through an approved local secret boundary. If positive cost limits
@@ -268,15 +315,17 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
   OPENAI_API_KEY=<set-locally>
   ```
 
-  Run only the opt-in scenario with `npm run test:browser:real-ai -w @avantime/web`. The runner
+  Run only the bounded opt-in scenario with
+  `npm run test:browser:real-ai:diagnostic -w @avantime/web` after cumulative preflight passes. The runner
   rejects missing drivers/keys before creating test resources, uses a fresh loopback database and
   unique `.tmp` storage directory, then removes those exact database/storage resources. Sanitized
   Playwright diagnostics remain under that run's unique `.artifacts/document-kb-real-ai-<uuid>`.
   Ordinary browser tests explicitly strip inherited AI keys and continue to inject fakes. The mode
-  uses a shared PostgreSQL EUR 0.25/day and EUR 1/month pre-call reservation cap, 250 output tokens
-  and 3,000 context characters per answer, and per-request-type rate limits of 10/minute, 5/day,
-  burst 3. It disables Playwright and provider retries. Exactly 12 operations are planned: two
-  document embeddings plus one query embedding and one answer generation for each of five
+  uses a shared PostgreSQL EUR 0.25/day and EUR 1/month pre-call reservation cap, 512 output tokens
+  and 1,500 context characters per answer, and per-request-type rate limits of 10/minute, 5/day,
+  burst 3. It disables Playwright and provider retries. Exactly 13 operations are allowed for the
+  current stage: the already attempted operation plus 12 new operations (two document embeddings,
+  then one query embedding and one answer generation for each of five
   questions. Cross-tenant ACL checks use lexical search and direct document routes, so they do not
   issue additional provider requests. Estimated cost controls are not a provider invoice guarantee;
   use provider-side project quotas as an additional hard cap. Ordinary tests continue to inject

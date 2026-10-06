@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PrismaClient } from '@prisma/client';
 
+import { readAiUsageSummary } from '../lib/ai-usage-summary';
 import { getRealAiBudgetAllowance } from './real-ai-budget';
 import { sanitizePlaywrightArtifacts } from './sanitize-playwright-artifacts';
 
@@ -119,7 +120,7 @@ function configureBrowserDatabase(
 
   const runId = randomUUID().replaceAll('-', '');
   const browserDatabaseName = realAiMode
-    ? `avantime_browser_integration_real-ai-${runId}`
+    ? `avantime_browser_integration_real-ai-${runId.slice(0, 26)}`
     : `avantime_browser_integration_${runId}`;
   sourceUrl.pathname = `/${browserDatabaseName}`;
   process.env.BROWSER_DATABASE_NAME = browserDatabaseName;
@@ -156,7 +157,7 @@ function configureBrowserDatabase(
 }
 
 async function cleanupRealAiResources(resources: RealAiBrowserResources) {
-  if (!/^avantime_browser_integration_real-ai-[a-f0-9]{32}$/u.test(resources.databaseName)) {
+  if (!/^avantime_browser_integration_real-ai-[a-f0-9]{26}$/u.test(resources.databaseName)) {
     throw new Error('Unsafe real-AI browser database identifier during cleanup.');
   }
   const repositoryRoot = path.resolve(webDirectory, '../..');
@@ -209,49 +210,7 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
   if (!databaseUrl) throw new Error('Temporary browser database URL is unavailable.');
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
   try {
-    const operations = await prisma.$queryRaw<
-      Array<{
-        requestType: string;
-        provider: string;
-        status: string;
-        operationCount: number;
-        inputTokens: string;
-        outputTokens: string;
-        embeddingUnits: string;
-        estimatedCostEur: number;
-        actualCostEur: number | null;
-      }>
-    >`
-      SELECT
-        "requestType",
-        "provider",
-        "status",
-        COUNT(*)::int AS "operationCount",
-        COALESCE(SUM("inputTokens"), 0)::text AS "inputTokens",
-        COALESCE(SUM("outputTokens"), 0)::text AS "outputTokens",
-        COALESCE(SUM("embeddingUnits"), 0)::text AS "embeddingUnits",
-        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "estimatedCostEur",
-        CASE WHEN COUNT("actualCostEur") = 0 THEN NULL
-          ELSE SUM("actualCostEur")::float8 END AS "actualCostEur"
-      FROM "AiUsageLedger"
-      GROUP BY "requestType", "provider", "status"
-      ORDER BY "requestType", "provider", "status"
-    `;
-    const reservations = await prisma.$queryRaw<
-      Array<{
-        requestType: string;
-        provider: string;
-        status: string;
-        reservationCount: number;
-        reservedCostEur: number;
-      }>
-    >`
-      SELECT "requestType", "provider", "status", COUNT(*)::int AS "reservationCount",
-        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "reservedCostEur"
-      FROM "AiBudgetReservation"
-      GROUP BY "requestType", "provider", "status"
-      ORDER BY "requestType", "provider", "status"
-    `;
+    const { operations, reservations } = await readAiUsageSummary(prisma);
     const diagnosticEvents = existsSync(resources.diagnosticsFile)
       ? (await readFile(resources.diagnosticsFile, 'utf8'))
           .split('\n')
@@ -260,6 +219,7 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
     const summary = {
       sessionId: resources.sessionId,
       diagnosticMode: resources.diagnosticMode,
+      summaryStatus: 'available',
       sessionProviderOperationLimit: 13,
       ...(resources.diagnosticMode ? { sessionBudgetLimitEur: 0.05 } : {}),
       providerEventFile: path.basename(resources.diagnosticsFile),
@@ -283,11 +243,6 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
         actualCostEur: operation.actualCostEur,
       })),
       reservations: reservations.map((reservation) => ({
-        requestType: ['document_embedding', 'query_embedding', 'rag_answer'].includes(
-          reservation.requestType,
-        )
-          ? reservation.requestType
-          : 'other',
         provider: ['openai', 'gemini', 'fake', 'disabled'].includes(reservation.provider)
           ? reservation.provider
           : 'other',

@@ -341,7 +341,7 @@ export class PostgreSQLAiCostController implements AiCostController {
              SUM(CASE WHEN "provider" = $2
                THEN COALESCE("actualCostEur", "estimatedCostEur") ELSE 0 END) AS provider
            FROM "AiUsageLedger"
-           WHERE "companyId" = $1 AND "status" = 'SUCCEEDED'
+           WHERE "companyId" = $1 AND "status" IN ('SUCCEEDED', 'FAILED')
              AND "occurredAt" >= date_trunc('month', CURRENT_TIMESTAMP)
          ) usage ON true
          LEFT JOIN LATERAL (
@@ -349,8 +349,9 @@ export class PostgreSQLAiCostController implements AiCostController {
              SUM("estimatedCostEur") AS total,
              SUM(CASE WHEN "provider" = $2 THEN "estimatedCostEur" ELSE 0 END) AS provider
            FROM "AiBudgetReservation"
-           WHERE "companyId" = $1 AND "status" = 'RESERVED'
-             AND "expiresAt" > CURRENT_TIMESTAMP
+             WHERE "companyId" = $1
+               AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+               AND ("status" <> 'RESERVED' OR "expiresAt" > CURRENT_TIMESTAMP)
          ) reservations ON true`,
         request.tenant.companyId,
         request.provider,

@@ -23,6 +23,7 @@ export function getRealAiBudgetAllowance(repositoryRoot: string, now = new Date(
     }
     let summary: {
       generatedAt?: unknown;
+      summaryStatus?: unknown;
       budgetImpactEur?: unknown;
       providerOperationCount?: unknown;
     };
@@ -30,6 +31,9 @@ export function getRealAiBudgetAllowance(repositoryRoot: string, now = new Date(
       summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as typeof summary;
     } catch {
       throw new Error('A prior real-AI usage summary is unreadable; refusing to reset its budget.');
+    }
+    if (summary.summaryStatus === 'unavailable') {
+      throw new Error('A prior real-AI usage summary is unavailable; refusing to reset its budget.');
     }
     if (
       typeof summary.generatedAt !== 'string' ||

@@ -130,6 +130,7 @@ export class AiGatewayError extends Error {
     readonly transient: boolean,
     safeMessage: string,
     readonly providerDiagnostic?: AiProviderDiagnostic,
+    readonly usage?: AiUsage,
   ) {
     super(safeMessage);
     this.name = 'AiGatewayError';
@@ -423,7 +424,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   async generate(request: RagGenerationRequest, signal: AbortSignal): Promise<RagGenerationResult> {
     const reasoningEffort =
       this.reasoningEffort ??
-      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 'low' : undefined);
+      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 'minimal' : undefined);
     const response = await this.client.responses.create(
       {
         model: request.model,
@@ -437,6 +438,21 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
     );
     const responseError = response.error as unknown as Record<string, unknown> | null;
     if ((response.status && response.status !== 'completed') || response.error) {
+      const inputTokens = response.usage?.input_tokens;
+      const outputTokens = response.usage?.output_tokens;
+      const usage =
+        typeof inputTokens === 'number' &&
+        Number.isSafeInteger(inputTokens) &&
+        inputTokens >= 0 &&
+        typeof outputTokens === 'number' &&
+        Number.isSafeInteger(outputTokens) &&
+        outputTokens >= 0
+          ? {
+              inputTokens,
+              outputTokens,
+              estimatedCostEur: estimateCost(inputTokens, outputTokens),
+            }
+          : undefined;
       const diagnostic: AiProviderDiagnostic = {
         ...this.responseDiagnostic(response._request_id, 'answer'),
         ...(response.status ? { responseStatus: response.status } : {}),
@@ -455,6 +471,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
         response.status === 'failed',
         'AI provider не завершил генерацию ответа.',
         diagnostic,
+        usage,
       );
     }
     const inputTokens = response.usage?.input_tokens ?? 0;
@@ -713,6 +730,7 @@ export class DefaultAiGateway implements AiGateway {
         durationMs: Date.now() - startedAt,
         attemptCount,
         reservedCostEur: reservation.estimatedCostEur,
+        actualCostEur: null,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
@@ -727,7 +745,6 @@ export class DefaultAiGateway implements AiGateway {
       });
       return result;
     } catch (error) {
-      await this.costController.release(reservation);
       const classified = classifyProviderError(
         error,
         diagnosticProvider(this.answerProvider.id),
@@ -747,18 +764,35 @@ export class DefaultAiGateway implements AiGateway {
           attemptCount,
         },
       );
-      this.events.record({
-        name: 'provider_call',
-        occurredAt: new Date().toISOString(),
-        companyId: request.tenant.companyId,
-        correlationId: request.correlationId,
-        outcome: 'failure',
-        durationMs: Date.now() - startedAt,
-        attemptCount,
-        reservedCostEur: reservation.estimatedCostEur,
-        errorCode: normalized.code,
-        providerDiagnostic: normalized.providerDiagnostic,
-      });
+      const failedUsage = error instanceof AiGatewayError ? error.usage : undefined;
+      try {
+        this.events.record({
+          name: 'provider_call',
+          occurredAt: new Date().toISOString(),
+          companyId: request.tenant.companyId,
+          correlationId: request.correlationId,
+          outcome: 'failure',
+          durationMs: Date.now() - startedAt,
+          attemptCount,
+          reservedCostEur: reservation.estimatedCostEur,
+          actualCostEur: null,
+          ...(failedUsage
+            ? {
+                inputTokens: failedUsage.inputTokens,
+                outputTokens: failedUsage.outputTokens,
+                estimatedCostEur: failedUsage.estimatedCostEur,
+              }
+            : {}),
+          errorCode: normalized.code,
+          providerDiagnostic: normalized.providerDiagnostic,
+        });
+      } finally {
+        if (failedUsage) {
+          await this.recordUsage(reservation, failedUsage, 0, 'FAILED');
+        } else {
+          await this.costController.release(reservation);
+        }
+      }
       if (normalized.providerDiagnostic) {
         console.warn(
           JSON.stringify({
@@ -818,6 +852,7 @@ export class DefaultAiGateway implements AiGateway {
         durationMs: Date.now() - startedAt,
         attemptCount,
         reservedCostEur: reservation.estimatedCostEur,
+        actualCostEur: null,
         inputTokens: result.usage.inputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
         providerDiagnostic: {
@@ -890,7 +925,7 @@ export class DefaultAiGateway implements AiGateway {
         lastError = new AiGatewayError(classified.code, classified.transient, classified.message, {
           ...(classified.providerDiagnostic ?? { provider, operation }),
           attemptCount: attempt,
-        });
+        }, classified.usage);
         if (!lastError.transient || attempt === this.configuration.limits.providerMaxAttempts) {
           throw lastError;
         }
@@ -943,6 +978,7 @@ export class DefaultAiGateway implements AiGateway {
     reservation: AiBudgetReservation,
     usage: AiUsage,
     embeddingUnits: number,
+    status: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED',
   ) {
     const estimatedCostEur =
       this.configuration.limits.sessionBudgetLimitEur === undefined
@@ -954,7 +990,7 @@ export class DefaultAiGateway implements AiGateway {
       outputTokens: usage.outputTokens,
       embeddingUnits,
       estimatedCostEur,
-      status: 'SUCCEEDED',
+      status,
     });
   }
 

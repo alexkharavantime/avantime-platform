@@ -22,7 +22,7 @@ import {
   ApiRateLimitError,
   resetApiRateLimitsForTests,
 } from '../lib/api-rate-limit';
-import { MemoryAiCostController } from '../lib/ai-control';
+import { MemoryAiCostController, type AiCostController, type AiUsageLedgerEvent } from '../lib/ai-control';
 import {
   InMemoryAiOperationalEventSink,
   JsonlAiOperationalEventSink,
@@ -939,7 +939,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     DOCUMENT_EMBEDDING_DRIVER: 'fake',
     DOCUMENT_EMBEDDING_DIMENSIONS: '4',
     RAG_ANSWER_DRIVER: 'openai',
-    RAG_MAX_OUTPUT_TOKENS: '1024',
+    RAG_MAX_OUTPUT_TOKENS: '512',
     OPENAI_API_KEY: 'offline-test-key',
     AI_RATE_LIMIT_PER_MINUTE: '100',
     AI_PROVIDER_MAX_ATTEMPTS: '1',
@@ -988,11 +988,27 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
   assert.ok(provider);
   const openAiProvider = provider;
   const events = new InMemoryAiOperationalEventSink();
+  const reconciledUsage: AiUsageLedgerEvent[] = [];
+  const costController: AiCostController = {
+    kind: 'memory',
+    reserve: async (reservation) => ({
+      ...reservation,
+      id: `reservation-${reservation.idempotencyKey}`,
+      reservedCostEur: reservation.estimatedCostEur,
+    }),
+    reconcile: async (event) => {
+      reconciledUsage.push(event);
+    },
+    release: async () => undefined,
+    checkReadiness: async () => true,
+  };
   const gateway = new DefaultAiGateway(
     configuration,
     new DeterministicFakeAiProvider(),
     openAiProvider,
     events,
+    undefined,
+    { costController },
   );
   const request = {
     tenant: tenantA,
@@ -1001,7 +1017,6 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     systemInstructions: 'synthetic test only',
     sources: [],
     correlationId: 'provider-diagnostic-test',
-    maximumOutputTokens: 1024,
   };
 
   await assert.rejects(
@@ -1017,13 +1032,47 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
   assert.equal(requestMethod, 'POST');
   assert.equal(requestUrl, 'https://api.openai.com/v1/responses');
   assert.equal(requestPayload?.model, 'gpt-5-mini');
-  assert.equal(requestPayload?.max_output_tokens, 1024);
+  assert.equal(requestPayload?.max_output_tokens, 512);
   assert.deepEqual(requestPayload?.reasoning, { effort: 'minimal' });
   const failedEvent = events.list().find((event) => event.name === 'provider_call');
   assert.equal(failedEvent?.providerDiagnostic?.providerRequestId, 'req_safe123');
   assert.equal(JSON.stringify(failedEvent).includes('sensitive provider message'), false);
 
   responseStatus = 200;
+  responseBody.value = {
+    id: 'resp_synthetic_success',
+    object: 'response',
+    created_at: 1,
+    model: 'gpt-5-mini',
+    status: 'completed',
+    output: [
+      {
+        id: 'msg_synthetic_success',
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', annotations: [], text: 'Synthetic answer' }],
+      },
+    ],
+    usage: { input_tokens: 52, output_tokens: 22, total_tokens: 74 },
+  };
+  const successful = await gateway.generateRagAnswer({
+    ...request,
+    correlationId: 'completed-response-test',
+  });
+  assert.equal(successful.answer, 'Synthetic answer');
+  const successEvent = events.list().at(-1);
+  assert.equal(successEvent?.inputTokens, 52);
+  assert.equal(successEvent?.outputTokens, 22);
+  assert.equal(successEvent?.estimatedCostEur, 0.00014);
+  assert.equal(successEvent?.actualCostEur, null);
+  assert.equal(successEvent?.reservedCostEur, 0.002059);
+  assert.equal(successEvent?.providerDiagnostic?.httpStatus, 200);
+  assert.equal(successEvent?.providerDiagnostic?.responseStatus, 'completed');
+  assert.equal(successEvent?.providerDiagnostic?.providerRequestId, 'req_safe123');
+  assert.equal(reconciledUsage.at(-1)?.status, 'SUCCEEDED');
+  assert.equal(reconciledUsage.at(-1)?.actualCostEur, undefined);
+
   responseBody.value = {
     id: 'resp_synthetic',
     object: 'response',
@@ -1049,7 +1098,59 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     .at(-1);
   assert.equal(incompleteEvent?.providerDiagnostic?.responseErrorCode, 'server_error');
   assert.equal(incompleteEvent?.providerDiagnostic?.httpStatus, 200);
+  assert.equal(incompleteEvent?.inputTokens, 1);
+  assert.equal(incompleteEvent?.outputTokens, 0);
+  assert.equal(incompleteEvent?.estimatedCostEur, 0.000001);
+  assert.equal(incompleteEvent?.actualCostEur, null);
   assert.equal(JSON.stringify(incompleteEvent).includes('sensitive response message'), false);
+  assert.equal(reconciledUsage.at(-1)?.status, 'FAILED');
+  assert.equal(reconciledUsage.at(-1)?.inputTokens, 1);
+  assert.equal(reconciledUsage.at(-1)?.outputTokens, 0);
+  assert.equal(reconciledUsage.at(-1)?.estimatedCostEur, 0.000001);
+  assert.equal(reconciledUsage.at(-1)?.actualCostEur, undefined);
+  const diagnosticDirectory = await mkdtemp(path.join(os.tmpdir(), 'avantime-response-events-'));
+  try {
+    const outputPath = path.join(diagnosticDirectory, 'provider-events.jsonl');
+    new JsonlAiOperationalEventSink(outputPath).record(successEvent!);
+    new JsonlAiOperationalEventSink(outputPath).record(incompleteEvent!);
+    const [persistedSuccess, persistedIncomplete] = (await readFile(outputPath, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.equal(persistedSuccess?.inputTokens, 52);
+    assert.equal(persistedSuccess?.outputTokens, 22);
+    assert.equal(persistedSuccess?.estimatedCostEur, 0.00014);
+    assert.equal(persistedSuccess?.actualCostEur, null);
+    assert.equal(persistedSuccess?.reservedCostEur, 0.002059);
+    assert.deepEqual(persistedSuccess?.providerDiagnostic, {
+      provider: 'openai',
+      operation: 'answer',
+      stage: 'rag_answer',
+      httpStatus: 200,
+      providerRequestId: 'req_safe123',
+      responseStatus: 'completed',
+      attemptCount: 1,
+    });
+    assert.equal(persistedIncomplete?.inputTokens, 1);
+    assert.equal(persistedIncomplete?.outputTokens, 0);
+    assert.equal(persistedIncomplete?.estimatedCostEur, 0.000001);
+    assert.equal(persistedIncomplete?.actualCostEur, null);
+    assert.equal(persistedIncomplete?.reservedCostEur, 0.002059);
+    assert.deepEqual(persistedIncomplete?.providerDiagnostic, {
+      provider: 'openai',
+      operation: 'answer',
+      stage: 'rag_answer',
+      httpStatus: 200,
+      providerRequestId: 'req_safe123',
+      responseStatus: 'incomplete',
+      responseErrorType: 'server_error',
+      responseErrorCode: 'server_error',
+      incompleteReason: 'max_output_tokens',
+      attemptCount: 1,
+    });
+  } finally {
+    await rm(diagnosticDirectory, { recursive: true, force: true });
+  }
 
   responseStatus = 404;
   responseBody.value = {
@@ -1072,7 +1173,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
     .list()
     .filter((event) => event.name === 'provider_call')
     .at(-1);
-  assert.equal(notFoundEvent?.reservedCostEur, 0.004107);
+  assert.equal(notFoundEvent?.reservedCostEur, 0.002059);
   assert.equal(JSON.stringify(notFoundEvent).includes('sensitive provider message'), false);
 });
 
@@ -1118,11 +1219,13 @@ test('real-AI budget carryover fails closed across fresh databases', async () =>
       path.join(runDirectory, 'usage-summary.json'),
       JSON.stringify({
         generatedAt: now.toISOString(),
+        summaryStatus: 'unavailable',
+        summaryErrorCode: 'AI_USAGE_SUMMARY_UNAVAILABLE',
         budgetImpactEur: null,
         providerOperationCount: null,
       }),
     );
-    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /invalid/u);
+    assert.throws(() => getRealAiBudgetAllowance(repositoryRoot, now), /unavailable/u);
 
     await rm(path.join(runDirectory, 'usage-summary.json'));
     await utimes(runDirectory, now, now);

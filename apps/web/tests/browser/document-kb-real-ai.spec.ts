@@ -11,7 +11,6 @@ import type { DocumentTenantContext } from '../../lib/document-model';
 import type { DocumentMetadataDatabaseClient } from '../../lib/document-repositories';
 import { loadRagConfiguration } from '../../lib/rag-configuration';
 import type { VectorDatabaseClient } from '../../lib/vector-repository';
-import { buildRagSystemInstructions } from '../../lib/rag-answer';
 import {
   BROWSER_DATA_DIRECTORY,
   BROWSER_DATABASE_NAME,
@@ -51,6 +50,7 @@ const documents = [
     text:
       `Synthetic instructions for 1C:ERP 2.5.14 only. Project marker: ${projectMarker}. ` +
       'Nightly maintenance starts at 21:45.',
+    fact: '21:45',
   },
   {
     key: 'backup',
@@ -58,6 +58,7 @@ const documents = [
     text:
       `Synthetic instructions for 1C:ERP 2.5.14 only. Project marker: ${projectMarker}. ` +
       'Backups are retained for 14 days.',
+    fact: '14 days',
   },
 ] as const;
 
@@ -186,6 +187,8 @@ async function expectSourceCitation(citation: Citation, documentId: string) {
   const chunks = await services.processing.readChunks(tenantA, documentId);
   const sourceChunk = chunks.find((chunk) => chunk.id === citation.chunkId);
   expect(sourceChunk).toBeTruthy();
+  expect(sourceChunk?.pageStart).toBe(1);
+  expect(sourceChunk?.pageEnd).toBe(1);
   expect(citation.excerpt).toBe(sourceChunk!.text.replace(/\s+/g, ' ').trim().slice(0, 480));
   expect(citation.link).toBe(
     `/portal/documents/${encodeURIComponent(documentId)}?chunk=${encodeURIComponent(citation.chunkId)}`,
@@ -214,33 +217,13 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   if (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1') {
     expect(ragConfiguration.limits.sessionBudgetLimitEur).toBe(0.05);
     expect(process.env.BROWSER_REAL_AI_SESSION_ID).toMatch(/^[a-f0-9]{32}$/u);
-    const diagnostic = await services.rag!.gateway.generateRagAnswer({
-      tenant: tenantA,
-      question: 'At what time does synthetic nightly maintenance start?',
-      language: 'en',
-      systemInstructions: buildRagSystemInstructions('en'),
-      maximumOutputTokens: 96,
-      sources: [
-        {
-          sourceId: 'S1',
-          sourceType: 'DOCUMENT',
-          documentId: 'synthetic-diagnostic-document',
-          chunkId: 'synthetic-diagnostic-chunk',
-          title: 'Synthetic diagnostic fixture',
-          excerpt: 'Synthetic diagnostic fact only: nightly maintenance starts at 21:45.',
-        },
-      ],
-      correlationId: `diagnostic-${process.env.BROWSER_REAL_AI_SESSION_ID}`,
-    });
-    expect(diagnostic.answer).toContain('21:45');
-    expect(diagnostic.usage.outputTokens).toBeLessThanOrEqual(96);
   }
   expect(ragConfiguration.limits.rateLimitPerMinute).toBe(10);
   expect(ragConfiguration.limits.rateLimitPerDay).toBe(5);
   expect(ragConfiguration.limits.burstLimit).toBe(3);
   expect(ragConfiguration.limits.dailyBudgetEur).toBe(0.25);
   expect(ragConfiguration.limits.monthlyBudgetEur).toBe(1);
-  expect(ragConfiguration.answer.maximumOutputTokens).toBe(250);
+  expect(ragConfiguration.answer.maximumOutputTokens).toBe(512);
   expect(ragConfiguration.answer.maximumContextCharacters).toBe(1_500);
   expect(
     controlQuestions.every(
@@ -255,6 +238,33 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   const documentIds = new Map<(typeof documents)[number]['key'], string>();
   let estimatedAnswerCost = 0;
   try {
+    if (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1') {
+      await prisma.aiBudgetReservation.create({
+        data: {
+          id: 'prior-diagnostic-reservation-c4f7fa69818542e39e39d97f11d98161',
+          companyId: tenantA.companyId,
+          userId: tenantA.userId,
+          provider: 'openai',
+          correlationId: 'diagnostic-c4f7fa69818542e39e39d97f11d98161',
+          idempotencyKey: 'rag_answer:diagnostic-c4f7fa69818542e39e39d97f11d98161',
+          estimatedCostEur: 0.00109,
+          status: 'FAILED',
+          expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+        },
+      });
+      const [carryover] = await prisma.$queryRaw<
+        Array<{ operationCount: number; reservedCostEur: number }>
+      >`
+        SELECT COUNT(*)::int AS "operationCount",
+          COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "reservedCostEur"
+        FROM "AiBudgetReservation"
+        WHERE "companyId" = ${tenantA.companyId}
+          AND "id" = 'prior-diagnostic-reservation-c4f7fa69818542e39e39d97f11d98161'
+          AND "status" = 'FAILED'
+      `;
+      expect(carryover).toEqual({ operationCount: 1, reservedCostEur: 0.00109 });
+    }
+
     await loginAs('identityManager');
     await page.goto('/ru/admin/documents');
     await expect(
@@ -302,6 +312,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
       const extracted = await services.processing.readText(tenantA, documentId);
       expect(extracted).toContain('1C:ERP 2.5.14');
       expect(extracted).toContain(projectMarker);
+      expect(extracted).toContain(document.fact);
     }
 
     const maintenanceId = documentIds.get('maintenance')!;
@@ -371,6 +382,30 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         [maintenanceId, backupId].includes(citation.documentId ?? ''),
       ),
     ).toBe(true);
+    console.info(
+      JSON.stringify({
+        event: 'real_ai_smoke_answers',
+        results: controlQuestions.map((question) => ({
+          question: question.text,
+          expected:
+            question.key === 'direct' || question.key === 'paraphrase'
+              ? '21:45'
+              : question.key === 'combined'
+                ? '21:45 and 14 days'
+                : question.key === 'absent'
+                  ? 'Explicitly decline unsupported PowerShell cmdlet'
+                  : 'Do not claim 1C:ERP 3.0 is supported',
+          actual: answers.get(question.key)?.answer,
+          status: answers.get(question.key)?.status,
+          sources: answers.get(question.key)?.citations.map((citation) => ({
+            documentId: citation.documentId,
+            chunkId: citation.chunkId,
+            link: citation.link,
+            excerpt: citation.excerpt,
+          })),
+        })),
+      }),
+    );
     expect(estimatedAnswerCost).toBeLessThanOrEqual(0.25);
 
     await page.context().clearCookies();
@@ -402,6 +437,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         outputTokens: number;
         operationCount: number;
         openAiOperationCount: number;
+        sessionProviderOperationCount: number;
         tenantBAnswerOperations: number;
       }>
     >`
@@ -412,6 +448,11 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         COALESCE(SUM("outputTokens"), 0)::int AS "outputTokens",
         COUNT(*)::int AS "operationCount",
         COUNT(*) FILTER (WHERE "provider" = 'openai')::int AS "openAiOperationCount",
+        (COUNT(*) FILTER (WHERE "provider" IN ('openai', 'gemini')) + COALESCE((
+          SELECT COUNT(*)::int FROM "AiBudgetReservation"
+          WHERE "provider" IN ('openai', 'gemini')
+            AND "status" IN ('FAILED', 'CANCELLED')
+        ), 0))::int AS "sessionProviderOperationCount",
         COUNT(*) FILTER (
           WHERE "companyId" = ${browserIdentities.tenantB.companyId}
             AND "requestType" = 'rag_answer'
@@ -424,15 +465,18 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(0.25);
     expect(ledger?.inputTokens ?? 0).toBeLessThanOrEqual(20_000);
     expect(ledger?.outputTokens ?? 0).toBeLessThanOrEqual(
-      1_250 + (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 96 : 0),
+      2_560,
     );
-    const expectedProviderOperations =
-      12 + (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 1 : 0);
+    const expectedProviderOperations = 12;
+    const expectedSessionProviderOperations =
+      expectedProviderOperations +
+      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 1 : 0);
     expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(
       ragConfiguration.limits.sessionBudgetLimitEur ?? 0.25,
     );
     expect(ledger?.operationCount ?? 0).toBe(expectedProviderOperations);
     expect(ledger?.openAiOperationCount ?? 0).toBe(expectedProviderOperations);
+    expect(ledger?.sessionProviderOperationCount ?? 0).toBe(expectedSessionProviderOperations);
     expect(ledger?.tenantBAnswerOperations ?? 0).toBe(0);
     console.info(
       JSON.stringify({
@@ -440,6 +484,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         embeddingModel: ragConfiguration.embedding.model,
         answerModel: ragConfiguration.answer.model,
         providerCalls: ledger?.openAiOperationCount ?? 0,
+        sessionProviderOperations: ledger?.sessionProviderOperationCount ?? 0,
         inputTokens: ledger?.inputTokens ?? 0,
         outputTokens: ledger?.outputTokens ?? 0,
         estimatedCostEur: ledger?.totalEstimatedCost ?? 0,

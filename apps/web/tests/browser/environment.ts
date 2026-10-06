@@ -145,7 +145,7 @@ export const browserServerEnvironment: Record<string, string> = {
         RAG_ANSWER_DRIVER: process.env.RAG_ANSWER_DRIVER ?? 'fake',
         RAG_ANSWER_MODEL: process.env.RAG_ANSWER_MODEL ?? '',
         RAG_MAX_CONTEXT_CHARACTERS: '1500',
-        RAG_MAX_OUTPUT_TOKENS: '250',
+        RAG_MAX_OUTPUT_TOKENS: '512',
         RAG_QUERY_MAX_CHARACTERS: '500',
         RAG_TIMEOUT_MS: '30000',
         BROWSER_REAL_AI_SESSION_ID: process.env.BROWSER_REAL_AI_SESSION_ID ?? '',

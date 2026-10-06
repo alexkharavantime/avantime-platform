@@ -38,6 +38,7 @@ export type AiOperationalEvent = {
   inputTokens?: number;
   outputTokens?: number;
   estimatedCostEur?: number;
+  actualCostEur?: number | null;
   reservedCostEur?: number;
   errorCode?: string;
   providerDiagnostic?: AiProviderDiagnostic;
@@ -102,6 +103,11 @@ export class JsonlAiOperationalEventSink implements AiOperationalEventSink {
       ...(Number.isFinite(event.estimatedCostEur) && event.estimatedCostEur! >= 0
         ? { estimatedCostEur: event.estimatedCostEur }
         : {}),
+      ...(event.actualCostEur === null
+        ? { actualCostEur: null }
+        : Number.isFinite(event.actualCostEur) && event.actualCostEur! >= 0
+          ? { actualCostEur: event.actualCostEur }
+          : {}),
       ...(Number.isFinite(event.reservedCostEur) && event.reservedCostEur! >= 0
         ? { reservedCostEur: event.reservedCostEur }
         : {}),
