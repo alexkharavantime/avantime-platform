@@ -47,12 +47,18 @@ Run the isolated, synthetic-data smoke explicitly with
 local `avantime` database, creates and cleans a unique test database and storage directory, and
 does not accept caller-supplied database overrides. The fixture uses two synthetic one-page PDFs,
 five questions, exactly 12 planned provider operations, one Gateway attempt with OpenAI SDK retries
-disabled per operation, and 250 output tokens per answer. The test-only PostgreSQL reservation
+disabled per operation, and 512 maximum output tokens per answer. The test-only PostgreSQL reservation
 controller applies one shared EUR 0.25/day and EUR 1/month cap across the web and worker processes
 before each provider call. The configured per-request-type rate caps are 10 requests/minute,
 5/day, and a burst of 3; questions are spaced to honor the burst window. Cross-tenant ACL checks
 use lexical retrieval and direct document routes so they do not issue additional provider queries.
 Ordinary unit tests keep the `fake` provider; ordinary browser runs strip provider API keys.
+
+The explicitly enabled `test:browser:real-ai:diagnostic` mode keeps the same synthetic scenario and
+12-operation cap, and preflights a separately authorized EUR 0.05 reservation ceiling. That ceiling
+is independent of historical smoke summaries; the normal EUR 0.25/day and EUR 1/month limits
+remain configured for the isolated run. The ordinary `test:browser:real-ai` mode still requires
+cumulative historical summaries.
 
 OpenAI readiness checks only that credentials are configured: listing models requires a separate
 read permission not needed by the Responses and Embeddings endpoints. The real-AI smoke, not the

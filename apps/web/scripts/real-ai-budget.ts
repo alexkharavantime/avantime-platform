@@ -1,6 +1,83 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
+export const REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR = 0.05;
+export const REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT = 12;
+export const REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT = 512;
+
+const diagnosticReservationMultiplier = 2;
+const diagnosticInputTokenCostEur = 0.000001;
+const diagnosticOutputTokenCostEur = 0.000004;
+const diagnosticAnswerInputEnvelopeTokens = 128;
+
+function upperBoundTokensForUtf8Bytes(bytes: number) {
+  return bytes;
+}
+
+function estimateReservationEur(inputTokens: number, outputTokens = 0) {
+  const estimate = Number(
+    (inputTokens * diagnosticInputTokenCostEur + outputTokens * diagnosticOutputTokenCostEur)
+      .toFixed(6),
+  );
+  return Number((estimate * diagnosticReservationMultiplier).toFixed(6));
+}
+
+export function getRealAiDiagnosticCostPreflight(input: {
+  maximumDocumentChunkBytes: number;
+  maximumQuestionBytes: number;
+  maximumContextBytes: number;
+  systemInstructionsBytes: number;
+}) {
+  const inputLimits = Object.values(input);
+  if (inputLimits.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+    throw new Error('Real-AI diagnostic preflight limits must be non-negative integers.');
+  }
+  const documentEmbeddingInputTokens = upperBoundTokensForUtf8Bytes(
+    input.maximumDocumentChunkBytes,
+  );
+  const queryEmbeddingInputTokens = upperBoundTokensForUtf8Bytes(input.maximumQuestionBytes);
+  const answerInputTokens =
+    upperBoundTokensForUtf8Bytes(
+      input.maximumQuestionBytes + input.maximumContextBytes + input.systemInstructionsBytes,
+    ) + diagnosticAnswerInputEnvelopeTokens;
+  const documentEmbeddingReservationsEur = Number(
+    (2 * estimateReservationEur(documentEmbeddingInputTokens)).toFixed(6),
+  );
+  const queryEmbeddingReservationsEur = Number(
+    (5 * estimateReservationEur(queryEmbeddingInputTokens)).toFixed(6),
+  );
+  const answerReservationsEur = Number(
+    (
+      5 *
+      estimateReservationEur(
+        answerInputTokens,
+        REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT,
+      )
+    ).toFixed(6),
+  );
+  const maximumReservedCostEur = Number(
+    (
+      documentEmbeddingReservationsEur +
+      queryEmbeddingReservationsEur +
+      answerReservationsEur
+    ).toFixed(6),
+  );
+
+  return {
+    providerOperationLimit: REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+    budgetLimitEur: REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
+    maximumOutputTokens: REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT,
+    documentEmbeddingInputTokens,
+    queryEmbeddingInputTokens,
+    answerInputTokens,
+    documentEmbeddingReservationsEur,
+    queryEmbeddingReservationsEur,
+    answerReservationsEur,
+    maximumReservedCostEur,
+    withinBudget: maximumReservedCostEur <= REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
+  };
+}
+
 export function getRealAiBudgetAllowance(repositoryRoot: string, now = new Date()) {
   const dailyLimitEur = 0.25;
   const monthlyLimitEur = 1;

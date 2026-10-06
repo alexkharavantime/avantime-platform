@@ -12,6 +12,11 @@ import type { DocumentMetadataDatabaseClient } from '../../lib/document-reposito
 import { loadRagConfiguration } from '../../lib/rag-configuration';
 import type { VectorDatabaseClient } from '../../lib/vector-repository';
 import {
+  REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
+  REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT,
+  REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+} from '../../scripts/real-ai-budget';
+import {
   BROWSER_DATA_DIRECTORY,
   BROWSER_DATABASE_NAME,
   BROWSER_DATABASE_URL,
@@ -48,7 +53,7 @@ const documents = [
     key: 'maintenance',
     name: `${projectMarker}-1C-ERP-2.5.14-maintenance.pdf`,
     text:
-      `Synthetic instructions for 1C:ERP 2.5.14 only. Project marker: ${projectMarker}. ` +
+      `Instructions for 1C:ERP 2.5.14 only. Project marker: ${projectMarker}. ` +
       'Nightly maintenance starts at 21:45.',
     fact: '21:45',
   },
@@ -56,7 +61,7 @@ const documents = [
     key: 'backup',
     name: `${projectMarker}-1C-ERP-2.5.14-backup-retention.pdf`,
     text:
-      `Synthetic instructions for 1C:ERP 2.5.14 only. Project marker: ${projectMarker}. ` +
+      `Instructions for 1C:ERP 2.5.14 only. Project marker: ${projectMarker}. ` +
       'Backups are retained for 14 days.',
     fact: '14 days',
   },
@@ -213,9 +218,13 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   expect(ragConfiguration.vector.driver).toBe('pgvector');
   expect(ragConfiguration.embeddingQueue.driver).toBe('postgresql');
   expect(ragConfiguration.limits.providerMaxAttempts).toBe(1);
-  expect(ragConfiguration.limits.sessionProviderOperationLimit).toBe(13);
+  expect(ragConfiguration.limits.sessionProviderOperationLimit).toBe(
+    REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+  );
   if (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1') {
-    expect(ragConfiguration.limits.sessionBudgetLimitEur).toBe(0.05);
+    expect(ragConfiguration.limits.sessionBudgetLimitEur).toBe(
+      REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
+    );
     expect(process.env.BROWSER_REAL_AI_SESSION_ID).toMatch(/^[a-f0-9]{32}$/u);
   }
   expect(ragConfiguration.limits.rateLimitPerMinute).toBe(10);
@@ -223,13 +232,24 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   expect(ragConfiguration.limits.burstLimit).toBe(3);
   expect(ragConfiguration.limits.dailyBudgetEur).toBe(0.25);
   expect(ragConfiguration.limits.monthlyBudgetEur).toBe(1);
-  expect(ragConfiguration.answer.maximumOutputTokens).toBe(512);
+  expect(ragConfiguration.answer.maximumOutputTokens).toBe(
+    REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT,
+  );
   expect(ragConfiguration.answer.maximumContextCharacters).toBe(1_500);
   expect(
     controlQuestions.every(
       (question) => question.text.length <= ragConfiguration.limits.queryMaximumCharacters,
     ),
   ).toBe(true);
+  expect(documents.every((document) => Buffer.byteLength(document.text, 'utf8') <= 512)).toBe(
+    true,
+  );
+  expect(
+    controlQuestions.every((question) => Buffer.byteLength(question.text, 'utf8') <= 256),
+  ).toBe(true);
+  expect(
+    documents.reduce((total, document) => total + Buffer.byteLength(document.text, 'utf8'), 0),
+  ).toBeLessThanOrEqual(512);
   expect(documents.length + controlQuestions.length * 2).toBe(12);
   expect(documents.length + controlQuestions.length * 2).toBeLessThanOrEqual(
     ragConfiguration.limits.sessionProviderOperationLimit!,
@@ -238,33 +258,6 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   const documentIds = new Map<(typeof documents)[number]['key'], string>();
   let estimatedAnswerCost = 0;
   try {
-    if (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1') {
-      await prisma.aiBudgetReservation.create({
-        data: {
-          id: 'prior-diagnostic-reservation-c4f7fa69818542e39e39d97f11d98161',
-          companyId: tenantA.companyId,
-          userId: tenantA.userId,
-          provider: 'openai',
-          correlationId: 'diagnostic-c4f7fa69818542e39e39d97f11d98161',
-          idempotencyKey: 'rag_answer:diagnostic-c4f7fa69818542e39e39d97f11d98161',
-          estimatedCostEur: 0.00109,
-          status: 'FAILED',
-          expiresAt: new Date('2099-01-01T00:00:00.000Z'),
-        },
-      });
-      const [carryover] = await prisma.$queryRaw<
-        Array<{ operationCount: number; reservedCostEur: number }>
-      >`
-        SELECT COUNT(*)::int AS "operationCount",
-          COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "reservedCostEur"
-        FROM "AiBudgetReservation"
-        WHERE "companyId" = ${tenantA.companyId}
-          AND "id" = 'prior-diagnostic-reservation-c4f7fa69818542e39e39d97f11d98161'
-          AND "status" = 'FAILED'
-      `;
-      expect(carryover).toEqual({ operationCount: 1, reservedCostEur: 0.00109 });
-    }
-
     await loginAs('identityManager');
     await page.goto('/ru/admin/documents');
     await expect(
@@ -467,16 +460,13 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     expect(ledger?.outputTokens ?? 0).toBeLessThanOrEqual(
       2_560,
     );
-    const expectedProviderOperations = 12;
-    const expectedSessionProviderOperations =
-      expectedProviderOperations +
-      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 1 : 0);
+    const expectedProviderOperations = REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT;
     expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(
       ragConfiguration.limits.sessionBudgetLimitEur ?? 0.25,
     );
     expect(ledger?.operationCount ?? 0).toBe(expectedProviderOperations);
     expect(ledger?.openAiOperationCount ?? 0).toBe(expectedProviderOperations);
-    expect(ledger?.sessionProviderOperationCount ?? 0).toBe(expectedSessionProviderOperations);
+    expect(ledger?.sessionProviderOperationCount ?? 0).toBe(expectedProviderOperations);
     expect(ledger?.tenantBAnswerOperations ?? 0).toBe(0);
     console.info(
       JSON.stringify({

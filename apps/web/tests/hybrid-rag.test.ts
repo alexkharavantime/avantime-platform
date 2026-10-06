@@ -16,7 +16,10 @@ import {
   type RagAnswerProvider,
   type RagGenerationRequest,
 } from '../lib/ai-gateway';
-import { getRealAiBudgetAllowance } from '../scripts/real-ai-budget';
+import {
+  getRealAiBudgetAllowance,
+  getRealAiDiagnosticCostPreflight,
+} from '../scripts/real-ai-budget';
 import {
   assertApiRateLimit,
   ApiRateLimitError,
@@ -1305,14 +1308,113 @@ test('real-AI session operation limit counts reconciled calls and JSONL diagnost
 });
 
 test('the explicit diagnostic mode alone enables its isolated euro cap', () => {
-  const ordinary = loadRagConfiguration({ NODE_ENV: 'test', BROWSER_REAL_AI_KB_SMOKE: '1' });
-  const diagnostic = loadRagConfiguration({
+  const smokeEnvironment = {
     NODE_ENV: 'test',
     BROWSER_REAL_AI_KB_SMOKE: '1',
+    AI_DAILY_BUDGET_EUR: '0.25',
+    AI_MONTHLY_BUDGET_EUR: '1',
+  };
+  const ordinary = loadRagConfiguration(smokeEnvironment);
+  const diagnostic = loadRagConfiguration({
+    ...smokeEnvironment,
     BROWSER_REAL_AI_DIAGNOSTIC_MODE: '1',
   });
   assert.equal(ordinary.limits.sessionBudgetLimitEur, undefined);
+  assert.equal(ordinary.limits.sessionProviderOperationLimit, 12);
   assert.equal(diagnostic.limits.sessionBudgetLimitEur, 0.05);
+  assert.equal(diagnostic.limits.sessionProviderOperationLimit, 12);
+  assert.equal(diagnostic.limits.dailyBudgetEur, 0.25);
+  assert.equal(diagnostic.limits.monthlyBudgetEur, 1);
+});
+
+test('real-AI diagnostic cost preflight reserves the full 12-operation maximum', () => {
+  const preflight = getRealAiDiagnosticCostPreflight({
+    maximumDocumentChunkBytes: 512,
+    maximumQuestionBytes: 256,
+    maximumContextBytes: 512,
+    systemInstructionsBytes: Buffer.byteLength(buildRagSystemInstructions('ru'), 'utf8'),
+  });
+  assert.equal(preflight.providerOperationLimit, 12);
+  assert.equal(preflight.maximumOutputTokens, 512);
+  assert.equal(preflight.documentEmbeddingReservationsEur, 0.002048);
+  assert.equal(preflight.queryEmbeddingReservationsEur, 0.00256);
+  assert.ok(preflight.answerReservationsEur > 0);
+  assert.ok(preflight.maximumReservedCostEur < 0.05);
+  assert.equal(preflight.withinBudget, true);
+});
+
+test('explicit real-AI browser mode retains PostgreSQL accounting under next dev', async () => {
+  const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'avantime-real-ai-dev-controls-'));
+  const environment = {
+    NODE_ENV: 'development',
+    BROWSER_REAL_AI_KB_SMOKE: '1',
+    BROWSER_REAL_AI_DIAGNOSTIC_MODE: '1',
+    BROWSER_REAL_AI_DIAGNOSTICS_FILE: path.join(dataDirectory, 'provider-events.jsonl'),
+    DOCUMENT_DATA_DIR: dataDirectory,
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    DOCUMENT_VECTOR_DRIVER: 'memory',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
+    RAG_ANSWER_DRIVER: 'fake',
+  };
+  const previousEnvironment = {
+    nodeEnv: process.env.NODE_ENV,
+    smoke: process.env.BROWSER_REAL_AI_KB_SMOKE,
+    diagnosticsFile: process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE,
+  };
+  const mutableEnvironment = process.env as Record<string, string | undefined>;
+  let databaseLoadCount = 0;
+  try {
+    mutableEnvironment.NODE_ENV = environment.NODE_ENV;
+    process.env.BROWSER_REAL_AI_KB_SMOKE = environment.BROWSER_REAL_AI_KB_SMOKE;
+    process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE = environment.BROWSER_REAL_AI_DIAGNOSTICS_FILE;
+    const ragConfiguration = loadRagConfiguration(environment);
+    const services = createDocumentServices(loadDocumentConfiguration(environment), {
+      ragConfiguration,
+      rag: {
+        environment,
+        knowledgeSemanticSource: null,
+        loadDatabase: async () => {
+          databaseLoadCount += 1;
+          return null;
+        },
+      },
+    });
+    assert.ok(services.rag);
+    assert.ok(services.rag.events instanceof JsonlAiOperationalEventSink);
+    services.rag.events.record({
+      name: 'provider_call',
+      occurredAt: new Date().toISOString(),
+      companyId: tenantA.companyId,
+      correlationId: 'diagnostic-development-event',
+      outcome: 'success',
+      attemptCount: 1,
+      inputTokens: 1,
+      estimatedCostEur: 0.000001,
+      actualCostEur: null,
+      providerDiagnostic: { provider: 'openai', operation: 'embedding', attemptCount: 1 },
+    });
+    assert.match(await readFile(environment.BROWSER_REAL_AI_DIAGNOSTICS_FILE, 'utf8'), /"actualCostEur":null/u);
+    await assert.rejects(
+      services.rag.gateway.createQueryEmbedding({
+        tenant: tenantA,
+        query: 'diagnostic accounting check',
+        correlationId: 'diagnostic-development-controls',
+      }),
+      /AI cost ledger database is unavailable/u,
+    );
+    assert.equal(databaseLoadCount, 1);
+  } finally {
+    if (previousEnvironment.nodeEnv === undefined) delete mutableEnvironment.NODE_ENV;
+    else mutableEnvironment.NODE_ENV = previousEnvironment.nodeEnv;
+    if (previousEnvironment.smoke === undefined) delete process.env.BROWSER_REAL_AI_KB_SMOKE;
+    else process.env.BROWSER_REAL_AI_KB_SMOKE = previousEnvironment.smoke;
+    if (previousEnvironment.diagnosticsFile === undefined) {
+      delete process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE;
+    } else {
+      process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE = previousEnvironment.diagnosticsFile;
+    }
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
 });
 
 test('single-document reindex is dry-run safe and idempotent', async () => {

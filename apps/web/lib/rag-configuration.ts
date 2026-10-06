@@ -306,7 +306,7 @@ export function loadRagConfiguration(
     limits: {
       providerMaxAttempts: Number(providerMaxAttempts),
       ...(environment.BROWSER_REAL_AI_KB_SMOKE === '1'
-        ? { sessionProviderOperationLimit: 13 }
+        ? { sessionProviderOperationLimit: 12 }
         : {}),
       ...(environment.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1'
         ? { sessionBudgetLimitEur: 0.05 }

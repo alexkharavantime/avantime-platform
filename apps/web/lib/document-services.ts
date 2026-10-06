@@ -171,7 +171,6 @@ export function createDocumentServices(
     dataDirectory: configuration.dataDirectory,
   };
   const realAiBrowserTrial =
-    process.env.NODE_ENV === 'test' &&
     process.env.BROWSER_REAL_AI_KB_SMOKE === '1' &&
     !ragConfiguration.production;
   if (realAiBrowserTrial && !process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE) {

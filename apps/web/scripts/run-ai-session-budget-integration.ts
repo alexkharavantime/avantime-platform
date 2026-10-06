@@ -83,7 +83,7 @@ async function main() {
       0.25,
       1,
       300_000,
-      13,
+      12,
       0.05,
     );
     const tenant = { companyId: 'temporary-ai-session-test', userId: 'integration-test' };
@@ -137,25 +137,21 @@ async function main() {
       correlationId: 'session-operation-13',
       idempotencyKey: 'session-operation-13',
     });
-    assert.ok(thirteenthReservation, 'the 13th operation fits both session limits');
-    await controller.reconcile({
-      reservation: thirteenthReservation,
-      inputTokens: 10,
-      outputTokens: 2,
-      embeddingUnits: 0,
-      estimatedCostEur: 0.0007,
-      status: 'SUCCEEDED',
-    });
+    assert.equal(
+      thirteenthReservation,
+      null,
+      'operation 13 is rejected while session budget headroom remains',
+    );
 
     assert.equal(
       await controller.reserve({
         ...baseRequest,
         estimatedCostEur: 0,
-        correlationId: 'session-operation-14',
-        idempotencyKey: 'session-operation-14',
+        correlationId: 'session-operation-13-zero-cost',
+        idempotencyKey: 'session-operation-13-zero-cost',
       }),
       null,
-      'operation 14 is rejected even though a fraction of the euro cap remains',
+      'operation 13 is rejected even with a zero estimate',
     );
 
     await testDatabase.aiUsageLedger.createMany({
@@ -253,7 +249,7 @@ async function main() {
     const failedReservationSummary = evidence.reservations.find((reservation) =>
       reservation.status === 'FAILED',
     );
-    assert.equal(completed?.operationCount, 14);
+    assert.equal(completed?.operationCount, 13);
     assert.equal(completed?.actualCostEur, null);
     assert.equal(incomplete?.operationCount, 1);
     assert.equal(incomplete?.inputTokens, '52');
@@ -303,11 +299,11 @@ async function main() {
       JSON.stringify({
         event: 'ai_session_budget_integration',
         result: 'passed',
-        providerOperations: 13,
+        providerOperations: 12,
         sessionBudgetLimitEur: 0.05,
-        reservedAndReconciledEstimateEur: 0.0499,
+        reservedAndReconciledEstimateEur: 0.0492,
         overBudgetReservationRejected: true,
-        fourteenthOperationRejected: true,
+        thirteenthOperationRejected: true,
         usageSummaryQueriesPassedBeforeDatabaseCleanup: true,
         summaryPersistedBeforeDatabaseCleanup,
         failedUsageAndReservationBlockOrdinaryDailyOverspend: true,

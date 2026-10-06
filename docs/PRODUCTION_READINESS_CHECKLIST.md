@@ -225,6 +225,37 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
   persists request IDs on successful responses for future runs. The synthetic generation criterion
   is met; answers grounded in the two PDFs and their citations remain unverified.
 
+## Two-PDF real-AI smoke attempt (2026-10-06)
+
+- The explicitly enabled diagnostic preflight ran without a provider call or historical-summary
+  read. It bounded 12 operations at 512 output tokens and estimated maximum reservation EUR
+  0.03231 against the separately authorized EUR 0.05; ordinary EUR 0.25/day and EUR 1/month limits
+  remained configured. PostgreSQL integration verified reservation accounting through operation 12
+  and rejected operation 13.
+- The live run created two synthetic one-page PDFs and completed both real embeddings. The direct
+  question then returned a refusal because the model interpreted the word `Synthetic` in the source
+  text as a reason not to trust the fixture. Its citation pointed to the expected maintenance PDF,
+  page 1, but the answer did not contain `21:45`. The test stopped at that first answer assertion;
+  the remaining four questions and tenant-B isolation checks did not run.
+- The workflow reached four provider operations before stopping: two document embeddings and the
+  direct question's query embedding plus Responses call. Only the two document embeddings were
+  written to the run ledger/events (75 input tokens, token-cost estimate EUR 0.00015, reservations
+  EUR 0.000118, actual charge `null`). The query/answer token counts, reservation and actual charge
+  are unknown. The run summary is explicitly `unavailable`, with `budgetImpactEur: null`; it must
+  not be interpreted as a complete cost report.
+- Root cause: the Playwright app runs under `NODE_ENV=development`, while real-smoke PostgreSQL
+  accounting and JSONL events were enabled only for `NODE_ENV=test`. The explicit smoke flag now
+  enables those controls in development, and a regression test verifies reservation gating and
+  JSONL capture. The fixture no longer labels its content `Synthetic`. No second paid run was made:
+  only eight of the authorized 12 provider operations remain, fewer than the ten needed to recreate
+  document embeddings and complete the four unanswered questions.
+- The preflight was then hardened from the gateway's characters/4 token heuristic to a conservative
+  one-token-per-UTF-8-byte bound for the fixture's checked byte limits. Its no-provider recomputation
+  is EUR 0.039238, still within EUR 0.05; it did not authorize or trigger another provider call.
+- The isolated browser database and local document storage were removed after the summary and
+  artifacts were saved. The historical summaries were not modified. PDF answer quality and
+  cross-tenant isolation remain unverified; API/RAG readiness remains `Pending`.
+
 ## Two-PDF real-AI smoke attempt (2026-10-05)
 
 - One diagnostic browser smoke was launched with a unique loopback database, a EUR 0.05 session cap,

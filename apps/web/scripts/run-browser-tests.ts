@@ -8,8 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 import { PrismaClient } from '@prisma/client';
 
+import { buildRagSystemInstructions } from '../lib/rag-answer';
 import { readAiUsageSummary } from '../lib/ai-usage-summary';
-import { getRealAiBudgetAllowance } from './real-ai-budget';
+import {
+  getRealAiBudgetAllowance,
+  getRealAiDiagnosticCostPreflight,
+  REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
+  REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT,
+  REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+} from './real-ai-budget';
 import { sanitizePlaywrightArtifacts } from './sanitize-playwright-artifacts';
 
 const webDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,6 +84,9 @@ function configureBrowserDatabase(
     process.env.DOCUMENT_EMBEDDING_DIMENSIONS = '1536';
     process.env.RAG_ANSWER_DRIVER = 'openai';
     process.env.RAG_ANSWER_MODEL = 'gpt-5-mini';
+    process.env.RAG_MAX_CONTEXT_CHARACTERS = '1500';
+    process.env.RAG_MAX_OUTPUT_TOKENS = String(REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT);
+    process.env.RAG_QUERY_MAX_CHARACTERS = '500';
   } else {
     delete process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE;
   }
@@ -220,8 +230,10 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
       sessionId: resources.sessionId,
       diagnosticMode: resources.diagnosticMode,
       summaryStatus: 'available',
-      sessionProviderOperationLimit: 13,
-      ...(resources.diagnosticMode ? { sessionBudgetLimitEur: 0.05 } : {}),
+      sessionProviderOperationLimit: REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+      ...(resources.diagnosticMode
+        ? { sessionBudgetLimitEur: REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR }
+        : {}),
       providerEventFile: path.basename(resources.diagnosticsFile),
       providerEventCount: diagnosticEvents,
       generatedAt: new Date().toISOString(),
@@ -320,8 +332,10 @@ async function writeUnavailableRealAiUsageSummary(resources: RealAiBrowserResour
       {
         sessionId: resources.sessionId,
         diagnosticMode: resources.diagnosticMode,
-        sessionProviderOperationLimit: 13,
-        ...(resources.diagnosticMode ? { sessionBudgetLimitEur: 0.05 } : {}),
+        sessionProviderOperationLimit: REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+        ...(resources.diagnosticMode
+          ? { sessionBudgetLimitEur: REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR }
+          : {}),
         providerEventFile: path.basename(resources.diagnosticsFile),
         providerEventCount: diagnosticEvents,
         generatedAt: new Date().toISOString(),
@@ -341,19 +355,54 @@ async function writeUnavailableRealAiUsageSummary(resources: RealAiBrowserResour
 
 async function main() {
   const diagnosticMode = process.argv.includes('--real-ai-diagnostic');
+  const diagnosticPreflightOnly = process.argv.includes('--preflight-only');
   const realAiMode = process.argv.includes('--real-ai') || diagnosticMode;
   const testArguments = process.argv
     .slice(2)
-    .filter((argument) => !['--real-ai', '--real-ai-diagnostic'].includes(argument));
+    .filter(
+      (argument) =>
+        !['--real-ai', '--real-ai-diagnostic', '--preflight-only'].includes(argument),
+    );
   if (process.env.BROWSER_REAL_AI_KB_SMOKE === '1' && !realAiMode) {
     throw new Error('Use the dedicated test:browser:real-ai command to enable real AI.');
   }
   if (realAiMode && testArguments.length > 0) {
     throw new Error('The dedicated real-AI browser command does not accept Playwright overrides.');
   }
+  if (diagnosticPreflightOnly && !diagnosticMode) {
+    throw new Error('--preflight-only is only available with --real-ai-diagnostic.');
+  }
+
+  const diagnosticPreflight = diagnosticMode
+    ? getRealAiDiagnosticCostPreflight({
+        maximumDocumentChunkBytes: 512,
+        maximumQuestionBytes: 256,
+        maximumContextBytes: 512,
+        systemInstructionsBytes: Buffer.byteLength(buildRagSystemInstructions('ru'), 'utf8'),
+      })
+    : undefined;
+  if (diagnosticPreflight && !diagnosticPreflight.withinBudget) {
+    throw new Error('Maximum reserved diagnostic cost exceeds the separately approved EUR 0.05.');
+  }
+  if (diagnosticPreflightOnly && diagnosticPreflight) {
+    console.info(
+      JSON.stringify(
+        {
+          event: 'real_ai_diagnostic_cost_preflight',
+          ...diagnosticPreflight,
+          ordinaryDailyBudgetEur: 0.25,
+          ordinaryMonthlyBudgetEur: 1,
+          historicalSummaryRead: false,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
 
   const resources = configureBrowserDatabase(realAiMode, diagnosticMode);
-  const realAiBudget = realAiMode
+  const realAiBudget = realAiMode && !diagnosticMode
     ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
     : undefined;
   const childEnvironment: NodeJS.ProcessEnv = {
@@ -372,10 +421,12 @@ async function main() {
       JSON.stringify({
         event: 'real_ai_diagnostic_session_started',
         sessionId: resources.sessionId,
-        sessionBudgetLimitEur: 0.05,
+        budgetLimitEur: diagnosticPreflight?.budgetLimitEur,
+        maximumReservedCostEur: diagnosticPreflight?.maximumReservedCostEur,
+        costPreflight: diagnosticPreflight,
         dailyBudgetEur: 0.25,
         monthlyBudgetEur: 1,
-        maxProviderOperations: 13,
+        maxProviderOperations: diagnosticPreflight?.providerOperationLimit,
       }),
     );
   }
