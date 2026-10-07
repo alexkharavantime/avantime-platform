@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 
@@ -200,6 +201,18 @@ async function expectSourceCitation(citation: Citation, documentId: string) {
   );
 }
 
+async function recordSemanticCheck(
+  failures: string[],
+  label: string,
+  check: () => Promise<void> | void,
+) {
+  try {
+    await check();
+  } catch (error) {
+    failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 test('real AI: bounded 1C document retrieval, answers, citations and tenant isolation @real-ai', async ({
   page,
   loginAs,
@@ -222,9 +235,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
   );
   if (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1') {
-    expect(ragConfiguration.limits.sessionBudgetLimitEur).toBe(
-      REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
-    );
+    expect(ragConfiguration.limits.sessionBudgetLimitEur).toBe(REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR);
     expect(process.env.BROWSER_REAL_AI_SESSION_ID).toMatch(/^[a-f0-9]{32}$/u);
   }
   expect(ragConfiguration.limits.rateLimitPerMinute).toBe(10);
@@ -232,18 +243,14 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   expect(ragConfiguration.limits.burstLimit).toBe(3);
   expect(ragConfiguration.limits.dailyBudgetEur).toBe(0.25);
   expect(ragConfiguration.limits.monthlyBudgetEur).toBe(1);
-  expect(ragConfiguration.answer.maximumOutputTokens).toBe(
-    REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT,
-  );
+  expect(ragConfiguration.answer.maximumOutputTokens).toBe(REAL_AI_DIAGNOSTIC_OUTPUT_TOKEN_LIMIT);
   expect(ragConfiguration.answer.maximumContextCharacters).toBe(1_500);
   expect(
     controlQuestions.every(
       (question) => question.text.length <= ragConfiguration.limits.queryMaximumCharacters,
     ),
   ).toBe(true);
-  expect(documents.every((document) => Buffer.byteLength(document.text, 'utf8') <= 512)).toBe(
-    true,
-  );
+  expect(documents.every((document) => Buffer.byteLength(document.text, 'utf8') <= 512)).toBe(true);
   expect(
     controlQuestions.every((question) => Buffer.byteLength(question.text, 'utf8') <= 256),
   ).toBe(true);
@@ -256,7 +263,139 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
   );
 
   const documentIds = new Map<(typeof documents)[number]['key'], string>();
+  const expectedProviderStages: string[] = [];
+  const semanticFailures: string[] = [];
+  let observedProviderStages: string[] = [];
+  let providerTokenEstimatedCostEur = 0;
   let estimatedAnswerCost = 0;
+  const assertProviderOperationHeadroom = (upcomingOperations: number) => {
+    expect(expectedProviderStages.length + upcomingOperations).toBeLessThanOrEqual(
+      REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+    );
+  };
+  const verifyProviderAccounting = async () => {
+    const requestedAnswers = expectedProviderStages.filter(
+      (stage) => stage === 'query_embedding',
+    ).length;
+    const requiredAnswerGenerations = expectedProviderStages.filter(
+      (stage) => stage === 'rag_answer',
+    ).length;
+    const usage = await prisma.$queryRaw<
+      Array<{
+        requestType: string;
+        operationCount: number;
+        inputTokens: number;
+        outputTokens: number;
+        estimatedCostEur: number;
+      }>
+    >`
+      SELECT
+        "requestType",
+        COUNT(*)::int AS "operationCount",
+        COALESCE(SUM("inputTokens"), 0)::int AS "inputTokens",
+        COALESCE(SUM("outputTokens"), 0)::int AS "outputTokens",
+        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "estimatedCostEur"
+      FROM "AiUsageLedger"
+      WHERE "companyId" = ${tenantA.companyId} AND "provider" = 'openai'
+      GROUP BY "requestType" ORDER BY "requestType"
+    `;
+
+    const eventPath = browserServerEnvironment.BROWSER_REAL_AI_DIAGNOSTICS_FILE;
+    expect(eventPath).toBeTruthy();
+    const events = (await readFile(eventPath!, 'utf8'))
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const providerEvents = events.filter((event) => event.name === 'provider_call');
+    expect(providerEvents.length).toBeLessThanOrEqual(REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT);
+    expect(providerEvents.every((event) => event.companyId === tenantA.companyId)).toBe(true);
+    expect(providerEvents.every((event) => event.outcome === 'success')).toBe(true);
+    expect(providerEvents.every((event) => event.actualCostEur === null)).toBe(true);
+    expect(
+      providerEvents.every(
+        (event) =>
+          (event.providerDiagnostic as { attemptCount?: number } | undefined)?.attemptCount === 1,
+      ),
+    ).toBe(true);
+    observedProviderStages = providerEvents.map(
+      (event) => (event.providerDiagnostic as { stage?: string } | undefined)?.stage ?? 'unknown',
+    );
+    providerTokenEstimatedCostEur = providerEvents.reduce(
+      (total, event) => total + Number(event.estimatedCostEur ?? 0),
+      0,
+    );
+    const observedCount = (stage: string) =>
+      observedProviderStages.filter((observed) => observed === stage).length;
+    expect(observedCount('document_embedding')).toBe(
+      expectedProviderStages.filter((stage) => stage === 'document_embedding').length,
+    );
+    expect(observedCount('query_embedding')).toBe(requestedAnswers);
+    expect(observedCount('rag_answer')).toBeGreaterThanOrEqual(requiredAnswerGenerations);
+    expect(observedCount('rag_answer')).toBeLessThanOrEqual(requestedAnswers);
+    expect(
+      observedProviderStages.every((stage) =>
+        ['document_embedding', 'query_embedding', 'rag_answer'].includes(stage),
+      ),
+    ).toBe(true);
+    const eventUsage = [...new Set(observedProviderStages)]
+      .map((stage) => {
+        const stageEvents = providerEvents.filter(
+          (event) => (event.providerDiagnostic as { stage?: string } | undefined)?.stage === stage,
+        );
+        return {
+          requestType: stage,
+          operationCount: stageEvents.length,
+          inputTokens: stageEvents.reduce(
+            (total, event) => total + Number(event.inputTokens ?? 0),
+            0,
+          ),
+          outputTokens: stageEvents.reduce(
+            (total, event) => total + Number(event.outputTokens ?? 0),
+            0,
+          ),
+          estimatedCostEur: stageEvents.reduce(
+            (total, event) =>
+              total +
+              Math.max(
+                Number(event.reservedCostEur ?? 0),
+                Number((Number(event.estimatedCostEur ?? 0) * 2).toFixed(6)),
+              ),
+            0,
+          ),
+        };
+      })
+      .sort((left, right) => left.requestType.localeCompare(right.requestType));
+    expect(usage).toEqual(eventUsage);
+
+    const [reservations] = await prisma.$queryRaw<
+      Array<{
+        reservationCount: number;
+        reservedCostEur: number;
+        unreconciledCount: number;
+        unreconciledReservedCostEur: number;
+      }>
+    >`
+      SELECT
+        COUNT(*)::int AS "reservationCount",
+        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "reservedCostEur",
+        COUNT(*) FILTER (WHERE "status" <> 'RECONCILED')::int AS "unreconciledCount",
+        COALESCE(SUM("estimatedCostEur") FILTER (WHERE "status" <> 'RECONCILED'), 0)::float8
+          AS "unreconciledReservedCostEur"
+      FROM "AiBudgetReservation"
+      WHERE "companyId" = ${tenantA.companyId} AND "provider" = 'openai'
+    `;
+    expect(reservations?.reservationCount ?? 0).toBe(providerEvents.length);
+    expect(reservations?.unreconciledCount ?? 0).toBe(0);
+    expect(reservations?.reservedCostEur ?? 0).toBeCloseTo(
+      providerEvents.reduce((total, event) => total + Number(event.reservedCostEur ?? 0), 0),
+      9,
+    );
+    const budgetImpactEur = usage.reduce(
+      (total, operation) => total + operation.estimatedCostEur,
+      reservations?.unreconciledReservedCostEur ?? 0,
+    );
+    expect(budgetImpactEur).toBeLessThanOrEqual(REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR);
+  };
   try {
     await loginAs('identityManager');
     await page.goto('/ru/admin/documents');
@@ -293,9 +432,12 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
       const chunks = await services.processing.readChunks(tenantA, documentId);
       expect(chunks).toHaveLength(1);
       expect(chunks[0]?.text.length).toBeLessThanOrEqual(3_000);
+      assertProviderOperationHeadroom(1);
       expect(
         runOneJob('process-one-embedding-job.ts', `real-ai-embedding-${index + 1}`),
       ).toMatchObject({ outcome: 'COMPLETED' });
+      expectedProviderStages.push('document_embedding');
+      await verifyProviderAccounting();
       await expect
         .poll(async () => (await services.metadata.findById(tenantA, documentId))?.embeddingStatus)
         .toBe('COMPLETED');
@@ -311,70 +453,95 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     const maintenanceId = documentIds.get('maintenance')!;
     const backupId = documentIds.get('backup')!;
     const answers = new Map<string, AskResult>();
-    const direct = await askThroughUi(page, controlQuestions[0].text);
-    answers.set('direct', direct);
-    estimatedAnswerCost += direct.usage.estimatedCostEur;
-    const directCitation = direct.citations.find(
-      (citation) => citation.documentId === maintenanceId,
-    );
-    expect(directCitation, 'retrieval must find the expected maintenance passage').toBeTruthy();
-    await expectSourceCitation(directCitation!, maintenanceId);
-    expect(direct.answer, 'generation must state the source fact').toContain('21:45');
-
-    const sourceLink = page.locator(`a[href^="/ru/portal/documents/${maintenanceId}?chunk="]`);
-    await expect(sourceLink).toHaveCount(1);
-    await sourceLink.click();
-    await expect(page.getByRole('heading', { name: documents[0].name })).toBeVisible();
-    await page.getByRole('tab', { name: 'Извлечённый текст' }).click();
-    await expect(page.getByText(/21:45/u).last()).toBeVisible();
-    expect((await page.request.get(`/api/documents/file?id=${maintenanceId}`)).status()).toBe(200);
-    await page.goto('/ru/admin/documents');
+    assertProviderOperationHeadroom(2);
+    const directResult = await askThroughUi(page, controlQuestions[0].text);
+    answers.set('direct', directResult);
+    estimatedAnswerCost += directResult.usage.estimatedCostEur;
+    expectedProviderStages.push('query_embedding');
+    if (directResult.status === 'answered') expectedProviderStages.push('rag_answer');
+    await verifyProviderAccounting();
 
     for (const question of controlQuestions.slice(1)) {
       await page.waitForTimeout(10_500);
+      assertProviderOperationHeadroom(2);
       const result = await askThroughUi(page, question.text);
       answers.set(question.key, result);
       estimatedAnswerCost += result.usage.estimatedCostEur;
+      expectedProviderStages.push('query_embedding');
+      if (result.status === 'answered') expectedProviderStages.push('rag_answer');
+      await verifyProviderAccounting();
     }
 
+    const direct = answers.get('direct')!;
+    await recordSemanticCheck(semanticFailures, 'direct answer and citation', async () => {
+      expect(direct.status).toBe('answered');
+      expect(direct.answer).toContain('21:45');
+      const citation = direct.citations.find((item) => item.documentId === maintenanceId);
+      expect(citation).toBeTruthy();
+      if (citation) await expectSourceCitation(citation, maintenanceId);
+    });
+    await recordSemanticCheck(semanticFailures, 'direct citation UI and source page', async () => {
+      const sourceLink = page.locator(`a[href^="/ru/portal/documents/${maintenanceId}?chunk="]`);
+      await expect(sourceLink).toHaveCount(1);
+      await sourceLink.click();
+      await expect(page.getByRole('heading', { name: documents[0].name })).toBeVisible();
+      await page.getByRole('tab', { name: 'Извлечённый текст' }).click();
+      await expect(page.getByText(/21:45/u).last()).toBeVisible();
+      expect((await page.request.get(`/api/documents/file?id=${maintenanceId}`)).status()).toBe(
+        200,
+      );
+    });
+    await page.goto('/ru/admin/documents');
+
     const paraphrase = answers.get('paraphrase')!;
-    const paraphraseCitation = paraphrase.citations.find(
-      (citation) => citation.documentId === maintenanceId,
-    );
-    expect(paraphraseCitation, 'paraphrased retrieval must find the same passage').toBeTruthy();
-    await expectSourceCitation(paraphraseCitation!, maintenanceId);
-    expect(paraphrase.answer).toContain('21:45');
+    await recordSemanticCheck(semanticFailures, 'paraphrase answer and citation', async () => {
+      expect(paraphrase.status).toBe('answered');
+      expect(paraphrase.answer).toContain('21:45');
+      const citation = paraphrase.citations.find((item) => item.documentId === maintenanceId);
+      expect(citation).toBeTruthy();
+      if (citation) await expectSourceCitation(citation, maintenanceId);
+    });
 
     const combined = answers.get('combined')!;
-    const combinedMaintenance = combined.citations.find(
-      (citation) => citation.documentId === maintenanceId,
-    );
-    const combinedBackup = combined.citations.find((citation) => citation.documentId === backupId);
-    expect(combinedMaintenance, 'combined retrieval must find maintenance source').toBeTruthy();
-    expect(combinedBackup, 'combined retrieval must find backup source').toBeTruthy();
-    await expectSourceCitation(combinedMaintenance!, maintenanceId);
-    await expectSourceCitation(combinedBackup!, backupId);
-    expect(combined.answer).toContain('21:45');
-    expect(combined.answer).toMatch(/14\s*(?:days|дн(?:я|ей|ь)?)/iu);
+    await recordSemanticCheck(semanticFailures, 'combined answer and citations', async () => {
+      expect(combined.status).toBe('answered');
+      expect(combined.answer).toContain('21:45');
+      expect(combined.answer).toMatch(/14\s*(?:days|дн(?:я|ей|ь)?)/iu);
+      const maintenanceCitation = combined.citations.find(
+        (citation) => citation.documentId === maintenanceId,
+      );
+      const backupCitation = combined.citations.find(
+        (citation) => citation.documentId === backupId,
+      );
+      expect(maintenanceCitation).toBeTruthy();
+      expect(backupCitation).toBeTruthy();
+      if (maintenanceCitation) await expectSourceCitation(maintenanceCitation, maintenanceId);
+      if (backupCitation) await expectSourceCitation(backupCitation, backupId);
+    });
 
     const unsupported = answers.get('absent')!;
-    expect(
-      unsupported.status === 'no_answer' ||
-        /недостаточ|нет данных|не указано|не найдено|не могу определить/iu.test(unsupported.answer),
-      'an unsupported fact must be explicitly declined',
-    ).toBe(true);
-    expect(unsupported.answer).not.toMatch(/\b(?:Get|Set|Update)-[A-Z][A-Za-z]+\b/u);
+    await recordSemanticCheck(semanticFailures, 'unsupported fact refusal', () => {
+      expect(
+        unsupported.status === 'no_answer' ||
+          /недостаточ|нет данных|не указано|не найдено|не могу определить/iu.test(
+            unsupported.answer,
+          ),
+      ).toBe(true);
+      expect(unsupported.answer).not.toMatch(/\b(?:Get|Set|Update)-[A-Z][A-Za-z]+\b/u);
+    });
 
     const version = answers.get('version')!;
-    expect(version.answer).not.toMatch(/1C:ERP 3\.0 (?:поддерживается|применима)/iu);
-    expect(version.answer).toMatch(
-      /недостаточ|не подтвержден|не указано|нет данных|нет оснований/iu,
-    );
-    expect(
-      version.citations.every((citation) =>
-        [maintenanceId, backupId].includes(citation.documentId ?? ''),
-      ),
-    ).toBe(true);
+    await recordSemanticCheck(semanticFailures, 'version-scope refusal', () => {
+      expect(version.answer).not.toMatch(/1C:ERP 3\.0 (?:поддерживается|применима)/iu);
+      expect(version.answer).toMatch(
+        /недостаточ|не подтвержден|не указано|нет данных|нет оснований/iu,
+      );
+      expect(
+        version.citations.every((citation) =>
+          [maintenanceId, backupId].includes(citation.documentId ?? ''),
+        ),
+      ).toBe(true);
+    });
     console.info(
       JSON.stringify({
         event: 'real_ai_smoke_answers',
@@ -399,7 +566,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         })),
       }),
     );
-    expect(estimatedAnswerCost).toBeLessThanOrEqual(0.25);
+    expect(estimatedAnswerCost).toBeLessThanOrEqual(REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR);
 
     await page.context().clearCookies();
     await loginAs('tenantB');
@@ -426,19 +593,32 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     const [ledger] = await prisma.$queryRaw<
       Array<{
         totalEstimatedCost: number;
+        ledgerEstimateEur: number;
         inputTokens: number;
         outputTokens: number;
         operationCount: number;
         openAiOperationCount: number;
         sessionProviderOperationCount: number;
         tenantBAnswerOperations: number;
+        actualCostEur: number;
+        knownActualCostOperationCount: number;
+        unknownActualCostOperationCount: number;
+        reservationCount: number;
+        reservedCostEur: number;
+        unreconciledReservedCostEur: number;
       }>
     >`
       SELECT
         COALESCE(SUM(COALESCE("actualCostEur", "estimatedCostEur")), 0)::float8
           AS "totalEstimatedCost",
+        COALESCE(SUM("estimatedCostEur"), 0)::float8 AS "ledgerEstimateEur",
         COALESCE(SUM("inputTokens"), 0)::int AS "inputTokens",
         COALESCE(SUM("outputTokens"), 0)::int AS "outputTokens",
+        COALESCE(SUM("actualCostEur"), 0)::float8 AS "actualCostEur",
+        COUNT(*) FILTER (WHERE "actualCostEur" IS NOT NULL)::int
+          AS "knownActualCostOperationCount",
+        COUNT(*) FILTER (WHERE "actualCostEur" IS NULL)::int
+          AS "unknownActualCostOperationCount",
         COUNT(*)::int AS "operationCount",
         COUNT(*) FILTER (WHERE "provider" = 'openai')::int AS "openAiOperationCount",
         (COUNT(*) FILTER (WHERE "provider" IN ('openai', 'gemini')) + COALESCE((
@@ -449,18 +629,31 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         COUNT(*) FILTER (
           WHERE "companyId" = ${browserIdentities.tenantB.companyId}
             AND "requestType" = 'rag_answer'
-        )::int AS "tenantBAnswerOperations"
+        )::int AS "tenantBAnswerOperations",
+        (SELECT COUNT(*)::int FROM "AiBudgetReservation"
+          WHERE "companyId" IN (${tenantA.companyId}, ${browserIdentities.tenantB.companyId})
+            AND "provider" = 'openai') AS "reservationCount",
+        (SELECT COALESCE(SUM("estimatedCostEur"), 0)::float8 FROM "AiBudgetReservation"
+          WHERE "companyId" IN (${tenantA.companyId}, ${browserIdentities.tenantB.companyId})
+            AND "provider" = 'openai') AS "reservedCostEur",
+        (SELECT COALESCE(SUM("estimatedCostEur"), 0)::float8 FROM "AiBudgetReservation"
+          WHERE "companyId" IN (${tenantA.companyId}, ${browserIdentities.tenantB.companyId})
+            AND "provider" = 'openai' AND "status" <> 'RECONCILED')
+          AS "unreconciledReservedCostEur"
       FROM "AiUsageLedger"
       WHERE "companyId" IN (${tenantA.companyId}, ${browserIdentities.tenantB.companyId})
         AND "occurredAt" >= date_trunc('day', CURRENT_TIMESTAMP)
     `;
-    expect(estimatedAnswerCost).toBeLessThanOrEqual(0.25);
-    expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(0.25);
-    expect(ledger?.inputTokens ?? 0).toBeLessThanOrEqual(20_000);
-    expect(ledger?.outputTokens ?? 0).toBeLessThanOrEqual(
-      2_560,
+    expect(estimatedAnswerCost).toBeLessThanOrEqual(REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR);
+    expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(
+      REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR,
     );
-    const expectedProviderOperations = REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT;
+    expect(ledger?.inputTokens ?? 0).toBeLessThanOrEqual(20_000);
+    expect(ledger?.outputTokens ?? 0).toBeLessThanOrEqual(2_560);
+    const expectedProviderOperations = observedProviderStages.length;
+    expect(expectedProviderOperations).toBeLessThanOrEqual(
+      REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
+    );
     expect(ledger?.totalEstimatedCost ?? 0).toBeLessThanOrEqual(
       ragConfiguration.limits.sessionBudgetLimitEur ?? 0.25,
     );
@@ -477,9 +670,21 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         sessionProviderOperations: ledger?.sessionProviderOperationCount ?? 0,
         inputTokens: ledger?.inputTokens ?? 0,
         outputTokens: ledger?.outputTokens ?? 0,
-        estimatedCostEur: ledger?.totalEstimatedCost ?? 0,
+        tokenEstimatedCostEur: providerTokenEstimatedCostEur,
+        ledgerEstimateEur: ledger?.ledgerEstimateEur ?? 0,
+        actualCostEur:
+          (ledger?.unknownActualCostOperationCount ?? 0) > 0 ? null : (ledger?.actualCostEur ?? 0),
+        knownActualCostOperationCount: ledger?.knownActualCostOperationCount ?? 0,
+        unknownActualCostOperationCount: ledger?.unknownActualCostOperationCount ?? 0,
+        reservationCount: ledger?.reservationCount ?? 0,
+        reservedCostEur: ledger?.reservedCostEur ?? 0,
+        unreconciledReservedCostEur: ledger?.unreconciledReservedCostEur ?? 0,
+        semanticFailures,
       }),
     );
+    expect(ledger?.reservationCount ?? 0).toBe(expectedProviderOperations);
+    expect(ledger?.unreconciledReservedCostEur ?? 0).toBe(0);
+    expect(semanticFailures, 'all five answers and source checks must pass').toEqual([]);
   } finally {
     for (const documentId of documentIds.values()) {
       await deleteDocument(tenantA, documentId, services).catch(() => undefined);

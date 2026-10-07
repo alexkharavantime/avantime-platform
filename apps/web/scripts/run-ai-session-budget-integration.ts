@@ -9,12 +9,246 @@ import { fileURLToPath } from 'node:url';
 
 import { PrismaClient } from '@prisma/client';
 
-import { PostgreSQLAiCostController } from '../lib/ai-control';
+import {
+  type AiProviderAvailability,
+  assembleProviderContext,
+  type EmbeddingProvider,
+  type EmbeddingRequest,
+  type RagAnswerProvider,
+  type RagGenerationRequest,
+} from '../lib/ai-gateway';
+import { MemoryAiRateLimiter, PostgreSQLAiCostController } from '../lib/ai-control';
+import { loadDocumentConfiguration } from '../lib/document-configuration';
+import { enqueueDocumentEmbedding } from '../lib/document-embedding';
+import { createDocumentServices } from '../lib/document-services';
 import { readAiUsageSummary } from '../lib/ai-usage-summary';
+import { buildRagSystemInstructions } from '../lib/rag-answer';
+import type { DocumentTenantContext } from '../lib/document-model';
+import { loadRagConfiguration } from '../lib/rag-configuration';
 import type { VectorDatabaseClient } from '../lib/vector-repository';
 
 const webDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(webDirectory, '../..');
+
+async function verifyDevelopmentServiceBudget(database: PrismaClient) {
+  const directory = await mkdtemp(path.join(tmpdir(), 'avantime-dev-ai-budget-'));
+  const dataDirectory = path.join(directory, 'data');
+  const diagnosticsFile = path.join(directory, 'provider-events.jsonl');
+  const environment = {
+    NODE_ENV: 'development',
+    BROWSER_REAL_AI_KB_SMOKE: '1',
+    BROWSER_REAL_AI_DIAGNOSTIC_MODE: '1',
+    BROWSER_REAL_AI_DIAGNOSTICS_FILE: diagnosticsFile,
+    OPENAI_API_KEY: 'offline-integration-key',
+    DOCUMENT_DATA_DIR: dataDirectory,
+    DOCUMENT_EMBEDDING_DRIVER: 'openai',
+    DOCUMENT_EMBEDDING_MODEL: 'text-embedding-3-small',
+    DOCUMENT_EMBEDDING_DIMENSIONS: '2',
+    DOCUMENT_EMBEDDING_VERSION: 'dev-budget-test-v1',
+    DOCUMENT_EMBEDDING_MAX_ATTEMPTS: '1',
+    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
+    DOCUMENT_VECTOR_DRIVER: 'memory',
+    RAG_ANSWER_DRIVER: 'openai',
+    RAG_ANSWER_MODEL: 'gpt-5-mini',
+    RAG_MAX_OUTPUT_TOKENS: '512',
+    AI_PROVIDER_MAX_ATTEMPTS: '1',
+    AI_DAILY_BUDGET_EUR: '0.25',
+    AI_MONTHLY_BUDGET_EUR: '1',
+  };
+  const environmentKeys = [
+    'NODE_ENV',
+    'BROWSER_REAL_AI_KB_SMOKE',
+    'BROWSER_REAL_AI_DIAGNOSTIC_MODE',
+    'BROWSER_REAL_AI_DIAGNOSTICS_FILE',
+  ] as const;
+  const originalEnvironment = Object.fromEntries(
+    environmentKeys.map((key) => [key, process.env[key]]),
+  );
+  const mutableEnvironment = process.env as Record<string, string | undefined>;
+  const providerAttempts: string[] = [];
+  let generatedContext = '';
+  let generatedInstructions = '';
+  const availability: AiProviderAvailability = {
+    configured: true,
+    available: true,
+    capabilities: { embeddings: true, answers: true },
+  };
+  const provider: EmbeddingProvider & RagAnswerProvider = {
+    id: 'openai',
+    async embed(request: EmbeddingRequest) {
+      providerAttempts.push(request.purpose === 'query' ? 'query_embedding' : 'document_embedding');
+      return {
+        vectors: request.texts.map(() => [0.1, 0.2]),
+        model: request.model,
+        dimensions: request.dimensions,
+        usage: { inputTokens: 4, outputTokens: 0, estimatedCostEur: 0.000004 },
+        providerDiagnostic: { provider: 'openai', operation: 'embedding' },
+      };
+    },
+    async generate(request: RagGenerationRequest) {
+      providerAttempts.push('rag_answer');
+      generatedContext = assembleProviderContext(request);
+      generatedInstructions = request.systemInstructions;
+      return {
+        answer: 'offline integration response',
+        model: request.model,
+        usage: { inputTokens: 12, outputTokens: 5, estimatedCostEur: 0.000032 },
+        providerDiagnostic: {
+          provider: 'openai',
+          operation: 'answer',
+          responseStatus: 'completed',
+        },
+      };
+    },
+    async checkAvailability() {
+      return availability;
+    },
+  };
+
+  try {
+    mutableEnvironment.NODE_ENV = environment.NODE_ENV;
+    mutableEnvironment.BROWSER_REAL_AI_KB_SMOKE = environment.BROWSER_REAL_AI_KB_SMOKE;
+    mutableEnvironment.BROWSER_REAL_AI_DIAGNOSTIC_MODE =
+      environment.BROWSER_REAL_AI_DIAGNOSTIC_MODE;
+    mutableEnvironment.BROWSER_REAL_AI_DIAGNOSTICS_FILE = diagnosticsFile;
+
+    const ragConfiguration = loadRagConfiguration(environment);
+    ragConfiguration.limits.sessionProviderOperationLimit = 3;
+    const loadDatabase = async () => database as unknown as VectorDatabaseClient;
+    const sharedOptions = {
+      ragConfiguration,
+      rag: {
+        environment,
+        embeddingProvider: provider,
+        answerProvider: provider,
+        loadDatabase,
+        rateLimiter: new MemoryAiRateLimiter(),
+        knowledgeSemanticSource: null,
+      },
+    };
+    const documentConfiguration = loadDocumentConfiguration(environment);
+    const workerServices = createDocumentServices(documentConfiguration, sharedOptions);
+    if (!workerServices.rag) throw new Error('Development worker RAG services are unavailable.');
+    const apiServices = createDocumentServices(documentConfiguration, {
+      ...sharedOptions,
+      rag: { ...sharedOptions.rag, vectors: workerServices.rag.vectors },
+    });
+    if (!apiServices.rag) throw new Error('Development API RAG services are unavailable.');
+
+    const tenant: DocumentTenantContext = {
+      companyId: 'dev-service-budget-test',
+      userId: 'dev-service-budget-test-user',
+    };
+    const now = new Date().toISOString();
+    const createCompletedSource = async (documentId: string) => {
+      const text =
+        documentId === 'dev-budget-source-one'
+          ? 'Nightly maintenance starts at 21:45.'
+          : 'Backups are retained for 14 days.';
+      await workerServices.metadata.create(tenant, {
+        id: documentId,
+        status: 'COMPLETED',
+        originalName: `${documentId}.pdf`,
+        storedName: `${documentId}.pdf`,
+        mimeType: 'application/pdf',
+        size: text.length,
+        checksum: 'a'.repeat(64),
+        createdAt: now,
+        updatedAt: now,
+        processingCompletedAt: now,
+        pages: 1,
+        textLength: text.length,
+        chunksCount: 1,
+      });
+      await workerServices.processing.save(tenant, documentId, {
+        text,
+        chunks: [{ id: `${documentId}-chunk`, index: 0, text, start: 0, end: text.length }],
+      });
+      const queued = await enqueueDocumentEmbedding(
+        tenant,
+        documentId,
+        workerServices.rag!.embedding,
+      );
+      assert.equal(queued.outcome, 'QUEUED');
+    };
+
+    await createCompletedSource('dev-budget-source-one');
+    await createCompletedSource('dev-budget-source-two');
+    const firstWorkerRun = await workerServices.rag
+      .createEmbeddingWorker()
+      .runOnce(tenant, 'dev-budget-worker-one');
+    assert.equal(firstWorkerRun.outcome, 'COMPLETED');
+
+    const answer = await apiServices.rag.answers.answer({
+      tenant,
+      question: 'What time does maintenance start, and how long are backups retained?',
+      correlationId: 'dev-budget-api-answer',
+    });
+    assert.equal(answer.status, 'answered');
+    assert.ok(answer.citations.length > 0);
+    assert.match(generatedContext, /Nightly maintenance starts at 21:45\./u);
+    assert.match(generatedContext, /Backups are retained for 14 days\./u);
+    assert.match(generatedContext, /<untrusted_retrieved_documents>/u);
+    assert.match(generatedInstructions, /Answer only from the supplied source excerpts\./u);
+    assert.match(generatedInstructions, /available sources are insufficient/u);
+    assert.doesNotMatch(generatedInstructions, /21:45|14 days|1C:ERP 3\.0/u);
+    assert.equal(generatedInstructions, buildRagSystemInstructions('en'));
+
+    const secondWorkerRun = await workerServices.rag
+      .createEmbeddingWorker()
+      .runOnce(tenant, 'dev-budget-worker-two');
+    assert.equal(secondWorkerRun.outcome, 'FAILED');
+    if (secondWorkerRun.outcome !== 'FAILED')
+      throw new Error('Expected the shared budget to block the worker.');
+    assert.equal(secondWorkerRun.errorCode, 'AI_BUDGET_EXCEEDED');
+    assert.deepEqual(providerAttempts, ['document_embedding', 'query_embedding', 'rag_answer']);
+
+    const usage = await database.$queryRaw<Array<{ requestType: string; operationCount: number }>>`
+      SELECT "requestType", COUNT(*)::int AS "operationCount"
+      FROM "AiUsageLedger"
+      WHERE "companyId" = ${tenant.companyId} AND "provider" = 'openai'
+      GROUP BY "requestType" ORDER BY "requestType"
+    `;
+    assert.deepEqual(usage, [
+      { requestType: 'document_embedding', operationCount: 1 },
+      { requestType: 'query_embedding', operationCount: 1 },
+      { requestType: 'rag_answer', operationCount: 1 },
+    ]);
+    const events = (await readFile(diagnosticsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const providerEvents = events.filter((event) => event.name === 'provider_call');
+    assert.equal(providerEvents.length, 3);
+    assert.ok(providerEvents.every((event) => event.actualCostEur === null));
+    assert.deepEqual(
+      providerEvents.map(
+        (event) => (event.providerDiagnostic as { stage?: string } | undefined)?.stage,
+      ),
+      ['document_embedding', 'query_embedding', 'rag_answer'],
+    );
+    assert.ok(events.some((event) => event.name === 'embedding_job_failed'));
+    const usageSummary = await readAiUsageSummary(database);
+    const serviceCostEur = usageSummary.operations.reduce(
+      (total, operation) => total + operation.estimatedCostEur,
+      0,
+    );
+    return {
+      providerAttempts: providerAttempts.length,
+      sharedBudgetRejectedWorkerOperation: true,
+      usageRows: usage,
+      serviceCostEur: Number(serviceCostEur.toFixed(6)),
+      providerEventCount: providerEvents.length,
+      diagnosticEventsPersisted: true,
+    };
+  } finally {
+    for (const key of environmentKeys) {
+      if (originalEnvironment[key] === undefined) delete mutableEnvironment[key];
+      else mutableEnvironment[key] = originalEnvironment[key];
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 async function main() {
   const environmentFile = path.join(repositoryRoot, '.env');
@@ -78,6 +312,13 @@ async function main() {
     if (push.status !== 0) throw new Error('Temporary AI session database migration failed.');
 
     testDatabase = new PrismaClient({ datasourceUrl: testUrl.toString() });
+    const developmentServiceEvidence = await verifyDevelopmentServiceBudget(testDatabase);
+    await testDatabase.aiUsageLedger.deleteMany({
+      where: { companyId: 'dev-service-budget-test' },
+    });
+    await testDatabase.aiBudgetReservation.deleteMany({
+      where: { companyId: 'dev-service-budget-test' },
+    });
     const controller = new PostgreSQLAiCostController(
       async () => testDatabase as unknown as VectorDatabaseClient,
       0.25,
@@ -246,8 +487,8 @@ async function main() {
     const knownActual = evidence.operations.find(
       (operation) => operation.requestType === 'query_embedding',
     );
-    const failedReservationSummary = evidence.reservations.find((reservation) =>
-      reservation.status === 'FAILED',
+    const failedReservationSummary = evidence.reservations.find(
+      (reservation) => reservation.status === 'FAILED',
     );
     assert.equal(completed?.operationCount, 13);
     assert.equal(completed?.actualCostEur, null);
@@ -299,6 +540,7 @@ async function main() {
       JSON.stringify({
         event: 'ai_session_budget_integration',
         result: 'passed',
+        developmentServiceAccounting: developmentServiceEvidence,
         providerOperations: 12,
         sessionBudgetLimitEur: 0.05,
         reservedAndReconciledEstimateEur: 0.0492,

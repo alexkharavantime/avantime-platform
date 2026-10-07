@@ -302,6 +302,30 @@ https://api.openai.com/v1/responses`, model `gpt-5-mini`, 64 maximum output toke
   reconstructed from retained evidence. No bypass was added; both daily/monthly preflight and the
   API/RAG `Pending` status remain in force.
 
+## Diagnostic budget/accounting follow-up (2026-10-07)
+
+- The no-provider preflight bounded the isolated diagnostic to 12 provider operations and 512
+  output tokens, with maximum reserved-cost estimate EUR 0.039238 against the separately approved
+  EUR 0.05 cap. Ordinary EUR 0.25/day and EUR 1/month limits were unchanged. PostgreSQL integration
+  under `NODE_ENV=development` verified shared worker/API accounting for document embedding, query
+  embedding and RAG answer, persisted all three provider events, confirmed both source facts in the
+  assembled provider context, and rejected the next operation at the session cap.
+- One live diagnostic smoke was started. Both synthetic PDFs were uploaded; the first document was
+  processed and its one OpenAI embedding completed (36 input tokens). The smoke then stopped before
+  processing the second document or asking any questions because the test compared unlike estimate
+  fields: the provider event's token estimate was EUR 0.000036, while the diagnostic ledger's
+  conservative estimate was EUR 0.000072 (`max(reservation EUR 0.000054, 2 x token estimate)`).
+  The single reservation was EUR 0.000054; actual provider charge is unknown (`null`). No retry or
+  additional provider call was made. The accounting assertion now compares each field according to
+  its semantics, but that correction has only offline verification and has not been exercised by a
+  second paid run.
+- Sanitized evidence was saved before cleanup at
+  `.artifacts/document-kb-real-ai-cd9cd431b3cb4d44b7210168575e8ac9/usage-summary.json` and
+  `.artifacts/document-kb-real-ai-cd9cd431b3cb4d44b7210168575e8ac9/provider-events.jsonl`.
+  The temporary database and document storage were removed. Previous run summaries were not changed.
+  The five answer checks, citations/pages and tenant isolation were not reached; API/RAG readiness
+  remains `Pending`. A new live run requires separate authorization.
+
 ## Real-provider knowledge-base trial readiness (2026-10-02)
 
 - Presence-only inspection of the local Next.js environment found `DATABASE_URL` and one
