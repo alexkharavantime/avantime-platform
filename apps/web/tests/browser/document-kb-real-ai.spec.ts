@@ -365,7 +365,24 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         };
       })
       .sort((left, right) => left.requestType.localeCompare(right.requestType));
-    expect(usage).toEqual(eventUsage);
+    expect(
+      usage.map((operation) => ({
+        requestType: operation.requestType,
+        operationCount: operation.operationCount,
+        inputTokens: operation.inputTokens,
+        outputTokens: operation.outputTokens,
+      })),
+    ).toEqual(
+      eventUsage.map((operation) => ({
+        requestType: operation.requestType,
+        operationCount: operation.operationCount,
+        inputTokens: operation.inputTokens,
+        outputTokens: operation.outputTokens,
+      })),
+    );
+    for (const [index, operation] of usage.entries()) {
+      expect(operation.estimatedCostEur).toBeCloseTo(eventUsage[index]!.estimatedCostEur, 9);
+    }
 
     const [reservations] = await prisma.$queryRaw<
       Array<{

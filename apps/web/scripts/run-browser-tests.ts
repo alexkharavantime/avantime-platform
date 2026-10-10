@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,15 +18,20 @@ import {
   REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
 } from './real-ai-budget';
 import { sanitizePlaywrightArtifacts } from './sanitize-playwright-artifacts';
+import { startMockOpenAiTransport } from '../tests/browser/mock-openai-transport';
 
 const webDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 
 function run(command: string, args: string[], environment: NodeJS.ProcessEnv = process.env) {
-  return spawnSync(command, args, {
-    cwd: webDirectory,
-    env: environment,
-    stdio: 'inherit',
+  return new Promise<number>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: webDirectory,
+      env: environment,
+      stdio: 'inherit',
+    });
+    child.once('error', reject);
+    child.once('exit', (code) => resolve(code ?? 1));
   });
 }
 
@@ -38,6 +43,18 @@ type RealAiBrowserResources = {
   artifactDirectory: string;
   diagnosticsFile: string;
 };
+
+async function readDiagnosticEventCounts(filePath: string) {
+  if (!existsSync(filePath)) return { diagnosticEventCount: 0, providerEventCount: 0 };
+  const events = (await readFile(filePath, 'utf8'))
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as { name?: unknown });
+  return {
+    diagnosticEventCount: events.length,
+    providerEventCount: events.filter((event) => event.name === 'provider_call').length,
+  };
+}
 
 function requireRealAiConfiguration() {
   const embeddingDriver = process.env.DOCUMENT_EMBEDDING_DRIVER;
@@ -73,9 +90,15 @@ function requireRealAiConfiguration() {
 function configureBrowserDatabase(
   realAiMode: boolean,
   diagnosticMode: boolean,
+  mockProviderBaseUrl?: string,
 ): RealAiBrowserResources | undefined {
   const rootEnvironmentFile = path.resolve(webDirectory, '../../.env');
   if (existsSync(rootEnvironmentFile)) process.loadEnvFile(rootEnvironmentFile);
+
+  if (mockProviderBaseUrl) {
+    process.env.OPENAI_API_KEY = 'offline-mock-provider-key';
+    process.env.OPENAI_BASE_URL = mockProviderBaseUrl;
+  }
 
   if (diagnosticMode) {
     process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE = '1';
@@ -215,27 +238,27 @@ async function cleanupRealAiResources(resources: RealAiBrowserResources) {
   }
 }
 
-async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
+async function exportRealAiUsageSummary(
+  resources: RealAiBrowserResources,
+  providerTransport?: 'mock-openai-loopback',
+) {
   const databaseUrl = process.env.BROWSER_DATABASE_URL;
   if (!databaseUrl) throw new Error('Temporary browser database URL is unavailable.');
   const prisma = new PrismaClient({ datasourceUrl: databaseUrl });
   try {
     const { operations, reservations } = await readAiUsageSummary(prisma);
-    const diagnosticEvents = existsSync(resources.diagnosticsFile)
-      ? (await readFile(resources.diagnosticsFile, 'utf8'))
-          .split('\n')
-          .filter((line) => line.trim()).length
-      : 0;
+    const eventCounts = await readDiagnosticEventCounts(resources.diagnosticsFile);
     const summary = {
       sessionId: resources.sessionId,
       diagnosticMode: resources.diagnosticMode,
+      ...(providerTransport ? { providerTransport } : {}),
       summaryStatus: 'available',
       sessionProviderOperationLimit: REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT,
       ...(resources.diagnosticMode
         ? { sessionBudgetLimitEur: REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR }
         : {}),
       providerEventFile: path.basename(resources.diagnosticsFile),
-      providerEventCount: diagnosticEvents,
+      ...eventCounts,
       generatedAt: new Date().toISOString(),
       operations: operations.map((operation) => ({
         requestType: ['document_embedding', 'query_embedding', 'rag_answer'].includes(
@@ -321,10 +344,7 @@ async function exportRealAiUsageSummary(resources: RealAiBrowserResources) {
 
 async function writeUnavailableRealAiUsageSummary(resources: RealAiBrowserResources) {
   const summaryPath = path.join(path.dirname(resources.artifactDirectory), 'usage-summary.json');
-  const diagnosticEvents = existsSync(resources.diagnosticsFile)
-    ? (await readFile(resources.diagnosticsFile, 'utf8')).split('\n').filter((line) => line.trim())
-        .length
-    : 0;
+  const eventCounts = await readDiagnosticEventCounts(resources.diagnosticsFile);
   await mkdir(path.dirname(summaryPath), { recursive: true, mode: 0o700 });
   await writeFile(
     summaryPath,
@@ -337,7 +357,7 @@ async function writeUnavailableRealAiUsageSummary(resources: RealAiBrowserResour
           ? { sessionBudgetLimitEur: REAL_AI_DIAGNOSTIC_BUDGET_LIMIT_EUR }
           : {}),
         providerEventFile: path.basename(resources.diagnosticsFile),
-        providerEventCount: diagnosticEvents,
+        ...eventCounts,
         generatedAt: new Date().toISOString(),
         summaryStatus: 'unavailable',
         summaryErrorCode: 'AI_USAGE_SUMMARY_UNAVAILABLE',
@@ -353,15 +373,70 @@ async function writeUnavailableRealAiUsageSummary(resources: RealAiBrowserResour
   );
 }
 
+async function verifyMockProviderAccounting(
+  resources: RealAiBrowserResources,
+  providerCallCount: number,
+  operations: readonly string[],
+) {
+  const summaryPath = path.join(path.dirname(resources.artifactDirectory), 'usage-summary.json');
+  const summary = JSON.parse(await readFile(summaryPath, 'utf8')) as {
+    providerOperationCount?: unknown;
+    providerEventCount?: unknown;
+    summaryStatus?: unknown;
+  };
+  const events = (await readFile(resources.diagnosticsFile, 'utf8'))
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as { name?: unknown });
+  const providerEventCount = events.filter((event) => event.name === 'provider_call').length;
+  const expectedOperations = [
+    'embedding',
+    'embedding',
+    'embedding',
+    'answer',
+    'embedding',
+    'answer',
+    'embedding',
+    'answer',
+    'embedding',
+    'answer',
+    'embedding',
+    'answer',
+  ];
+  if (
+    summary.summaryStatus !== 'available' ||
+    summary.providerOperationCount !== providerCallCount ||
+    summary.providerEventCount !== providerCallCount ||
+    providerEventCount !== providerCallCount ||
+    providerCallCount !== REAL_AI_DIAGNOSTIC_PROVIDER_OPERATION_LIMIT ||
+    JSON.stringify(operations) !== JSON.stringify(expectedOperations)
+  ) {
+    throw new Error('MOCK_PROVIDER_ACCOUNTING_MISMATCH');
+  }
+  console.info(
+    JSON.stringify({
+      event: 'mock_provider_accounting',
+      providerTransport: 'mock-openai-loopback',
+      providerCallCount,
+      providerEventCount,
+      ledgerProviderOperationCount: summary.providerOperationCount,
+      operations,
+    }),
+  );
+}
+
 async function main() {
   const diagnosticMode = process.argv.includes('--real-ai-diagnostic');
   const diagnosticPreflightOnly = process.argv.includes('--preflight-only');
+  const mockProviderMode = process.argv.includes('--mock-provider');
   const realAiMode = process.argv.includes('--real-ai') || diagnosticMode;
   const testArguments = process.argv
     .slice(2)
     .filter(
       (argument) =>
-        !['--real-ai', '--real-ai-diagnostic', '--preflight-only'].includes(argument),
+        !['--real-ai', '--real-ai-diagnostic', '--preflight-only', '--mock-provider'].includes(
+          argument,
+        ),
     );
   if (process.env.BROWSER_REAL_AI_KB_SMOKE === '1' && !realAiMode) {
     throw new Error('Use the dedicated test:browser:real-ai command to enable real AI.');
@@ -371,6 +446,9 @@ async function main() {
   }
   if (diagnosticPreflightOnly && !diagnosticMode) {
     throw new Error('--preflight-only is only available with --real-ai-diagnostic.');
+  }
+  if (mockProviderMode && (!diagnosticMode || diagnosticPreflightOnly)) {
+    throw new Error('--mock-provider requires a diagnostic browser run, not preflight-only mode.');
   }
 
   const diagnosticPreflight = diagnosticMode
@@ -401,7 +479,8 @@ async function main() {
     return;
   }
 
-  const resources = configureBrowserDatabase(realAiMode, diagnosticMode);
+  const mockProvider = mockProviderMode ? await startMockOpenAiTransport() : undefined;
+  const resources = configureBrowserDatabase(realAiMode, diagnosticMode, mockProvider?.baseUrl);
   const realAiBudget = realAiMode && !diagnosticMode
     ? getRealAiBudgetAllowance(path.resolve(webDirectory, '../..'))
     : undefined;
@@ -427,6 +506,7 @@ async function main() {
         dailyBudgetEur: 0.25,
         monthlyBudgetEur: 1,
         maxProviderOperations: diagnosticPreflight?.providerOperationLimit,
+        providerTransport: mockProvider ? 'mock-openai-loopback' : 'openai',
       }),
     );
   }
@@ -439,33 +519,36 @@ async function main() {
   try {
     const environment = await import('../tests/browser/environment');
     artifactDirectory = environment.BROWSER_ARTIFACT_DIRECTORY;
-    const prepare = run(
+    const prepareStatus = await run(
       process.execPath,
       ['--import', 'tsx', 'scripts/prepare-browser-tests.ts'],
       childEnvironment,
     );
-    if (prepare.status !== 0) {
-      exitCode = prepare.status ?? 1;
+    if (prepareStatus !== 0) {
+      exitCode = prepareStatus;
     } else {
       const selectedArguments = realAiMode
         ? [...testArguments, '--grep', '@real-ai', '--retries', '0']
         : testArguments;
-      const result = run(
+      exitCode = await run(
         process.execPath,
         [require.resolve('@playwright/test/cli'), 'test', ...selectedArguments],
         childEnvironment,
       );
-      exitCode = result.status ?? 1;
     }
   } finally {
     const finalization = {
       usageSummary: resources ? 'pending' : 'skipped',
       artifactSanitization: artifactDirectory ? 'pending' : 'skipped',
       resourceCleanup: resources ? 'pending' : 'skipped',
+      mockProviderAccounting: mockProvider ? 'pending' : 'skipped',
     };
     if (resources) {
       try {
-        await exportRealAiUsageSummary(resources);
+        await exportRealAiUsageSummary(
+          resources,
+          mockProvider ? 'mock-openai-loopback' : undefined,
+        );
         finalization.usageSummary = 'written';
       } catch {
         finalization.usageSummary = 'failed';
@@ -475,6 +558,28 @@ async function main() {
         } catch {
           finalization.usageSummary = 'failed';
         }
+      }
+    }
+    if (resources && mockProvider) {
+      try {
+        await verifyMockProviderAccounting(
+          resources,
+          mockProvider.providerCallCount,
+          mockProvider.operations,
+        );
+        finalization.mockProviderAccounting = 'completed';
+      } catch {
+        finalization.mockProviderAccounting = 'failed';
+        exitCode = 1;
+        console.error(JSON.stringify({ event: 'mock_provider_accounting', result: 'failed' }));
+      }
+    }
+    if (mockProvider) {
+      try {
+        await mockProvider.close();
+      } catch {
+        exitCode = 1;
+        finalization.mockProviderAccounting = 'failed';
       }
     }
     if (artifactDirectory) {

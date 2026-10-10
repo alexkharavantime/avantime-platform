@@ -12,6 +12,9 @@ function realAiProviderEnvironment() {
   if (drivers.includes('openai') && process.env.OPENAI_API_KEY) {
     environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   }
+  if (drivers.includes('openai') && process.env.OPENAI_BASE_URL) {
+    environment.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
+  }
   if (drivers.includes('gemini') && process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     environment.GOOGLE_GENERATIVE_AI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   }
