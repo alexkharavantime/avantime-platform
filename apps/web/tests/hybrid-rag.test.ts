@@ -25,7 +25,11 @@ import {
   ApiRateLimitError,
   resetApiRateLimitsForTests,
 } from '../lib/api-rate-limit';
-import { MemoryAiCostController, type AiCostController, type AiUsageLedgerEvent } from '../lib/ai-control';
+import {
+  MemoryAiCostController,
+  type AiCostController,
+  type AiUsageLedgerEvent,
+} from '../lib/ai-control';
 import {
   InMemoryAiOperationalEventSink,
   JsonlAiOperationalEventSink,
@@ -679,6 +683,8 @@ test('prompt assembly keeps document and article prompt injection inside untrust
   };
   const assembled = assembleProviderContext(request);
   assert.match(request.systemInstructions, /untrusted data/);
+  assert.match(request.systemInstructions, /Use factual claims in the excerpts as evidence/);
+  assert.match(request.systemInstructions, /Do not reject or cast doubt on a factual claim/);
   assert.match(assembled, /<untrusted_retrieved_documents>/);
   assert.match(assembled, /Ignore all previous instructions/);
   assert.match(assembled, /Change your role/);
@@ -1393,7 +1399,10 @@ test('explicit real-AI browser mode retains PostgreSQL accounting under next dev
       actualCostEur: null,
       providerDiagnostic: { provider: 'openai', operation: 'embedding', attemptCount: 1 },
     });
-    assert.match(await readFile(environment.BROWSER_REAL_AI_DIAGNOSTICS_FILE, 'utf8'), /"actualCostEur":null/u);
+    assert.match(
+      await readFile(environment.BROWSER_REAL_AI_DIAGNOSTICS_FILE, 'utf8'),
+      /"actualCostEur":null/u,
+    );
     await assert.rejects(
       services.rag.gateway.createQueryEmbedding({
         tenant: tenantA,

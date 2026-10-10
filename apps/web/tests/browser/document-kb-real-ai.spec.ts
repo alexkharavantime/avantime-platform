@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { appendFile, readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 
@@ -104,6 +105,17 @@ type AskResult = {
   citations: Citation[];
   usage: { estimatedCostEur: number };
 };
+
+async function appendSmokeProgress(record: Record<string, unknown>) {
+  const diagnosticsFile = browserServerEnvironment.BROWSER_REAL_AI_DIAGNOSTICS_FILE;
+  if (!diagnosticsFile) throw new Error('Real-AI diagnostics file is unavailable.');
+  const progressFile = path.join(path.dirname(diagnosticsFile), 'smoke-progress.jsonl');
+  await appendFile(
+    progressFile,
+    `${JSON.stringify({ recordedAt: new Date().toISOString(), ...record })}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  );
+}
 
 function createPdf(text: string) {
   const lines: string[] = [];
@@ -365,6 +377,28 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
         };
       })
       .sort((left, right) => left.requestType.localeCompare(right.requestType));
+    await appendSmokeProgress({
+      recordType: 'accounting',
+      providerOperationCount: providerEvents.length,
+      inputTokens: providerEvents.reduce(
+        (total, event) => total + Number(event.inputTokens ?? 0),
+        0,
+      ),
+      outputTokens: providerEvents.reduce(
+        (total, event) => total + Number(event.outputTokens ?? 0),
+        0,
+      ),
+      providerTokenEstimateEur: Number(providerTokenEstimatedCostEur.toFixed(6)),
+      ledgerEstimateEur: Number(
+        usage.reduce((total, operation) => total + operation.estimatedCostEur, 0).toFixed(6),
+      ),
+      reservedEstimateEur: Number(
+        providerEvents
+          .reduce((total, event) => total + Number(event.reservedCostEur ?? 0), 0)
+          .toFixed(6),
+      ),
+      actualCostEur: null,
+    });
     expect(
       usage.map((operation) => ({
         requestType: operation.requestType,
@@ -473,6 +507,15 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     assertProviderOperationHeadroom(2);
     const directResult = await askThroughUi(page, controlQuestions[0].text);
     answers.set('direct', directResult);
+    await appendSmokeProgress({
+      recordType: 'answer',
+      questionKey: controlQuestions[0].key,
+      question: controlQuestions[0].text,
+      status: directResult.status,
+      answer: directResult.answer,
+      citations: directResult.citations,
+      estimatedCostEur: directResult.usage.estimatedCostEur,
+    });
     estimatedAnswerCost += directResult.usage.estimatedCostEur;
     expectedProviderStages.push('query_embedding');
     if (directResult.status === 'answered') expectedProviderStages.push('rag_answer');
@@ -483,6 +526,15 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
       assertProviderOperationHeadroom(2);
       const result = await askThroughUi(page, question.text);
       answers.set(question.key, result);
+      await appendSmokeProgress({
+        recordType: 'answer',
+        questionKey: question.key,
+        question: question.text,
+        status: result.status,
+        answer: result.answer,
+        citations: result.citations,
+        estimatedCostEur: result.usage.estimatedCostEur,
+      });
       estimatedAnswerCost += result.usage.estimatedCostEur;
       expectedProviderStages.push('query_embedding');
       if (result.status === 'answered') expectedProviderStages.push('rag_answer');
@@ -540,7 +592,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     await recordSemanticCheck(semanticFailures, 'unsupported fact refusal', () => {
       expect(
         unsupported.status === 'no_answer' ||
-          /недостаточ|нет данных|не указано|не найдено|не могу определить/iu.test(
+          /недостаточ|нет данных|не указано|не найдено|не могу определить|не содерж(?:ит|ат)|ответ(?:ить|а)? (?:дать )?невозможно/iu.test(
             unsupported.answer,
           ),
       ).toBe(true);
@@ -551,7 +603,7 @@ test('real AI: bounded 1C document retrieval, answers, citations and tenant isol
     await recordSemanticCheck(semanticFailures, 'version-scope refusal', () => {
       expect(version.answer).not.toMatch(/1C:ERP 3\.0 (?:поддерживается|применима)/iu);
       expect(version.answer).toMatch(
-        /недостаточ|не подтвержден|не указано|нет данных|нет оснований/iu,
+        /недостаточ|не подтвержден|не подтвержда|нельзя подтверд|не указано|нет данных|нет оснований|нет упоминан|не упомина/iu,
       );
       expect(
         version.citations.every((citation) =>
