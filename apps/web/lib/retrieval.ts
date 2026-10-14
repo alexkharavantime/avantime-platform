@@ -181,7 +181,7 @@ function countOccurrences(source: string, query: string) {
   return count;
 }
 
-function lexicalScore(text: string, query: string) {
+export function lexicalScore(text: string, query: string) {
   const normalizedText = normalizeText(text);
   const normalizedQuery = normalizeText(query);
   const tokens = [...new Set(tokenize(query))];
@@ -195,7 +195,10 @@ function lexicalScore(text: string, query: string) {
       ? tokens.filter((token) => normalizedText.includes(token)).length / tokens.length
       : 0;
   const phrase = exactMatches > 0 ? 1 : 0;
-  const frequency = Math.min(1, (exactMatches * 2 + tokenMatches) / Math.max(3, tokens.length * 2));
+  const textLength = Math.max(1, normalizedText.split(' ').filter(Boolean).length);
+  const averageTermFrequency = tokens.length > 0 ? tokenMatches / tokens.length : 0;
+  const frequency =
+    averageTermFrequency > 0 ? Math.log1p(averageTermFrequency) / Math.log1p(textLength) : 0;
   return Number((phrase * 0.35 + coverage * 0.45 + frequency * 0.2).toFixed(6));
 }
 

@@ -173,6 +173,13 @@ export function createDocumentServices(
   const realAiBrowserTrial =
     process.env.BROWSER_REAL_AI_KB_SMOKE === '1' &&
     !ragConfiguration.production;
+  const usesRealAiProvider =
+    ragConfiguration.embedding.driver === 'openai' ||
+    ragConfiguration.embedding.driver === 'gemini' ||
+    ragConfiguration.answer.driver === 'openai' ||
+    ragConfiguration.answer.driver === 'gemini';
+  const persistentAiControlsRequired =
+    ragConfiguration.production || realAiBrowserTrial || usesRealAiProvider;
   if (realAiBrowserTrial && !process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE) {
     throw new Error('The real-AI provider diagnostics output path is required.');
   }
@@ -200,7 +207,7 @@ export function createDocumentServices(
             (redisClient ? new RedisEmbeddingJobQueue(redisClient) : undefined),
         }
       : {}),
-    ...(ragConfiguration.production || realAiBrowserTrial
+    ...(persistentAiControlsRequired
       ? {
           rateLimiter:
             dependencies.rag?.rateLimiter ??

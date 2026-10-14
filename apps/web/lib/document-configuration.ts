@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import {
   DEFAULT_DOCUMENT_RETRY_POLICY,
   validateDocumentRetryPolicy,
@@ -7,6 +5,7 @@ import {
 } from './document-retry-policy';
 import type { DocumentOcrConfiguration } from './document-ocr';
 import type { DocumentTextQualityConfiguration } from './document-text-quality';
+import { resolveDocumentDataDirectory } from './document-data-directory';
 import { assertSafeDocumentSegment, type S3DocumentStorageConfig } from './document-storage';
 
 export type DocumentStorageDriver = 'local' | 's3';
@@ -207,9 +206,7 @@ export function loadDocumentConfiguration(
     queueDriver,
     queueName,
     redisUrl: environment.REDIS_URL?.trim() || undefined,
-    dataDirectory: path.resolve(
-      environment.DOCUMENT_DATA_DIR?.trim() || path.join(process.cwd(), '.data'),
-    ),
+    dataDirectory: resolveDocumentDataDirectory(environment),
     retryPolicy,
     queueLeaseDurationMs: parsePositiveInteger(
       environment.DOCUMENT_PROCESSING_LEASE_MS,

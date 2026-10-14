@@ -359,6 +359,13 @@ export class PostgreSQLAiCostController implements AiCostController {
         this.defaultMonthlyLimitEur,
       );
       if (!totals) throw new Error('AI budget totals are unavailable.');
+      if (
+        totals.dailyLimit <= 0 &&
+        totals.monthlyLimit <= 0 &&
+        (totals.providerLimit === null || totals.providerLimit <= 0)
+      ) {
+        return null;
+      }
       const hardStop = totals.hardStopThreshold;
       const exceeds = (current: number, reserved: number, requested: number, limit: number) =>
         limit > 0 && current + reserved + requested > limit * hardStop;
