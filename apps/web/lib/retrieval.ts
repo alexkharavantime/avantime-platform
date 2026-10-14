@@ -1,5 +1,5 @@
 import type { AiGateway } from './ai-gateway';
-import type { AiOperationalEventSink } from './ai-observability';
+import type { AiOperationalEventSink, RetrievalTraceCandidate } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
 import type { DocumentTenantContext } from './document-model';
 import type { DocumentType } from './document-intelligence-model';
@@ -416,6 +416,7 @@ export class DefaultHybridRetriever implements HybridRetriever {
     private readonly lexical: LexicalRetriever,
     private readonly semantic: SemanticRetriever,
     private readonly configuration: RagConfiguration,
+    private readonly events: AiOperationalEventSink = new NoopAiOperationalEventSink(),
   ) {}
 
   async retrieve(request: RetrievalRequest) {
@@ -457,23 +458,31 @@ export class DefaultHybridRetriever implements HybridRetriever {
     }
     const weightTotal =
       this.configuration.hybrid.lexicalWeight + this.configuration.hybrid.semanticWeight;
-    const ranked = [...combined.values()]
-      .map((result) => {
-        const hybrid =
-          (result.lexicalNormalized * this.configuration.hybrid.lexicalWeight +
-            result.semanticNormalized * this.configuration.hybrid.semanticWeight) /
-          weightTotal;
-        return {
-          ...result,
-          score: Number(hybrid.toFixed(6)),
-          scoreComponents: {
-            lexical: Number(result.lexicalNormalized.toFixed(6)),
-            semantic: Number(result.semanticNormalized.toFixed(6)),
-            hybrid: Number(hybrid.toFixed(6)),
-          },
-        };
+    const candidates = [...combined.values()].map((result) => {
+      const hybrid =
+        (result.lexicalNormalized * this.configuration.hybrid.lexicalWeight +
+          result.semanticNormalized * this.configuration.hybrid.semanticWeight) /
+        weightTotal;
+      return {
+        ...result,
+        score: Number(hybrid.toFixed(6)),
+        scoreComponents: {
+          lexical: Number(result.lexicalNormalized.toFixed(6)),
+          semantic: Number(result.semanticNormalized.toFixed(6)),
+          hybrid: Number(hybrid.toFixed(6)),
+        },
+      };
+    });
+    const exclusions = new Map<string, RetrievalTraceCandidate['exclusionReason']>();
+    const ranked = candidates
+      .filter((result) => {
+        const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
+        if (result.score < this.configuration.hybrid.minimumScore) {
+          exclusions.set(key, 'below_minimum_score');
+          return false;
+        }
+        return true;
       })
-      .filter((result) => result.score >= this.configuration.hybrid.minimumScore)
       .sort(
         (first, second) =>
           second.score - first.score ||
@@ -485,13 +494,54 @@ export class DefaultHybridRetriever implements HybridRetriever {
     const perSource = new Map<string, number>();
     const selected: RetrievalResult[] = [];
     for (const result of ranked) {
+      const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
+      if (selected.length >= topK) {
+        exclusions.set(key, 'top_k_limit');
+        continue;
+      }
       const sourceKey = `${result.sourceType}:${result.sourceId}`;
       const count = perSource.get(sourceKey) ?? 0;
-      if (count >= this.configuration.hybrid.maximumChunksPerDocument) continue;
+      if (count >= this.configuration.hybrid.maximumChunksPerDocument) {
+        exclusions.set(key, 'per_document_limit');
+        continue;
+      }
       selected.push(result);
       perSource.set(sourceKey, count + 1);
-      if (selected.length >= topK) break;
     }
+    const selectedKeys = new Set(
+      selected.map((result) => `${result.sourceType}:${result.sourceId}:${result.chunkId}`),
+    );
+    this.events.record({
+      name: 'retrieval_trace',
+      occurredAt: new Date().toISOString(),
+      companyId: request.tenant.companyId,
+      correlationId: request.correlationId,
+      outcome: 'success',
+      count: selected.length,
+      retrievalTrace: {
+        candidateLimit,
+        lexicalCandidateCount: lexical.length,
+        semanticCandidateCount: semantic.length,
+        candidates: candidates.map((result) => {
+          const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
+          return {
+            sourceType: result.sourceType,
+            sourceId: result.sourceId,
+            ...(result.documentId ? { documentId: result.documentId } : {}),
+            ...(result.articleId ? { articleId: result.articleId } : {}),
+            chunkId: result.chunkId,
+            chunkIndex: result.chunkIndex,
+            pageStart: result.pageStart,
+            pageEnd: result.pageEnd,
+            lexicalScore: result.scoreComponents.lexical,
+            semanticScore: result.scoreComponents.semantic,
+            hybridScore: result.scoreComponents.hybrid,
+            selected: selectedKeys.has(key),
+            ...(exclusions.has(key) ? { exclusionReason: exclusions.get(key) } : {}),
+          };
+        }),
+      },
+    });
     return selected;
   }
 }

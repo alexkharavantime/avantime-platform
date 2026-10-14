@@ -8,7 +8,55 @@ export type AiOperationalEventName =
   | 'chunks_embedded'
   | 'provider_call'
   | 'retrieval_query'
+  | 'retrieval_trace'
+  | 'rag_context'
   | 'rag_request';
+
+export type RetrievalTraceCandidate = {
+  sourceType: 'DOCUMENT' | 'ARTICLE';
+  sourceId: string;
+  documentId?: string;
+  articleId?: string;
+  chunkId: string;
+  chunkIndex: number;
+  pageStart: number | null;
+  pageEnd: number | null;
+  lexicalScore: number;
+  semanticScore: number;
+  hybridScore: number;
+  selected: boolean;
+  exclusionReason?: 'below_minimum_score' | 'page_filter' | 'per_document_limit' | 'top_k_limit';
+};
+
+export type RetrievalTrace = {
+  candidateLimit: number;
+  lexicalCandidateCount: number;
+  semanticCandidateCount: number;
+  candidates: readonly RetrievalTraceCandidate[];
+};
+
+export type ContextTraceSource = {
+  sourceId: string;
+  sourceType: 'DOCUMENT' | 'ARTICLE';
+  documentId?: string;
+  articleId?: string;
+  chunkId: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  sourceCharacters: number;
+  displayCharacters: number;
+  contextCharacters: number;
+  displayTruncated: boolean;
+  contextTruncated: boolean;
+  exclusionReason?: 'context_budget' | 'source_validation';
+  sourceText?: string;
+};
+
+export type ContextTrace = {
+  maximumContextCharacters: number;
+  contextCharacters: number;
+  sources: readonly ContextTraceSource[];
+};
 
 export type AiProviderDiagnostic = {
   provider: 'openai' | 'gemini' | 'fake' | 'disabled' | 'unknown';
@@ -42,9 +90,12 @@ export type AiOperationalEvent = {
   reservedCostEur?: number;
   errorCode?: string;
   providerDiagnostic?: AiProviderDiagnostic;
+  retrievalTrace?: RetrievalTrace;
+  contextTrace?: ContextTrace;
 };
 
 export interface AiOperationalEventSink {
+  readonly includeRetrievedText?: boolean;
   record(event: AiOperationalEvent): void;
 }
 
@@ -84,8 +135,69 @@ function safeProviderDiagnostic(diagnostic: AiProviderDiagnostic) {
   };
 }
 
+function safeRetrievalTrace(trace: RetrievalTrace) {
+  return {
+    candidateLimit: trace.candidateLimit,
+    lexicalCandidateCount: trace.lexicalCandidateCount,
+    semanticCandidateCount: trace.semanticCandidateCount,
+    candidates: trace.candidates.flatMap((candidate) => {
+      const sourceId = safeToken(candidate.sourceId);
+      const chunkId = safeToken(candidate.chunkId);
+      if (!sourceId || !chunkId) return [];
+      return [{
+        sourceType: candidate.sourceType,
+        sourceId,
+        ...(safeToken(candidate.documentId) ? { documentId: safeToken(candidate.documentId) } : {}),
+        ...(safeToken(candidate.articleId) ? { articleId: safeToken(candidate.articleId) } : {}),
+        chunkId,
+        chunkIndex: candidate.chunkIndex,
+        pageStart: candidate.pageStart,
+        pageEnd: candidate.pageEnd,
+        lexicalScore: candidate.lexicalScore,
+        semanticScore: candidate.semanticScore,
+        hybridScore: candidate.hybridScore,
+        selected: candidate.selected,
+        ...(candidate.exclusionReason ? { exclusionReason: candidate.exclusionReason } : {}),
+      }];
+    }),
+  };
+}
+
+function safeContextTrace(trace: ContextTrace, includeRetrievedText: boolean) {
+  return {
+    maximumContextCharacters: trace.maximumContextCharacters,
+    contextCharacters: trace.contextCharacters,
+    sources: trace.sources.flatMap((source) => {
+      const sourceId = safeToken(source.sourceId);
+      const chunkId = safeToken(source.chunkId);
+      if (!sourceId || !chunkId) return [];
+      return [{
+        sourceId,
+        sourceType: source.sourceType,
+        ...(safeToken(source.documentId) ? { documentId: safeToken(source.documentId) } : {}),
+        ...(safeToken(source.articleId) ? { articleId: safeToken(source.articleId) } : {}),
+        chunkId,
+        pageStart: source.pageStart,
+        pageEnd: source.pageEnd,
+        sourceCharacters: source.sourceCharacters,
+        displayCharacters: source.displayCharacters,
+        contextCharacters: source.contextCharacters,
+        displayTruncated: source.displayTruncated,
+        contextTruncated: source.contextTruncated,
+        ...(source.exclusionReason ? { exclusionReason: source.exclusionReason } : {}),
+        ...(includeRetrievedText && typeof source.sourceText === 'string'
+          ? { sourceText: source.sourceText }
+          : {}),
+      }];
+    }),
+  };
+}
+
 export class JsonlAiOperationalEventSink implements AiOperationalEventSink {
-  constructor(private readonly outputPath: string) {}
+  constructor(
+    private readonly outputPath: string,
+    readonly includeRetrievedText = false,
+  ) {}
 
   record(event: AiOperationalEvent) {
     const safeEvent = {
@@ -114,6 +226,12 @@ export class JsonlAiOperationalEventSink implements AiOperationalEventSink {
       ...(safeToken(event.errorCode) ? { errorCode: event.errorCode } : {}),
       ...(event.providerDiagnostic
         ? { providerDiagnostic: safeProviderDiagnostic(event.providerDiagnostic) }
+        : {}),
+      ...(event.retrievalTrace
+        ? { retrievalTrace: safeRetrievalTrace(event.retrievalTrace) }
+        : {}),
+      ...(event.contextTrace
+        ? { contextTrace: safeContextTrace(event.contextTrace, this.includeRetrievedText) }
         : {}),
     };
     mkdirSync(path.dirname(this.outputPath), { recursive: true, mode: 0o700 });

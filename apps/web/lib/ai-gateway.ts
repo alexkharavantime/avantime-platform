@@ -51,7 +51,9 @@ export type RagContextSource = {
 
   chunkId: string;
   title: string;
-  excerpt: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  text: string;
 };
 
 export type RagGenerationRequest = {
@@ -143,6 +145,19 @@ function estimateTokens(texts: readonly string[]) {
 
 function estimateCost(inputTokens: number, outputTokens: number) {
   return Number((inputTokens * 0.000_001 + outputTokens * 0.000_004).toFixed(6));
+}
+
+function escapeXmlAttribute(value: string) {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;')
+    .replace(/'/gu, '&apos;');
+}
+
+function escapeXmlText(value: string) {
+  return value.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
 }
 
 function validateEmbeddingResult(
@@ -301,7 +316,7 @@ export class DeterministicFakeAiProvider implements EmbeddingProvider, RagAnswer
   ): Promise<RagGenerationResult> {
     void _signal;
     const excerpts = request.sources.slice(0, 3).map((source) => {
-      const compact = source.excerpt.replace(/\s+/g, ' ').trim().slice(0, 280);
+      const compact = source.text.replace(/\s+/g, ' ').trim().slice(0, 280);
       return `${compact} [${source.sourceId}]`;
     });
     return {
@@ -314,7 +329,7 @@ export class DeterministicFakeAiProvider implements EmbeddingProvider, RagAnswer
         inputTokens: estimateTokens([
           request.question,
           request.systemInstructions,
-          ...request.sources.map((source) => source.excerpt),
+          ...request.sources.map((source) => source.text),
         ]),
         outputTokens: estimateTokens(excerpts),
         estimatedCostEur: 0,
@@ -552,7 +567,7 @@ export class GeminiAiGatewayProvider implements EmbeddingProvider, RagAnswerProv
     });
     const inputTokens =
       response.usageMetadata?.promptTokenCount ??
-      estimateTokens([request.question, ...request.sources.map((source) => source.excerpt)]);
+      estimateTokens([request.question, ...request.sources.map((source) => source.text)]);
     const outputTokens =
       response.usageMetadata?.candidatesTokenCount ?? estimateTokens([response.text ?? '']);
     return {
@@ -594,7 +609,7 @@ export function assembleProviderContext(request: RagGenerationRequest) {
   const sources = request.sources
     .map(
       (source) =>
-        `<source id="${source.sourceId}" document="${source.documentId}" chunk="${source.chunkId}">\n${source.excerpt}\n</source>`,
+        `<source id="${escapeXmlAttribute(source.sourceId)}" type="${source.sourceType}" document="${escapeXmlAttribute(source.documentId ?? '')}" article="${escapeXmlAttribute(source.articleId ?? '')}" title="${escapeXmlAttribute(source.title)}" chunk="${escapeXmlAttribute(source.chunkId)}" page_start="${source.pageStart ?? ''}" page_end="${source.pageEnd ?? ''}">\n${escapeXmlText(source.text)}\n</source>`,
     )
     .join('\n\n');
   return [
@@ -684,10 +699,14 @@ export class DefaultAiGateway implements AiGateway {
     ) {
       throw new AiGatewayError('AI_REQUEST_REJECTED', false, 'AI output token limit is invalid.');
     }
+    const generationRequest: RagGenerationRequest = {
+      ...request,
+      model: this.configuration.answer.model,
+      maximumOutputTokens,
+    };
     const estimatedInput = estimateTokens([
-      request.question,
-      request.systemInstructions,
-      ...request.sources.map((source) => source.excerpt),
+      generationRequest.systemInstructions,
+      assembleProviderContext(generationRequest),
     ]);
     const reservation = await this.authorize(
       request.tenant,
@@ -704,11 +723,7 @@ export class DefaultAiGateway implements AiGateway {
         () =>
           withTimeout(this.configuration.answer.timeoutMs, (signal) =>
             this.answerProvider.generate(
-              {
-                ...request,
-                model: this.configuration.answer.model,
-                maximumOutputTokens,
-              },
+              generationRequest,
               signal,
             ),
           ),

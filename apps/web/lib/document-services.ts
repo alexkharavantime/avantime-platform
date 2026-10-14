@@ -176,12 +176,21 @@ export function createDocumentServices(
   if (realAiBrowserTrial && !process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE) {
     throw new Error('The real-AI provider diagnostics output path is required.');
   }
+  const diagnosticEnvironment = dependencies.rag?.environment ?? process.env;
+  const includeRetrievedTextInDiagnostics =
+    diagnosticEnvironment.NODE_ENV === 'development' &&
+    diagnosticEnvironment.BROWSER_REAL_AI_KB_SMOKE === '1' &&
+    diagnosticEnvironment.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' &&
+    diagnosticEnvironment.BROWSER_REAL_AI_DIAGNOSTIC_INCLUDE_SOURCE_TEXT === '1';
   const configuredRagDependencies: RagServiceDependencies = {
     ...(realAiBrowserTrial
       ? {
           events:
             dependencies.rag?.events ??
-            new JsonlAiOperationalEventSink(process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE!),
+            new JsonlAiOperationalEventSink(
+              process.env.BROWSER_REAL_AI_DIAGNOSTICS_FILE!,
+              includeRetrievedTextInDiagnostics,
+            ),
         }
       : {}),
     ...(ragConfiguration.embeddingQueue.driver === 'redis'

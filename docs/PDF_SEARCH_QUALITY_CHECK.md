@@ -93,3 +93,28 @@ HEAD проверки — `f18df1a3f60272b650f80180bb3cb61dbaf7c1ed` в `feature
 **Вывод:** доказано, что эталонные тексты извлечены и доступны lexical candidate search; для текущего незакоммиченного lexical изменения rank delta смешанный. Не доказано, попадает ли каждый эталон в hybrid top-12 и фактический generator context. Причину нельзя локализовать между semantic merge, final per-document selection, excerpt truncation и генерацией без сохранённых query vectors/context либо нового контролируемого AI-прогона. Новое изменение production retrieval на этих данных не обосновано.
 
 Проверки текущего worktree: `npm run typecheck -w @avantime/web` прошёл; focused `node --import tsx --test tests/hybrid-rag.test.ts tests/rag-answer-grounding.test.ts` — 31/31 тестов прошли.
+
+## Передача context провайдеру после `6fc9d2e`
+
+Офлайн-проверка исходного кода подтвердила причину потери: `DefaultCitationBuilder.build()` ранее брал `chunk.text`, нормализовал пробелы и обрезал его до 480 символов; `DefaultRagAnswerService.answer()` использовал этот же `Citation.excerpt` как `RagContextSource`. Поэтому ограничение UI-цитаты также ограничивало текст модели. На стр. 70 ключевая фраза о возврате результата начинается после этой границы; на стр. 190–191 важные определения и различие плановой/нормативной себестоимости также продолжаются за ней.
+
+Теперь UI excerpt остаётся ограничен 480 символами, а generation context получает полный нормализованный текст каждого выбранного и авторизованного chunk. Перед provider transport текст сериализуется в `<source>` с source ID, типом, document/article ID, заголовком, chunk ID и page range. Общий предел `maximumContextCharacters` продолжает исключать целые источники, которые не помещаются; top-K, предел в три chunk на документ и общий context limit не менялись. Полные внутренние тексты удаляются из возвращаемых citations.
+
+Проверка выполнена на сохранённых извлечённых chunks документа `5s2c_BookFull.pdf` через `DefaultCitationBuilder` → `DefaultRagAnswerService` → `DefaultAiGateway` → `OpenAiGatewayProvider` с локальным подменённым `fetch`. Ни один запрос к сети, реальному провайдеру или платному API не выполнялся; гибридный retrieval заменён заранее выбранными эталонными chunk IDs, поэтому этот тест проверяет только сборку context.
+
+| Эталонные фрагменты | Переданный текст payload | Проверенные сведения после границы 480 символов / в соседнем chunk | Результат |
+| --- | --- | --- | --- |
+| p. 70, chunks 153–154 (925 и 1 065 символов) | Оба полных текста; UI excerpts по 480 символов | В chunk 153 payload содержит, что материалы остаются собственностью давальца и результат ему возвращают; эти формулировки находятся за первыми 480 символами. Chunk 154 также передан полностью. | Факт сохранён; citations обеих частей ссылаются на p. 70. |
+| p. 146, chunks 282–283 (854 и 659 символов) | Оба полных текста | Список четырёх документов выпуска полностью присутствует в chunk 282; продолжение описания «Отчёта производства за смену» из chunk 283 тоже передано. | Список и соседний текст сохранены; citations указывают p. 146. |
+| pp. 190–191, chunks 355–357 (1 177, 881 и 923 символа) | Все три полных текста | Payload содержит норматив себестоимости как оценку затрат на дополнительную единицу, планирование по объёму/ассортименту и зависимость доли постоянных косвенных затрат от объёма производства. Важное объяснение после 480 символов и соседние chunks не потеряны. | Сведения сохранены; citations указывают p. 190 и p. 191. |
+
+Локально перехваченные сериализованные inputs имели соответственно 2 485, 1 998 и 3 657 символов вместе с вопросом/source metadata. Трасса фиксирует для каждого выбранного источника исходную длину, display excerpt, длину context, page/chunk IDs и факт усечения UI. В JSONL подробный source text остаётся закрыт по умолчанию и разрешается лишь в development + explicit local diagnostic/smoke opt-in.
+
+### Исправленные файлы и проверки
+
+- `apps/web/lib/rag-answer.ts`: разделены UI excerpt и полный context; публичные citations не содержат context text; инструкции говорят о retrieved source text.
+- `apps/web/lib/ai-gateway.ts`: сериализуется полный текст chunk с привязкой к источнику; оценка input tokens использует фактически сериализованный context.
+- `apps/web/lib/retrieval.ts`, `apps/web/lib/ai-observability.ts`, `apps/web/lib/document-services.ts`, `apps/web/lib/rag-services.ts`: точечные candidate/context trace и opt-in контроль source text.
+- `apps/web/tests/hybrid-rag.test.ts`: транспортный перехватчик проверяет полную передачу текста после UI-предела, page/chunk metadata и default-отсутствие текста в trace.
+
+Payload capture не отвечает на вопрос, попадут ли эталонные chunks в hybrid top-K для живого вопроса. Сохранённых query embeddings и hybrid traces недостаточно для повторения этого отбора; проверка требует отдельного разрешённого прогона retrieval, а качество реальной генерации — также live generation, которые здесь не выполнялись.
