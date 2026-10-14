@@ -37,60 +37,66 @@ export function LoginForm({
     setError('');
     const mfaPending = Boolean(challengeToken);
     const oidcMfaPending = challengeToken === 'oidc-cookie';
-    const response = await fetch(
-      oidcMfaPending
-        ? '/api/auth/oidc/mfa/challenge'
-        : mfaPending
-          ? '/api/auth/mfa/challenge'
-          : '/api/auth/login',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          oidcMfaPending
-            ? { code: mfaCode }
-            : mfaPending
-              ? { challengeToken, code: mfaCode }
-              : { email, password, returnTo },
-        ),
-      },
-    );
-    const data = (await response.json()) as {
-      error?: string;
-      errorCode?: string;
-      role?: 'CLIENT' | 'ADMIN';
-      mfaRequired?: boolean;
-      challengeToken?: string;
-      enrollmentRequired?: boolean;
-      returnTo?: string;
-    };
-    setPending(false);
-    if (!response.ok) {
-      const messages: Record<string, string> = {
-        AUTH_INVALID_CREDENTIALS: copy.invalidCredentials,
-        AUTH_REQUEST_REJECTED: copy.requestRejected,
-        AUTH_RATE_LIMITED: copy.rateLimitError,
-        AUTH_UNAVAILABLE: copy.serviceUnavailable,
-        MFA_INVALID_CODE: copy.mfaInvalidCode,
-        MFA_CHALLENGE_EXPIRED: copy.mfaChallengeExpired,
-        MFA_RATE_LIMITED: copy.mfaRateLimited,
+    try {
+      const response = await fetch(
+        oidcMfaPending
+          ? '/api/auth/oidc/mfa/challenge'
+          : mfaPending
+            ? '/api/auth/mfa/challenge'
+            : '/api/auth/login',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            oidcMfaPending
+              ? { code: mfaCode }
+              : mfaPending
+                ? { challengeToken, code: mfaCode }
+                : { email, password, returnTo },
+          ),
+        },
+      );
+      const data = (await response.json()) as {
+        error?: string;
+        errorCode?: string;
+        role?: 'CLIENT' | 'ADMIN';
+        mfaRequired?: boolean;
+        challengeToken?: string;
+        enrollmentRequired?: boolean;
+        returnTo?: string;
       };
-      return setError(messages[data.errorCode ?? ''] ?? copy.genericError);
+      if (!response.ok) {
+        const messages: Record<string, string> = {
+          AUTH_INVALID_CREDENTIALS: copy.invalidCredentials,
+          AUTH_REQUEST_REJECTED: copy.requestRejected,
+          AUTH_RATE_LIMITED: copy.rateLimitError,
+          AUTH_UNAVAILABLE: copy.serviceUnavailable,
+          MFA_INVALID_CODE: copy.mfaInvalidCode,
+          MFA_CHALLENGE_EXPIRED: copy.mfaChallengeExpired,
+          MFA_RATE_LIMITED: copy.mfaRateLimited,
+        };
+        setError(messages[data.errorCode ?? ''] ?? copy.genericError);
+        return;
+      }
+      if (data.mfaRequired && data.enrollmentRequired) {
+        setChallengeToken('restricted-enrollment');
+        setEnrollmentRequired(true);
+        setPassword('');
+        return;
+      }
+      if (data.mfaRequired && data.challengeToken) {
+        setChallengeToken(data.challengeToken);
+        setEnrollmentRequired(Boolean(data.enrollmentRequired));
+        setPassword('');
+        return;
+      }
+      const destination = data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal');
+      window.location.replace(localePath(locale, destination));
+    } catch {
+      setError(copy.serviceUnavailable);
+    } finally {
+      setPending(false);
     }
-    if (data.mfaRequired && data.enrollmentRequired) {
-      setChallengeToken('restricted-enrollment');
-      setEnrollmentRequired(true);
-      setPassword('');
-      return;
-    }
-    if (data.mfaRequired && data.challengeToken) {
-      setChallengeToken(data.challengeToken);
-      setEnrollmentRequired(Boolean(data.enrollmentRequired));
-      setPassword('');
-      return;
-    }
-    const destination = data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal');
-    window.location.replace(localePath(locale, destination));
   }
 
   function useAdminDemo() {
