@@ -4,61 +4,15 @@ import { spawn } from 'node:child_process';
 import { getPrisma } from '@avantime/database';
 
 import {
-  resolveDocumentDataDirectory,
   resolveDocumentWorkspaceRoot,
 } from '../lib/document-data-directory';
 import { loadDocumentConfiguration } from '../lib/document-configuration';
+import { configureLocalRagProfile, type LocalRagProfile, type LocalRagTarget } from '../lib/local-rag-profile';
 import { PostgreSQLVectorRepository } from '../lib/vector-repository';
 import { loadRagConfiguration } from '../lib/rag-configuration';
 
-type Profile = 'real' | 'fake';
-type Target = 'web' | 'document-worker' | 'embedding-worker';
-
-function configureProfile(profile: Profile, target: Target) {
-  Object.assign(process.env, { NODE_ENV: 'development' });
-  process.env.DOCUMENT_DATA_DIR = resolveDocumentDataDirectory(process.env);
-  delete process.env.BROWSER_REAL_AI_KB_SMOKE;
-  delete process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE;
-  delete process.env.BROWSER_REAL_AI_DISABLE_SESSION_CAPS;
-
-  if (profile === 'real') {
-    Object.assign(process.env, {
-      DOCUMENT_STORAGE_DRIVER: 'local',
-      DOCUMENT_METADATA_DRIVER: 'postgresql',
-      DOCUMENT_PROCESSING_QUEUE_DRIVER: 'local',
-      DOCUMENT_EMBEDDING_DRIVER: 'openai',
-      DOCUMENT_EMBEDDING_MODEL: 'text-embedding-3-small',
-      DOCUMENT_EMBEDDING_DIMENSIONS: '1536',
-      DOCUMENT_EMBEDDING_VERSION: 'embedding-v1',
-      DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'postgresql',
-      DOCUMENT_VECTOR_DRIVER: 'pgvector',
-      RAG_ANSWER_DRIVER: 'openai',
-      AI_PROVIDER_MAX_ATTEMPTS: '1',
-    });
-    if (target !== 'web') process.env.DOCUMENT_WORKER_TENANT_ID ||= 'avantime';
-    return;
-  }
-
-  if (target !== 'web') {
-    throw new Error('The fake profile is only available for the local web site.');
-  }
-
-  Object.assign(process.env, {
-    DOCUMENT_STORAGE_DRIVER: 'local',
-    DOCUMENT_METADATA_DRIVER: 'local',
-    DOCUMENT_PROCESSING_QUEUE_DRIVER: 'local',
-    DOCUMENT_EMBEDDING_DRIVER: 'fake',
-    DOCUMENT_EMBEDDING_MODEL: 'deterministic-hash-v1',
-    DOCUMENT_EMBEDDING_DIMENSIONS: '32',
-    DOCUMENT_EMBEDDING_VERSION: 'deterministic-hash-v1',
-    DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'local',
-    DOCUMENT_VECTOR_DRIVER: 'memory',
-    RAG_ANSWER_DRIVER: 'fake',
-    AI_PROVIDER_MAX_ATTEMPTS: '1',
-  });
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-}
+type Profile = LocalRagProfile;
+type Target = LocalRagTarget;
 
 function databaseTarget(databaseUrl: string | undefined) {
   if (!databaseUrl) return 'not configured';
@@ -237,7 +191,7 @@ async function main() {
     );
   }
 
-  configureProfile(profile, target);
+  configureLocalRagProfile(process.env, profile, target);
   const documentConfiguration = loadDocumentConfiguration();
   const ragConfiguration = loadRagConfiguration();
 

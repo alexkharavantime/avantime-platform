@@ -39,16 +39,22 @@ npm run dev:fake --workspace=@avantime/web
 This profile uses fake providers and an in-memory vector store. Its responses are for
 local UI and flow testing only; they do not establish real retrieval or answer quality.
 
-The document workers use the same guarded real profile and canonical data directory:
+The explicitly named local worker commands use the same guarded real profile and
+canonical data directory:
 
 ```powershell
-npm run documents:worker --workspace=@avantime/web
-npm run documents:embedding-worker --workspace=@avantime/web
+npm run documents:worker:local --workspace=@avantime/web
+npm run documents:embedding-worker:local --workspace=@avantime/web
 ```
 
-Workers are started only by these explicit commands. The embedding worker can process
-queued jobs; do not start it as part of a read-only check or when no embedding work is
-authorized.
+These commands load the repository-root `.env` and apply local storage, queue and provider
+settings. They reject production environment markers before changing any settings. The
+general `documents:worker` and `documents:embedding-worker` commands run their worker
+entrypoints directly and preserve the caller's environment, including production S3 and
+Redis settings.
+
+Starting either worker can process queued jobs. Do not start a local worker as part of a
+read-only check or when no processing or embedding work is authorized.
 
 ## Budget preflight
 
