@@ -49,7 +49,13 @@ export async function POST(request: Request) {
       question,
       correlationId,
     });
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      providerMode: {
+        embedding: services.rag.configuration.embedding.driver,
+        answer: services.rag.configuration.answer.driver,
+      },
+    });
   } catch (error) {
     if (error instanceof ApiRateLimitError || error instanceof AiGatewayError) {
       const status =

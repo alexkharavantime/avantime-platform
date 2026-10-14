@@ -22,6 +22,7 @@ export function LoginForm({
   const copy = portalCopy[locale].auth;
   const [email, setEmail] = useState(demoEnabled ? 'demo@avantime.lv' : '');
   const [password, setPassword] = useState(demoEnabled ? 'avantime' : '');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState(oidcError ? copy.oidcError : '');
   const [pending, setPending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -161,13 +162,47 @@ export function LoginForm({
       ) : (
         <label className="block">
           <span className="mb-2 block text-sm font-bold text-slate-700">{copy.passwordLabel}</span>
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            autoComplete="current-password"
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
-          />
+          <div className="relative">
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={passwordVisible ? 'text' : 'password'}
+              autoComplete="current-password"
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 pr-14 outline-none focus:border-blue-600"
+            />
+            <button
+              type="button"
+              aria-label={passwordVisible ? copy.hidePasswordLabel : copy.showPasswordLabel}
+              aria-pressed={passwordVisible}
+              onClick={() => setPasswordVisible((visible) => !visible)}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-2xl text-slate-500 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+              >
+                {passwordVisible ? (
+                  <>
+                    <path d="M3 3 21 21" />
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                    <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5.5 0 9 7 9 7a12 12 0 0 1-3.1 3.8" />
+                    <path d="M6.6 6.6C4.1 8.4 3 12 3 12s3.5 7 9 7a9.8 9.8 0 0 0 3-.5" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M2.5 12s3.4-7 9.5-7 9.5 7 9.5 7-3.4 7-9.5 7-9.5-7-9.5-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </>
+                )}
+              </svg>
+            </button>
+          </div>
         </label>
       )}
       {enrollmentRequired && challengeToken !== 'restricted-enrollment' && (

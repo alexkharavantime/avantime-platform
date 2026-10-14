@@ -32,9 +32,9 @@ type HistoryItem = {
 };
 
 const copy = {
-  lv: { title: 'Uzdot jautājumu zināšanu bāzei', description: 'AI atradīs atbilstošus dokumentu fragmentus un sagatavos atbildi ar avotu saitēm.', label: 'Jautājums AI konsultantam', placeholder: 'Piemēram: kādas funkcijas jāveic AI konsultantam?', loading: 'AI gatavo atbildi…', ask: 'Saņemt AI atbildi', clear: 'Notīrīt', answer: 'AI atbilde', sources: 'Avoti', source: 'Avots', page: 'Lapa', history: 'Jautājumu vēsture', latest: 'Jaunākās AI konsultanta atbildes', clearHistory: 'Notīrīt vēsturi', historyLoading: 'Ielādē vēsturi…', empty: 'Vēsture pagaidām ir tukša', firstQuestion: 'Uzdodiet pirmo jautājumu zināšanu bāzei.', delete: 'Dzēst', questionTooShort: 'Ievadiet jautājumu, kas ir vismaz 3 rakstzīmes garš.', askError: 'Neizdevās saņemt AI atbildi.', noAnswer: 'AI neatgrieza atbildes tekstu.', loadError: 'Neizdevās ielādēt jautājumu vēsturi.', saveError: 'Neizdevās saglabāt jautājumu vēsturē.', deleteQuestion: 'Dzēst jautājumu no vēstures', deleteError: 'Neizdevās dzēst vēstures ierakstu.', clearConfirm: 'Notīrīt visu jautājumu vēsturi?', clearError: 'Neizdevās notīrīt vēsturi.' },
-  ru: { title: 'Задать вопрос базе знаний', description: 'AI найдёт подходящие фрагменты документов и подготовит ответ со ссылками на источники.', label: 'Вопрос AI-консультанту', placeholder: 'Например: какие функции должен выполнять AI-консультант?', loading: 'AI готовит ответ…', ask: 'Получить ответ AI', clear: 'Очистить', answer: 'Ответ AI', sources: 'Источники', source: 'Источник', page: 'Страница', history: 'История вопросов', latest: 'Последние ответы AI-консультанта', clearHistory: 'Очистить историю', historyLoading: 'Загрузка истории…', empty: 'История пока пуста', firstQuestion: 'Задайте первый вопрос базе знаний.', delete: 'Удалить', questionTooShort: 'Введите вопрос не короче трёх символов.', askError: 'Не удалось получить ответ AI.', noAnswer: 'AI не вернул текст ответа.', loadError: 'Не удалось загрузить историю вопросов.', saveError: 'Не удалось сохранить вопрос в истории.', deleteQuestion: 'Удалить вопрос из истории', deleteError: 'Не удалось удалить запись истории.', clearConfirm: 'Очистить всю историю вопросов?', clearError: 'Не удалось очистить историю.' },
-  en: { title: 'Ask the knowledge base', description: 'AI will find relevant document passages and prepare an answer with source links.', label: 'Question for the AI consultant', placeholder: 'For example: what should an AI consultant be able to do?', loading: 'AI is preparing an answer…', ask: 'Get an AI answer', clear: 'Clear', answer: 'AI answer', sources: 'Sources', source: 'Source', page: 'Page', history: 'Question history', latest: 'Recent AI consultant answers', clearHistory: 'Clear history', historyLoading: 'Loading history…', empty: 'The history is empty', firstQuestion: 'Ask your first question to the knowledge base.', delete: 'Delete', questionTooShort: 'Enter a question of at least three characters.', askError: 'Could not get an AI answer.', noAnswer: 'AI did not return answer text.', loadError: 'Could not load question history.', saveError: 'Could not save the question to history.', deleteQuestion: 'Delete question from history', deleteError: 'Could not delete the history item.', clearConfirm: 'Clear all question history?', clearError: 'Could not clear history.' },
+  lv: { title: 'Uzdot jautājumu zināšanu bāzei', description: 'AI atradīs atbilstošus dokumentu fragmentus un sagatavos atbildi ar avotu saitēm.', label: 'Jautājums AI konsultantam', placeholder: 'Piemēram: kādas funkcijas jāveic AI konsultantam?', loading: 'AI gatavo atbildi…', ask: 'Saņemt AI atbildi', clear: 'Notīrīt', answer: 'AI atbilde', sources: 'Avoti', source: 'Avots', page: 'Lapa', history: 'Jautājumu vēsture', latest: 'Jaunākās AI konsultanta atbildes', clearHistory: 'Notīrīt vēsturi', historyLoading: 'Ielādē vēsturi…', empty: 'Vēsture pagaidām ir tukša', firstQuestion: 'Uzdodiet pirmo jautājumu zināšanu bāzei.', delete: 'Dzēst', questionTooShort: 'Ievadiet jautājumu, kas ir vismaz 3 rakstzīmes garš.', askError: 'Neizdevās saņemt AI atbildi.', noAnswer: 'AI neatgrieza atbildes tekstu.', providerTest: 'Aktīvs testa AI pakalpojumu sniedzējs; rezultāts nav ģenerēts ar reālu modeli.', budgetExceeded: 'AI budžets ir izsmelts (AI_BUDGET_EXCEEDED). Jaunus pieprasījumus nesūtiet.', rateLimited: 'AI pieprasījumi īslaicīgi ierobežoti (AI_RATE_LIMITED). Mēģiniet vēlāk.', serviceUnavailable: 'Zināšanu meklēšana vai atbilžu ģenerēšana īslaicīgi nav pieejama. Mēģiniet vēlāk.', loadError: 'Neizdevās ielādēt jautājumu vēsturi.', saveError: 'Neizdevās saglabāt jautājumu vēsturē.', deleteQuestion: 'Dzēst jautājumu no vēstures', deleteError: 'Neizdevās dzēst vēstures ierakstu.', clearConfirm: 'Notīrīt visu jautājumu vēsturi?', clearError: 'Neizdevās notīrīt vēsturi.' },
+  ru: { title: 'Задать вопрос базе знаний', description: 'AI найдёт подходящие фрагменты документов и подготовит ответ со ссылками на источники.', label: 'Вопрос AI-консультанту', placeholder: 'Например: какие функции должен выполнять AI-консультант?', loading: 'AI готовит ответ…', ask: 'Получить ответ AI', clear: 'Очистить', answer: 'Ответ AI', sources: 'Источники', source: 'Источник', page: 'Страница', history: 'История вопросов', latest: 'Последние ответы AI-консультанта', clearHistory: 'Очистить историю', historyLoading: 'Загрузка истории…', empty: 'История пока пуста', firstQuestion: 'Задайте первый вопрос базе знаний.', delete: 'Удалить', questionTooShort: 'Введите вопрос не короче трёх символов.', askError: 'Не удалось получить ответ AI.', noAnswer: 'AI не вернул текст ответа.', providerTest: 'Активен тестовый AI-провайдер; результат не сгенерирован реальной моделью.', budgetExceeded: 'Бюджет AI исчерпан (AI_BUDGET_EXCEEDED). Новые запросы не отправлялись.', rateLimited: 'Лимит AI-запросов исчерпан (AI_RATE_LIMITED). Повторите позже.', serviceUnavailable: 'Поиск в базе знаний или генерация временно недоступны. Попробуйте позже.', loadError: 'Не удалось загрузить историю вопросов.', saveError: 'Не удалось сохранить вопрос в истории.', deleteQuestion: 'Удалить вопрос из истории', deleteError: 'Не удалось удалить запись истории.', clearConfirm: 'Очистить всю историю вопросов?', clearError: 'Не удалось очистить историю.' },
+  en: { title: 'Ask the knowledge base', description: 'AI will find relevant document passages and prepare an answer with source links.', label: 'Question for the AI consultant', placeholder: 'For example: what should an AI consultant be able to do?', loading: 'AI is preparing an answer…', ask: 'Get an AI answer', clear: 'Clear', answer: 'AI answer', sources: 'Sources', source: 'Source', page: 'Page', history: 'Question history', latest: 'Recent AI consultant answers', clearHistory: 'Clear history', historyLoading: 'Loading history…', empty: 'The history is empty', firstQuestion: 'Ask your first question to the knowledge base.', delete: 'Delete', questionTooShort: 'Enter a question of at least three characters.', askError: 'Could not get an AI answer.', noAnswer: 'AI did not return answer text.', providerTest: 'A test AI provider is active; this result was not generated by a real model.', budgetExceeded: 'The AI budget is exhausted (AI_BUDGET_EXCEEDED). No new request was sent.', rateLimited: 'AI requests are temporarily limited (AI_RATE_LIMITED). Try again later.', serviceUnavailable: 'Knowledge search or answer generation is temporarily unavailable. Try again later.', loadError: 'Could not load question history.', saveError: 'Could not save the question to history.', deleteQuestion: 'Delete question from history', deleteError: 'Could not delete the history item.', clearConfirm: 'Clear all question history?', clearError: 'Could not clear history.' },
 } satisfies Record<Locale, Record<string, string>>;
 
 const providerUnavailableCopy: Record<Locale, string> = {
@@ -61,6 +61,7 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [sources, setSources] = useState<AnswerSource[]>([]);
+  const [testProviderActive, setTestProviderActive] = useState(false);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -157,6 +158,7 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
       setError('');
       setAnswer('');
       setSources([]);
+      setTestProviderActive(false);
 
       const askResponse = await fetch('/api/documents/ask', {
         method: 'POST',
@@ -174,6 +176,7 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
         answer?: string;
         citations?: AnswerSource[];
         status?: 'answered' | 'no_answer';
+        providerMode?: { embedding?: string; answer?: string };
         error?: string;
         code?: string;
       };
@@ -188,6 +191,15 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
         if (askResult.code === 'AI_CONFIGURATION_INVALID') {
           throw new Error(providerUnavailableCopy[locale]);
         }
+        if (askResult.code === 'AI_BUDGET_EXCEEDED') {
+          throw new Error(text.budgetExceeded);
+        }
+        if (askResult.code === 'AI_RATE_LIMITED') {
+          throw new Error(text.rateLimited);
+        }
+        if (askResponse.status >= 500 || askResult.code === 'RAG_UNAVAILABLE') {
+          throw new Error(text.serviceUnavailable);
+        }
         throw new Error(text.askError);
       }
 
@@ -201,6 +213,9 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
 
       setAnswer(newAnswer);
       setSources(newSources);
+      setTestProviderActive(
+        askResult.providerMode?.embedding === 'fake' || askResult.providerMode?.answer === 'fake',
+      );
 
       try {
         await saveToHistory(normalizedQuestion, newAnswer, newSources);
@@ -209,7 +224,11 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
       }
     } catch (requestError) {
       setError(
-        requestError instanceof Error ? requestError.message : text.askError,
+        requestError instanceof TypeError
+          ? text.serviceUnavailable
+          : requestError instanceof Error
+            ? requestError.message
+            : text.askError,
       );
     } finally {
       setLoading(false);
@@ -220,6 +239,7 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
     setQuestion(item.question);
     setAnswer(item.answer);
     setSources(item.sources);
+    setTestProviderActive(false);
     setError('');
 
     window.scrollTo({
@@ -280,6 +300,7 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
     setQuestion('');
     setAnswer('');
     setSources([]);
+    setTestProviderActive(false);
     setError('');
   }
 
@@ -342,6 +363,12 @@ export function KnowledgeAsk({ locale }: { locale: Locale }) {
         {answer ? (
           <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
             <h4 className="font-black text-slate-950">{text.answer}</h4>
+
+            {testProviderActive ? (
+              <p role="status" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                {text.providerTest}
+              </p>
+            ) : null}
 
             <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
               {answer}

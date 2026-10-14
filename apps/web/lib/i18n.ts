@@ -442,6 +442,8 @@ export type PortalCopy = {
     emailLabel: string;
     requestAccessLink: string;
     passwordLabel: string;
+    showPasswordLabel: string;
+    hidePasswordLabel: string;
     mfaCodeLabel: string;
     mfaPolicyNotice: string;
     mfaSetupAction: string;
@@ -637,6 +639,8 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       emailLabel: 'E-pasts',
       requestAccessLink: 'Pieprasīt piekļuvi',
       passwordLabel: 'Parole',
+      showPasswordLabel: 'Rādīt paroli',
+      hidePasswordLabel: 'Slēpt paroli',
       mfaCodeLabel: 'MFA kods vai atkopšanas kods',
       mfaPolicyNotice: 'Lai turpinātu, iestatiet autentifikatora lietotni.',
       mfaSetupAction: 'Iestatīt autentifikatora lietotni',
@@ -830,6 +834,8 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       emailLabel: 'Электронная почта',
       requestAccessLink: 'Запросить доступ',
       passwordLabel: 'Пароль',
+      showPasswordLabel: 'Показать пароль',
+      hidePasswordLabel: 'Скрыть пароль',
       mfaCodeLabel: 'Код MFA или резервный код',
       mfaPolicyNotice: 'Для продолжения настройте приложение-аутентификатор.',
       mfaSetupAction: 'Настроить приложение-аутентификатор',
@@ -1023,6 +1029,8 @@ export const portalCopy: Record<Locale, PortalCopy> = {
       emailLabel: 'Email',
       requestAccessLink: 'Request access',
       passwordLabel: 'Password',
+      showPasswordLabel: 'Show password',
+      hidePasswordLabel: 'Hide password',
       mfaCodeLabel: 'MFA code or recovery code',
       mfaPolicyNotice: 'Set up an authenticator app to continue.',
       mfaSetupAction: 'Set up authenticator app',
