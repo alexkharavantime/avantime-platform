@@ -26,6 +26,7 @@ import {
   resetApiRateLimitsForTests,
 } from '../lib/api-rate-limit';
 import {
+  AiBudgetDeniedError,
   MemoryAiCostController,
   type AiCostController,
   type AiUsageLedgerEvent,
@@ -405,6 +406,74 @@ test('AI Gateway rejects vector dimension mismatch', async () => {
     }),
     (error: unknown) => error instanceof AiGatewayError && error.code === 'AI_INVALID_RESPONSE',
   );
+});
+
+test('budget denial before query embedding leaves external provider calls at zero', async () => {
+  const configuration = loadRagConfiguration({
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    RAG_ANSWER_DRIVER: 'fake',
+  });
+  const provider = new CountingFakeProvider();
+  const costController: AiCostController = {
+    kind: 'postgresql',
+    reserve: async () => {
+      throw new AiBudgetDeniedError('not_configured');
+    },
+    reconcile: async () => {},
+    release: async () => {},
+    checkReadiness: async () => true,
+  };
+  const gateway = new DefaultAiGateway(configuration, provider, provider, undefined, undefined, {
+    costController,
+  });
+
+  await assert.rejects(
+    gateway.createQueryEmbedding({
+      tenant: tenantA,
+      query: 'budget blocked before embedding',
+      correlationId: 'budget-block-no-provider-call',
+    }),
+    (error: unknown) =>
+      error instanceof AiGatewayError &&
+      error.code === 'AI_BUDGET_EXCEEDED' &&
+      error.budgetReason === 'not_configured',
+  );
+  assert.equal(provider.embeddingCalls, 0);
+  assert.equal(provider.answerCalls, 0);
+});
+
+test('budget ledger failure is reported as unavailable before any provider call', async () => {
+  const configuration = loadRagConfiguration({
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    RAG_ANSWER_DRIVER: 'fake',
+  });
+  const provider = new CountingFakeProvider();
+  const costController: AiCostController = {
+    kind: 'postgresql',
+    reserve: async () => {
+      throw new Error('ledger unavailable');
+    },
+    reconcile: async () => {},
+    release: async () => {},
+    checkReadiness: async () => false,
+  };
+  const gateway = new DefaultAiGateway(configuration, provider, provider, undefined, undefined, {
+    costController,
+  });
+
+  await assert.rejects(
+    gateway.createQueryEmbedding({
+      tenant: tenantA,
+      query: 'budget ledger unavailable',
+      correlationId: 'budget-ledger-no-provider-call',
+    }),
+    (error: unknown) =>
+      error instanceof AiGatewayError && error.code === 'AI_BUDGET_UNAVAILABLE',
+  );
+  assert.equal(provider.embeddingCalls, 0);
+  assert.equal(provider.answerCalls, 0);
 });
 
 function result(
@@ -1489,8 +1558,8 @@ test('real-AI session operation limit counts reconciled calls and JSONL diagnost
       estimatedCostEur: 0.01,
       status: 'SUCCEEDED',
     });
-    assert.equal(
-      await controller.reserve({
+    await assert.rejects(
+      controller.reserve({
         tenant: tenantB,
         provider: 'openai',
         model: 'test-model',
@@ -1499,7 +1568,8 @@ test('real-AI session operation limit counts reconciled calls and JSONL diagnost
         idempotencyKey: 'second-attempt',
         estimatedCostEur: 0.01,
       }),
-      null,
+      (error: unknown) =>
+        error instanceof AiBudgetDeniedError && error.reason === 'session_limit_reached',
     );
 
     const outputPath = path.join(outputDirectory, 'provider-events.jsonl');
@@ -1631,7 +1701,8 @@ test('explicit real-AI browser mode retains PostgreSQL accounting under next dev
         query: 'diagnostic accounting check',
         correlationId: 'diagnostic-development-controls',
       }),
-      /AI cost ledger database is unavailable/u,
+      (error: unknown) =>
+        error instanceof AiGatewayError && error.code === 'AI_BUDGET_UNAVAILABLE',
     );
     assert.equal(databaseLoadCount, 1);
   } finally {

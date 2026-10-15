@@ -66,6 +66,13 @@ effective daily or monthly limit is zero, startup is refused with a configuratio
 The PostgreSQL cost controller also refuses reservations when no finite daily, monthly or
 provider limit is available.
 
+At request time, a missing tenant policy falls back to the environment limits. If no
+positive daily, monthly or provider limit is available, the reservation is rejected with
+`budgetReason: not_configured`; this is distinct from a reached limit, an insufficient
+reservation, and an unavailable ledger. The API does not return spend or limit amounts to
+the user-facing page. Query-embedding and answer-generation reservations are checked
+separately, so a later generation denial can occur after query embedding has already run.
+
 The OpenAI key is read from the local environment and is never included in the launch
 summary. The launch summary reports provider, vector store, data path, database target,
 models, dimensions, attempt counts and effective budget limits only.

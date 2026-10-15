@@ -6,8 +6,10 @@ import OpenAI from 'openai';
 import type { AiOperationalEventSink, AiProviderDiagnostic } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
 import {
+  AiBudgetDeniedError,
   MemoryAiCostController,
   MemoryAiRateLimiter,
+  type AiBudgetBlockReason,
   type AiBudgetReservation,
   type AiCostController,
   type AiRequestType,
@@ -122,6 +124,7 @@ export type AiGatewayErrorCode =
   | 'AI_PROVIDER_UNAVAILABLE'
   | 'AI_RATE_LIMITED'
   | 'AI_BUDGET_EXCEEDED'
+  | 'AI_BUDGET_UNAVAILABLE'
   | 'AI_TIMEOUT'
   | 'AI_INVALID_RESPONSE'
   | 'AI_REQUEST_REJECTED';
@@ -133,6 +136,7 @@ export class AiGatewayError extends Error {
     safeMessage: string,
     readonly providerDiagnostic?: AiProviderDiagnostic,
     readonly usage?: AiUsage,
+    readonly budgetReason?: AiBudgetBlockReason,
   ) {
     super(safeMessage);
     this.name = 'AiGatewayError';
@@ -974,17 +978,52 @@ export class DefaultAiGateway implements AiGateway {
     if (!allowed) {
       throw new AiGatewayError('AI_RATE_LIMITED', true, 'Лимит AI-запросов временно исчерпан.');
     }
-    const reservation = await this.costController.reserve({
-      tenant,
-      provider,
-      model,
-      requestType,
-      correlationId,
-      idempotencyKey: usageIdempotencyKey ?? `${requestType}:${correlationId}`,
-      estimatedCostEur,
-    });
+    let reservation: AiBudgetReservation | null;
+    try {
+      reservation = await this.costController.reserve({
+        tenant,
+        provider,
+        model,
+        requestType,
+        correlationId,
+        idempotencyKey: usageIdempotencyKey ?? `${requestType}:${correlationId}`,
+        estimatedCostEur,
+      });
+    } catch (error) {
+      if (error instanceof AiBudgetDeniedError) {
+        if (error.reason === 'idempotency_conflict') {
+          throw new AiGatewayError(
+            'AI_REQUEST_REJECTED',
+            false,
+            'The AI request reservation was already processed.',
+          );
+        }
+        throw new AiGatewayError(
+          'AI_BUDGET_EXCEEDED',
+          false,
+          'AI budget reservation was denied.',
+          undefined,
+          undefined,
+          error.reason,
+        );
+      }
+      console.error(
+        JSON.stringify({
+          event: 'ai_budget_check_failure',
+          errorName: error instanceof Error ? error.name : 'unknown',
+        }),
+      );
+      throw new AiGatewayError('AI_BUDGET_UNAVAILABLE', true, 'AI budget check is unavailable.');
+    }
     if (!reservation) {
-      throw new AiGatewayError('AI_BUDGET_EXCEEDED', false, 'Бюджет AI исчерпан.');
+      throw new AiGatewayError(
+        'AI_BUDGET_EXCEEDED',
+        false,
+        'AI budget reservation was denied.',
+        undefined,
+        undefined,
+        'unknown',
+      );
     }
     return reservation;
   }

@@ -64,6 +64,9 @@ export async function POST(request: Request) {
         {
           error: status === 429 ? 'Слишком много запросов.' : 'Не удалось получить ответ AI.',
           code: error.code,
+          ...(error instanceof AiGatewayError && error.budgetReason
+            ? { budgetReason: error.budgetReason }
+            : {}),
         },
         { status },
       );

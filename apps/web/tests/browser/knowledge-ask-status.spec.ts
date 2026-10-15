@@ -43,15 +43,36 @@ test('shows distinct test-provider and request-failure states without persisting
     submittedQuestions.push(body.question);
     askCount += 1;
 
-    if (askCount === 3) {
+    const budgetReasons: Record<number, string> = {
+      3: 'not_configured',
+      4: 'daily_limit_reached',
+      5: 'monthly_limit_reached',
+      6: 'insufficient_reservation',
+    };
+    if (askCount in budgetReasons) {
       await route.fulfill({
         status: 503,
         contentType: 'application/json',
-        body: JSON.stringify({ error: 'AI budget exhausted.', code: 'AI_BUDGET_EXCEEDED' }),
+        body: JSON.stringify({
+          error: 'AI budget reservation was denied.',
+          code: 'AI_BUDGET_EXCEEDED',
+          budgetReason: budgetReasons[askCount],
+        }),
       });
       return;
     }
-    if (askCount === 4) {
+    if (askCount === 7) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'AI budget check is unavailable.',
+          code: 'AI_BUDGET_UNAVAILABLE',
+        }),
+      });
+      return;
+    }
+    if (askCount === 8) {
       await route.abort('failed');
       return;
     }
@@ -106,8 +127,23 @@ test('shows distinct test-provider and request-failure states without persisting
 
   await question.fill('Вопрос, заблокированный бюджетом');
   await askButton.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'AI_BUDGET_EXCEEDED' })).toBeVisible();
+  const budgetAlert = page.getByRole('alert').filter({ hasText: 'Бюджет AI не настроен.' });
+  await expect(budgetAlert).toBeVisible();
+  await expect(budgetAlert).not.toContainText('Новые запросы не отправлялись');
   await expect(answerSection.getByText('Ответ подтверждён страницей 190.')).toHaveCount(0);
+  expect(savedHistory).toHaveLength(2);
+
+  const budgetErrors = [
+    ['Достигнут дневной лимит бюджета AI', 'Вопрос при дневном лимите'],
+    ['Достигнут месячный лимит бюджета AI', 'Вопрос при месячном лимите'],
+    ['Остатка бюджета AI недостаточно', 'Вопрос при недостаточном остатке'],
+    ['Проверка бюджета AI временно недоступна', 'Вопрос при недоступности бюджета'],
+  ] as const;
+  for (const [message, submittedQuestion] of budgetErrors) {
+    await question.fill(submittedQuestion);
+    await askButton.click();
+    await expect(page.getByRole('alert').filter({ hasText: message })).toBeVisible();
+  }
   expect(savedHistory).toHaveLength(2);
 
   await question.fill('Вопрос при сетевой ошибке');
@@ -122,6 +158,10 @@ test('shows distinct test-provider and request-failure states without persisting
     'Какими документами оформляется выпуск продукции?',
     'Чем отличаются нормативная и плановая себестоимость?',
     'Вопрос, заблокированный бюджетом',
+    'Вопрос при дневном лимите',
+    'Вопрос при месячном лимите',
+    'Вопрос при недостаточном остатке',
+    'Вопрос при недоступности бюджета',
     'Вопрос при сетевой ошибке',
   ]);
 });
