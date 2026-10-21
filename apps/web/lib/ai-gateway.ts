@@ -156,6 +156,18 @@ function estimateCost(inputTokens: number, outputTokens: number) {
   return Number((inputTokens * 0.000_001 + outputTokens * 0.000_004).toFixed(6));
 }
 
+// EUR per input token, rounded up from published embedding prices; unknown models use the highest rate.
+const embeddingInputTokenCostEur: Record<string, number> = {
+  'text-embedding-3-small': 0.000_000_02,
+  'text-embedding-3-large': 0.000_000_13,
+};
+const defaultEmbeddingInputTokenCostEur = 0.000_000_15;
+
+export function estimateEmbeddingCost(model: string, inputTokens: number) {
+  const rate = embeddingInputTokenCostEur[model] ?? defaultEmbeddingInputTokenCostEur;
+  return Number((inputTokens * rate).toFixed(8));
+}
+
 function openAiSdkMaxRetries(environment = process.env) {
   if (environment.BROWSER_REAL_AI_KB_SMOKE === '1') return 0;
   const configured = environment.OPENAI_SDK_MAX_RETRIES;
@@ -475,7 +487,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
       usage: {
         inputTokens,
         outputTokens: 0,
-        estimatedCostEur: estimateCost(inputTokens, 0),
+        estimatedCostEur: estimateEmbeddingCost(request.model, inputTokens),
       },
     };
   }
@@ -597,7 +609,7 @@ export class GeminiAiGatewayProvider implements EmbeddingProvider, RagAnswerProv
       usage: {
         inputTokens,
         outputTokens: 0,
-        estimatedCostEur: estimateCost(inputTokens, 0),
+        estimatedCostEur: estimateEmbeddingCost(request.model, inputTokens),
       },
     };
   }
@@ -890,7 +902,9 @@ export class DefaultAiGateway implements AiGateway {
       request.model,
       requestType,
       request.correlationId,
-      this.estimateReservedCost(estimateCost(estimateTokens(request.texts), 0)),
+      this.estimateReservedCost(
+        estimateEmbeddingCost(request.model, estimateTokens(request.texts)),
+      ),
       request.usageIdempotencyKey,
     );
     const startedAt = Date.now();
