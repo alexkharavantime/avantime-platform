@@ -11,6 +11,9 @@ import {
   type KnowledgeCitationResolver,
 } from './knowledge-indexing';
 
+// Matches the largest retrieval top-K so saved history keeps every cited source.
+const MAXIMUM_SOURCE_REFERENCES = 12;
+
 export type DocumentSourceReference = {
   sourceType?: unknown;
   documentId?: unknown;
@@ -33,7 +36,7 @@ export async function resolveDocumentSources(
   const resolved: ResolvedDocumentSource[] = [];
   const seen = new Set<string>();
 
-  for (const reference of references.slice(0, 6)) {
+  for (const reference of references.slice(0, MAXIMUM_SOURCE_REFERENCES)) {
     if (
       typeof reference.documentId !== 'string' ||
       typeof reference.chunkId !== 'string' ||
@@ -91,7 +94,7 @@ export async function resolveKnowledgeSources(
   const resolved: ResolvedKnowledgeSource[] = [];
   const seen = new Set<string>();
 
-  for (const reference of references.slice(0, 6)) {
+  for (const reference of references.slice(0, MAXIMUM_SOURCE_REFERENCES)) {
     if (reference.sourceType === 'ARTICLE') {
       if (
         typeof reference.articleId !== 'string' ||

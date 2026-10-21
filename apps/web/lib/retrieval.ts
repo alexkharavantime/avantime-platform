@@ -562,6 +562,19 @@ export class DefaultHybridRetriever implements HybridRetriever {
       selected.push(result);
       perSource.set(sourceKey, count + 1);
     }
+    // With few documents the per-document limit leaves top-K slots empty; fill them with the
+    // best chunks it excluded so diversity is preferred without discarding relevant context.
+    if (selected.length < topK) {
+      const backfilled = new Set(selected);
+      for (const result of ranked) {
+        if (backfilled.size >= topK) break;
+        const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
+        if (exclusions.get(key) !== 'per_document_limit') continue;
+        exclusions.delete(key);
+        backfilled.add(result);
+      }
+      selected.splice(0, selected.length, ...ranked.filter((result) => backfilled.has(result)));
+    }
     const selectedKeys = new Set(
       selected.map((result) => `${result.sourceType}:${result.sourceId}:${result.chunkId}`),
     );

@@ -543,6 +543,46 @@ test('hybrid ranking applies weights, duplicate suppression and per-document div
   );
 });
 
+test('per-document limit leaves no empty top-K slots when few documents match', async () => {
+  const configuration = loadRagConfiguration({
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    RAG_ANSWER_DRIVER: 'fake',
+    HYBRID_LEXICAL_WEIGHT: '1',
+    HYBRID_SEMANTIC_WEIGHT: '0',
+    HYBRID_TOP_K: '4',
+    HYBRID_MAX_CHUNKS_PER_DOCUMENT: '1',
+    HYBRID_MIN_SCORE: '0.3',
+  });
+  const events = new InMemoryAiOperationalEventSink();
+  const selected = await new DefaultHybridRetriever(
+    {
+      retrieve: async () => [
+        result('document-a', 'chunk-a1', 1, 'lexical'),
+        result('document-a', 'chunk-a2', 0.9, 'lexical'),
+        result('document-a', 'chunk-a3', 0.7, 'lexical'),
+        result('document-b', 'chunk-b1', 0.8, 'lexical'),
+        result('document-a', 'chunk-a4', 0.1, 'lexical'),
+      ],
+    },
+    { retrieve: async () => [] },
+    configuration,
+    events,
+  ).retrieve({ tenant: tenantA, query: 'backfill query', correlationId: 'hybrid-backfill' });
+
+  assert.deepEqual(
+    selected.map((item) => item.chunkId),
+    ['chunk-a1', 'chunk-a2', 'chunk-b1', 'chunk-a3'],
+  );
+  const trace = events.list().find((event) => event.name === 'retrieval_trace')?.retrievalTrace;
+  assert.deepEqual(
+    trace?.candidates
+      .filter((candidate) => !candidate.selected)
+      .map(({ chunkId, exclusionReason }) => ({ chunkId, exclusionReason })),
+    [{ chunkId: 'chunk-a4', exclusionReason: 'below_minimum_score' }],
+  );
+});
+
 test('hybrid retrieval honors explicit title-page and numbered-page references', async () => {
   const configuration = loadRagConfiguration({
     NODE_ENV: 'test',
