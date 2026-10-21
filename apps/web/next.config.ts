@@ -10,6 +10,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   transpilePackages: ['@avantime/ui'],
   serverExternalPackages: ['pdf-parse'],

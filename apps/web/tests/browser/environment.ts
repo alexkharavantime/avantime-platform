@@ -134,6 +134,7 @@ export const browserServerEnvironment: Record<string, string> = {
   DOCUMENT_EMBEDDING_QUEUE_DRIVER: durableDocumentKbSmoke ? 'postgresql' : 'local',
   DOCUMENT_VECTOR_DRIVER: durableDocumentKbSmoke ? 'pgvector' : 'memory',
   DOCUMENT_ANSWER_DRIVER: 'fake',
+  RAG_ANSWER_DRIVER: 'fake',
   ...(realAiDocumentKbSmoke
     ? {
         DOCUMENT_EMBEDDING_DRIVER: process.env.DOCUMENT_EMBEDDING_DRIVER ?? 'fake',

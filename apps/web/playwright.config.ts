@@ -49,7 +49,10 @@ export default defineConfig({
     url: `${BROWSER_BASE_URL}/portal/login`,
     reuseExistingServer: false,
     timeout: 120_000,
-    env: browserServerEnvironment,
+    env: {
+      ...browserServerEnvironment,
+      NEXT_DIST_DIR: '.next-browser-tests',
+    },
   },
   projects: [
     {
