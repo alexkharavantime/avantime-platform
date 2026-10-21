@@ -71,6 +71,8 @@ export type AiProviderDiagnostic = {
   responseErrorType?: string;
   responseErrorCode?: string;
   incompleteReason?: string;
+  outputTokens?: number;
+  reasoningTokens?: number;
   attemptCount?: number;
 };
 
@@ -129,6 +131,12 @@ function safeProviderDiagnostic(diagnostic: AiProviderDiagnostic) {
       if (token) safe[key] = token;
       return safe;
     }, {}),
+    ...(Number.isSafeInteger(diagnostic.outputTokens) && diagnostic.outputTokens! >= 0
+      ? { outputTokens: diagnostic.outputTokens }
+      : {}),
+    ...(Number.isSafeInteger(diagnostic.reasoningTokens) && diagnostic.reasoningTokens! >= 0
+      ? { reasoningTokens: diagnostic.reasoningTokens }
+      : {}),
     ...(Number.isSafeInteger(diagnostic.attemptCount) && diagnostic.attemptCount! > 0
       ? { attemptCount: diagnostic.attemptCount }
       : {}),

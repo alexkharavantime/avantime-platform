@@ -156,6 +156,27 @@ function estimateCost(inputTokens: number, outputTokens: number) {
   return Number((inputTokens * 0.000_001 + outputTokens * 0.000_004).toFixed(6));
 }
 
+function safeTokenCount(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+function outputTokenDiagnostic(usage: unknown): Pick<
+  AiProviderDiagnostic,
+  'outputTokens' | 'reasoningTokens'
+> {
+  const record = usage && typeof usage === 'object' ? (usage as Record<string, unknown>) : {};
+  const details =
+    record.output_tokens_details && typeof record.output_tokens_details === 'object'
+      ? (record.output_tokens_details as Record<string, unknown>)
+      : {};
+  const outputTokens = safeTokenCount(record.output_tokens);
+  const reasoningTokens = safeTokenCount(details.reasoning_tokens);
+  return {
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+  };
+}
+
 function escapeXmlAttribute(value: string) {
   return value
     .replace(/&/gu, '&amp;')
@@ -489,6 +510,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
         ...(safeDiagnosticToken(response.incomplete_details?.reason)
           ? { incompleteReason: safeDiagnosticToken(response.incomplete_details?.reason) }
           : {}),
+        ...outputTokenDiagnostic(response.usage),
       };
       throw new AiGatewayError(
         response.status === 'failed' ? 'AI_PROVIDER_UNAVAILABLE' : 'AI_INVALID_RESPONSE',
@@ -506,6 +528,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
       providerDiagnostic: {
         ...this.responseDiagnostic(response._request_id, 'answer'),
         responseStatus: response.status,
+        ...outputTokenDiagnostic(response.usage),
       },
       usage: {
         inputTokens,

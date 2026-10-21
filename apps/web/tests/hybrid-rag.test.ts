@@ -1428,6 +1428,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
       httpStatus: 200,
       providerRequestId: 'req_safe123',
       responseStatus: 'completed',
+      outputTokens: 22,
       attemptCount: 1,
     });
     assert.equal(persistedIncomplete?.inputTokens, 1);
@@ -1445,6 +1446,7 @@ test('OpenAI failures retain safe diagnostics and reject incomplete Responses', 
       responseErrorType: 'server_error',
       responseErrorCode: 'server_error',
       incompleteReason: 'max_output_tokens',
+      outputTokens: 0,
       attemptCount: 1,
     });
   } finally {

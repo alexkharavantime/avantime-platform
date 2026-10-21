@@ -33,6 +33,7 @@ export function configureLocalRagProfile(
       DOCUMENT_EMBEDDING_QUEUE_DRIVER: 'postgresql',
       DOCUMENT_VECTOR_DRIVER: 'pgvector',
       RAG_ANSWER_DRIVER: 'openai',
+      RAG_MAX_OUTPUT_TOKENS: '2000',
       AI_PROVIDER_MAX_ATTEMPTS: '1',
     });
     // Default reasoning leaves too few output tokens for answer text within RAG_MAX_OUTPUT_TOKENS.

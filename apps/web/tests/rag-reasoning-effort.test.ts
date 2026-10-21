@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  AiGatewayError,
   DefaultAiGateway,
   DeterministicFakeAiProvider,
   OpenAiGatewayProvider,
@@ -104,4 +105,58 @@ test('without configured reasoning effort the provider default is preserved', as
 
   assert.equal(payload?.reasoning, undefined);
   assert.equal(payload?.max_output_tokens, 1_000);
+});
+
+test('incomplete answers report output and reasoning token counts', async () => {
+  const previousBaseUrl = process.env.OPENAI_BASE_URL;
+  process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1';
+  try {
+    const provider = new OpenAiGatewayProvider('offline-test-key', async () =>
+      new Response(
+        JSON.stringify({
+          id: 'resp_offline_incomplete',
+          object: 'response',
+          created_at: 1,
+          model: 'gpt-5-mini',
+          status: 'incomplete',
+          incomplete_details: { reason: 'max_output_tokens' },
+          output: [],
+          usage: {
+            input_tokens: 1858,
+            output_tokens: 1000,
+            output_tokens_details: { reasoning_tokens: 832 },
+            total_tokens: 2858,
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json', 'x-request-id': 'req_incomplete' },
+        },
+      ),
+    );
+
+    await assert.rejects(
+      provider.generate(
+        {
+          tenant,
+          question: 'Какие документы?',
+          language: 'ru',
+          model: 'gpt-5-mini',
+          maximumOutputTokens: 1_000,
+          systemInstructions: 'Answer from sources.',
+          sources: [],
+          correlationId: 'reasoning-incomplete',
+        },
+        new AbortController().signal,
+      ),
+      (error: unknown) =>
+        error instanceof AiGatewayError &&
+        error.providerDiagnostic?.incompleteReason === 'max_output_tokens' &&
+        error.providerDiagnostic.outputTokens === 1_000 &&
+        error.providerDiagnostic.reasoningTokens === 832,
+    );
+  } finally {
+    if (previousBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
+    else process.env.OPENAI_BASE_URL = previousBaseUrl;
+  }
 });

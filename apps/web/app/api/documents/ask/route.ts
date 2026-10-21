@@ -79,6 +79,10 @@ export async function POST(request: Request) {
           ...(error instanceof AiGatewayError && error.budgetReason
             ? { budgetReason: error.budgetReason }
             : {}),
+          ...(error instanceof AiGatewayError &&
+          error.providerDiagnostic?.incompleteReason === 'max_output_tokens'
+            ? { reason: 'output_limit' }
+            : {}),
         },
         { status },
       );

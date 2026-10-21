@@ -85,6 +85,7 @@ test('local real profile limits answer reasoning unless an effort is configured 
   const defaultEnvironment: Record<string, string | undefined> = { NODE_ENV: 'test' };
   configureLocalRagProfile(defaultEnvironment, 'real', 'web');
   assert.equal(defaultEnvironment.RAG_REASONING_EFFORT, 'low');
+  assert.equal(defaultEnvironment.RAG_MAX_OUTPUT_TOKENS, '2000');
 
   const explicitEnvironment: Record<string, string | undefined> = {
     NODE_ENV: 'test',
