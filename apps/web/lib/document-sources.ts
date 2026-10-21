@@ -1,4 +1,10 @@
-import type { DocumentTenantContext } from './document-model';
+import {
+  CITATION_EXCERPT_MAXIMUM_CHARACTERS,
+  citationExcerptBoundaryContext,
+  formatCitationExcerpt,
+} from './citation-excerpt';
+import type { DocumentTenantContext, TextChunk } from './document-model';
+import type { DocumentHistoryItem } from './document-repositories';
 import { getDocumentServices, type DocumentServices } from './document-services';
 import {
   PostgreSQLKnowledgeCitationResolver,
@@ -71,6 +77,9 @@ export type ResolvedKnowledgeSource = {
   articleSlug?: string;
   chunkId: string;
   link: string;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  excerpt: string;
 };
 
 export async function resolveKnowledgeSources(
@@ -108,6 +117,9 @@ export async function resolveKnowledgeSources(
         articleSlug: article.slug,
         chunkId: article.chunkId,
         link: `/portal/knowledge/${encodeURIComponent(article.slug)}`,
+        excerpt: formatCitationExcerpt(article.excerpt, CITATION_EXCERPT_MAXIMUM_CHARACTERS, {
+          before: '',
+        }),
       });
       continue;
     }
@@ -125,7 +137,9 @@ export async function resolveKnowledgeSources(
     const document = await services.metadata.findById(tenant, reference.documentId);
     if (!document || document.status !== 'COMPLETED' || document.deletedAt) continue;
     const chunks = await services.processing.readChunks(tenant, document.id);
-    if (!chunks.some((item) => item.id === reference.chunkId)) continue;
+    const chunk = chunks.find((item) => item.id === reference.chunkId);
+    if (!chunk) continue;
+    const fullText = await services.processing.readText(tenant, document.id).catch(() => null);
     seen.add(key);
     resolved.push({
       sourceType: 'DOCUMENT',
@@ -135,8 +149,70 @@ export async function resolveKnowledgeSources(
       documentName: document.originalName,
       chunkId: reference.chunkId,
       link: `/portal/documents/${encodeURIComponent(document.id)}?chunk=${encodeURIComponent(reference.chunkId)}`,
+      pageStart: chunk.pageStart ?? null,
+      pageEnd: chunk.pageEnd ?? null,
+      excerpt: formatCitationExcerpt(
+        chunk.text,
+        CITATION_EXCERPT_MAXIMUM_CHARACTERS,
+        citationExcerptBoundaryContext(fullText, chunk),
+      ),
     });
   }
 
   return resolved;
+}
+
+// Rebuilds display excerpts of saved document sources from the tenant's current chunks.
+export async function refreshHistorySourceExcerpts(
+  tenant: DocumentTenantContext,
+  history: DocumentHistoryItem[],
+  services: DocumentServices = getDocumentServices(),
+): Promise<DocumentHistoryItem[]> {
+  const documents = new Map<
+    string,
+    Promise<{ chunks: TextChunk[]; fullText: string | null } | null>
+  >();
+  const loadDocument = (documentId: string) => {
+    if (!documents.has(documentId)) {
+      documents.set(
+        documentId,
+        (async () => {
+          const document = await services.metadata.findById(tenant, documentId);
+          if (!document || document.status !== 'COMPLETED' || document.deletedAt) return null;
+          const [chunks, fullText] = await Promise.all([
+            services.processing.readChunks(tenant, document.id),
+            services.processing.readText(tenant, document.id).catch(() => null),
+          ]);
+          return { chunks, fullText };
+        })().catch(() => null),
+      );
+    }
+    return documents.get(documentId)!;
+  };
+
+  return Promise.all(
+    history.map(async (item) => ({
+      ...item,
+      sources: await Promise.all(
+        item.sources.map(async (source) => {
+          if (
+            source.sourceType === 'ARTICLE' ||
+            typeof source.documentId !== 'string' ||
+            typeof source.chunkId !== 'string'
+          ) {
+            return source;
+          }
+          const loaded = await loadDocument(source.documentId);
+          const chunk = loaded?.chunks.find((candidate) => candidate.id === source.chunkId);
+          if (!loaded || !chunk) return source;
+          const excerpt = formatCitationExcerpt(
+            chunk.text,
+            CITATION_EXCERPT_MAXIMUM_CHARACTERS,
+            citationExcerptBoundaryContext(loaded.fullText, chunk),
+          );
+          return excerpt ? { ...source, excerpt } : source;
+        }),
+      ),
+    })),
+  );
 }

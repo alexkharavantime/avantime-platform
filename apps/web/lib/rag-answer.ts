@@ -1,4 +1,9 @@
 import { AiGatewayError, type AiGateway, type AiUsage, type RagContextSource } from './ai-gateway';
+import {
+  CITATION_EXCERPT_MAXIMUM_CHARACTERS,
+  citationExcerptBoundaryContext,
+  formatCitationExcerpt,
+} from './citation-excerpt';
 import type { AiOperationalEventSink } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
 import type { DocumentTenantContext } from './document-model';
@@ -65,7 +70,7 @@ export class DefaultCitationBuilder implements CitationBuilder {
   constructor(
     private readonly metadata: DocumentMetadataRepository,
     private readonly processing: DocumentProcessingRepository,
-    private readonly maximumExcerptCharacters = 480,
+    private readonly maximumExcerptCharacters = CITATION_EXCERPT_MAXIMUM_CHARACTERS,
     private readonly knowledge: KnowledgeCitationResolver = new PostgreSQLKnowledgeCitationResolver(),
   ) {}
 
@@ -75,6 +80,7 @@ export class DefaultCitationBuilder implements CitationBuilder {
   ): Promise<CitationWithContext[]> {
     const citations: CitationWithContext[] = [];
     const seen = new Set<string>();
+    const documentTexts = new Map<string, Promise<string | null>>();
 
     for (const result of results) {
       if (result.sourceType === 'ARTICLE') {
@@ -89,7 +95,9 @@ export class DefaultCitationBuilder implements CitationBuilder {
         if (seen.has(key)) continue;
 
         const contextText = article.excerpt;
-        const excerpt = contextText.slice(0, this.maximumExcerptCharacters);
+        const excerpt = formatCitationExcerpt(contextText, this.maximumExcerptCharacters, {
+          before: '',
+        });
 
         if (!excerpt) continue;
 
@@ -128,7 +136,17 @@ export class DefaultCitationBuilder implements CitationBuilder {
       if (!chunk) continue;
 
       const contextText = chunk.text.replace(/\s+/g, ' ').trim();
-      const excerpt = contextText.slice(0, this.maximumExcerptCharacters);
+      if (!documentTexts.has(document.id)) {
+        documentTexts.set(
+          document.id,
+          this.processing.readText(tenant, document.id).catch(() => null),
+        );
+      }
+      const excerpt = formatCitationExcerpt(
+        chunk.text,
+        this.maximumExcerptCharacters,
+        citationExcerptBoundaryContext(await documentTexts.get(document.id), chunk),
+      );
 
       if (!excerpt) continue;
 

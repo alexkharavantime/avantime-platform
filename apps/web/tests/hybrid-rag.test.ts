@@ -954,7 +954,8 @@ test('RAG provider context keeps full chunks beyond the display citation excerpt
     });
 
     assert.equal(answer.status, 'answered');
-    assert.equal(answer.citations[0].excerpt.length, 480);
+    assert.equal(answer.citations[0].excerpt, 'Вводный текст по учёту. '.repeat(20).trim());
+    assert.ok(answer.citations[0].excerpt.length <= 480);
     assert.equal('contextText' in answer.citations[0], false);
     assert.equal(answer.citations[0].pageStart, 146);
     assert.equal(answer.citations[0].chunkId, 'long-context-chunk');
@@ -968,7 +969,7 @@ test('RAG provider context keeps full chunks beyond the display citation excerpt
     const contextEvent = events.list().find((event) => event.name === 'rag_context');
     const sourceTrace = contextEvent?.contextTrace?.sources[0];
     assert.equal(sourceTrace?.sourceCharacters, longText.length);
-    assert.equal(sourceTrace?.displayCharacters, 480);
+    assert.equal(sourceTrace?.displayCharacters, answer.citations[0].excerpt.length);
     assert.equal(sourceTrace?.contextCharacters, longText.length);
     assert.equal(sourceTrace?.displayTruncated, true);
     assert.equal(sourceTrace?.contextTruncated, false);

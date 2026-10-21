@@ -14,6 +14,7 @@ type AskRequest = {
 };
 
 export async function POST(request: Request) {
+  const correlationId = crypto.randomUUID();
   try {
     const authorization = await authorizeDocumentReadApi();
     if (authorization.response) return authorization.response;
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     const services = getDocumentServices();
     if (!services.rag) {
       return NextResponse.json(
-        { error: 'RAG временно недоступен.', code: 'RAG_UNAVAILABLE' },
+        { error: 'RAG временно недоступен.', code: 'RAG_UNAVAILABLE', correlationId },
         { status: 503 },
       );
     }
@@ -43,7 +44,6 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const correlationId = crypto.randomUUID();
     const result = await services.rag.answers.answer({
       tenant,
       question,
@@ -60,10 +60,22 @@ export async function POST(request: Request) {
     if (error instanceof ApiRateLimitError || error instanceof AiGatewayError) {
       const status =
         error instanceof ApiRateLimitError || error.code === 'AI_RATE_LIMITED' ? 429 : 503;
+      if (error instanceof AiGatewayError) {
+        console.error(
+          JSON.stringify({
+            event: 'knowledge_ask_ai_failure',
+            correlationId,
+            errorCode: error.code,
+            ...(error.budgetReason ? { budgetReason: error.budgetReason } : {}),
+            ...(error.providerDiagnostic ? { providerDiagnostic: error.providerDiagnostic } : {}),
+          }),
+        );
+      }
       return NextResponse.json(
         {
           error: status === 429 ? 'Слишком много запросов.' : 'Не удалось получить ответ AI.',
           code: error.code,
+          correlationId,
           ...(error instanceof AiGatewayError && error.budgetReason
             ? { budgetReason: error.budgetReason }
             : {}),
@@ -71,8 +83,24 @@ export async function POST(request: Request) {
         { status },
       );
     }
+    const errorCode =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      /^[A-Za-z0-9_-]{1,40}$/u.test(error.code)
+        ? error.code
+        : undefined;
+    console.error(
+      JSON.stringify({
+        event: 'knowledge_ask_unexpected_failure',
+        correlationId,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        ...(errorCode ? { errorCode } : {}),
+      }),
+    );
     return NextResponse.json(
-      { error: 'Не удалось получить ответ AI.', code: 'RAG_UNAVAILABLE' },
+      { error: 'Не удалось получить ответ AI.', code: 'RAG_UNAVAILABLE', correlationId },
       { status: 503 },
     );
   }

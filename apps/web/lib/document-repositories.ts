@@ -202,6 +202,9 @@ export type DocumentHistorySource = {
   chunkId: string;
   score: number;
   link?: string;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  excerpt?: string;
 };
 
 export type DocumentHistoryItem = {
