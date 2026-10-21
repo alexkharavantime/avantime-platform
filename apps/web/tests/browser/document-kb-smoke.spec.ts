@@ -24,7 +24,10 @@ const tenant: DocumentTenantContext = {
 const projectMarker = 'AVANTIME-KB-SMOKE-20261002';
 const fileName = `${projectMarker}.pdf`;
 const question = `Какой срок хранения тестовой поставки в проекте ${projectMarker}?`;
+const titleQuestion = 'What topic is the express course on the title page?';
+const warehouseQuestion = `Какой код склада указан для проекта ${projectMarker}?`;
 const documentText = [
+  'Express course on production accounting in 1C:UPP.',
   `Project: ${projectMarker}. Warehouse code: TEST-WH-742.`,
   'The retention period for the test delivery is 17 days.',
   'This synthetic record contains no customer information.',
@@ -131,8 +134,9 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
 
   try {
     await loginAs('identityOwner');
-    await page.goto('/ru/admin/documents');
-    await expect(page.getByRole('heading', { level: 1, name: 'База знаний Avantime' })).toBeVisible();
+    await page.goto('/ru/portal/documents');
+    await expect(page.getByRole('heading', { level: 1, name: 'Документы базы знаний' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Загрузить PDF' })).toBeVisible();
 
     const uploadResponsePromise = page.waitForResponse(
       (response) =>
@@ -201,34 +205,105 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
     await expect(page.getByText(/32\.50 EUR/u).last()).toBeVisible();
     await page.goto('/ru/portal/knowledge');
 
-    await page.getByRole('textbox', { name: 'Вопрос AI-консультанту' }).fill(question);
-    await page.getByRole('button', { name: 'Получить ответ AI' }).click();
-    await expect(page.getByText(/17 days/u).first()).toBeVisible();
-    const answerResponse = await page.request.post('/api/documents/ask', { data: { question } });
-    expect(answerResponse.status()).toBe(200);
-    const answerResult = (await answerResponse.json()) as {
+    await page.request.delete('/api/documents/history');
+    const askRequests: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/api/documents/ask'
+      ) {
+        askRequests.push(request.url());
+      }
+    });
+    const historyAnswers: Array<{
+      question: string;
       answer: string;
-      citations: Array<{
+      citation: {
         documentId?: string;
         excerpt: string;
         link: string;
         pageStart?: number | null;
         pageEnd?: number | null;
-      }>;
-    };
-    expect(answerResult.answer).toContain('17 days');
-    const citation = answerResult.citations.find((item) => item.documentId === documentId);
-    expect(citation?.excerpt).toContain('TEST-WH-742');
-    expect(citation?.excerpt).toContain('17 days');
-    expect(citation).toMatchObject({ pageStart: 1, pageEnd: 1 });
-    expect(citation?.link).toMatch(new RegExp(`^/portal/documents/${documentId}\\?chunk=`,'u'));
-    await expect(page.getByText('Страница 1')).toBeVisible();
-    const citationLink = page.locator(`a[href^="/ru/portal/documents/${documentId}?chunk="]`);
-    await expect(citationLink).toHaveCount(1);
-    await citationLink.click();
-    await expect(page.getByRole('heading', { name: fileName })).toBeVisible();
-    await page.getByRole('tab', { name: 'Извлечённый текст' }).click();
-    await expect(page.getByText(/17 days/u).last()).toBeVisible();
+      };
+    }> = [];
+    for (const [currentQuestion, expectedAnswer] of [
+      [titleQuestion, 'Express course on production accounting in 1C:UPP'],
+      [question, '17 days'],
+      [warehouseQuestion, 'TEST-WH-742'],
+    ]) {
+      await page.getByRole('textbox', { name: 'Вопрос AI-консультанту' }).fill(currentQuestion);
+      const answerResponsePromise = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/documents/ask' &&
+          response.request().method() === 'POST',
+      );
+      await page.getByRole('button', { name: 'Получить ответ AI' }).click();
+      const answerResponse = await answerResponsePromise;
+      expect(answerResponse.status()).toBe(200);
+      const answerResult = (await answerResponse.json()) as {
+        answer: string;
+        citations: Array<{
+          documentId?: string;
+          excerpt: string;
+          link: string;
+          pageStart?: number | null;
+          pageEnd?: number | null;
+        }>;
+      };
+      expect(answerResult.answer).toContain(expectedAnswer);
+      const citation = answerResult.citations.find((item) => item.documentId === documentId);
+      expect(citation).toMatchObject({ pageStart: 1, pageEnd: 1 });
+      expect(citation?.link).toMatch(new RegExp(`^/portal/documents/${documentId}\\?chunk=`, 'u'));
+      expect(citation?.excerpt).toContain(expectedAnswer);
+      historyAnswers.push({ question: currentQuestion, answer: answerResult.answer, citation: citation! });
+
+      const historyButton = page.getByRole('button').filter({ hasText: currentQuestion }).first();
+      await expect(historyButton).toBeVisible();
+      const citationLink = page.locator(`a[href^="/ru/portal/documents/${documentId}?chunk="]`).first();
+      await citationLink.click();
+      await expect(page.getByRole('heading', { name: fileName })).toBeVisible();
+      await page.goBack();
+      await expect(page.getByRole('heading', { name: 'База знаний и AI' })).toBeVisible();
+      await page.reload();
+
+      for (const saved of historyAnswers) {
+        await expect(
+          page.getByRole('button').filter({ hasText: saved.question }).first(),
+        ).toBeVisible();
+      }
+      await page.getByRole('button').filter({ hasText: currentQuestion }).first().click();
+      await expect(page.getByText(answerResult.answer, { exact: true }).last()).toBeVisible();
+      await expect(page.getByText('Страница 1').first()).toBeVisible();
+      await expect(
+        page.locator(`a[href^="/ru/portal/documents/${documentId}?chunk="]`).first(),
+      ).toBeVisible();
+      expect(askRequests).toHaveLength(historyAnswers.length);
+    }
+
+    await page.reload();
+    for (const saved of historyAnswers) {
+      await expect(page.getByRole('button').filter({ hasText: saved.question }).first()).toBeVisible();
+    }
+    expect(askRequests).toHaveLength(3);
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Очистить историю' }).click();
+    await expect(page.getByText('История пока пуста')).toBeVisible();
+    expect(askRequests).toHaveLength(3);
+
+    const logoutHistory = await page.request.post('/api/documents/history', {
+      data: { question: 'Logout retention check', answer: 'Stored before logout', sources: [] },
+    });
+    expect(logoutHistory.status()).toBe(200);
+    await page.goto('/ru/portal/settings');
+    await page.getByRole('button', { name: 'Выйти из кабинета' }).click();
+    await expect(page).toHaveURL(/\/ru\/portal\/login/u);
+    await loginAs('identityOwner');
+    await page.goto('/ru/portal/knowledge');
+    await expect(
+      page.getByRole('button').filter({ hasText: 'Logout retention check' }).first(),
+    ).toBeVisible();
+    expect(askRequests).toHaveLength(3);
     expect((await page.request.get(`/api/documents/file?id=${documentId}`)).status()).toBe(200);
 
     await page.context().clearCookies();

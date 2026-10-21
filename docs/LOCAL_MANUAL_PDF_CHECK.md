@@ -2,17 +2,19 @@
 
 ## Состояние этого запуска
 
-Локальный сайт: <http://127.0.0.1:3000>. PostgreSQL и процессы document/embedding workers запущены; PDF не загружался, платные AI-запросы не выполнялись. Runtime был запущен с OpenAI embeddings/answers, PostgreSQL/pgvector, локальным хранилищем и очередями, без mock AI. Однако HTTP readiness сайта `/api/health/documents?mode=readiness` вернул `503 unavailable`. До выяснения расхождения между readiness приложения и CLI-проверкой не считайте реальный AI в веб-процессе подтверждённым и не загружайте PDF.
+Локальный сайт и единственный origin для входа: <http://127.0.0.1:3000>. Не используйте `http://localhost:3000`: `AUTH_PUBLIC_ORIGIN` настроен на `127.0.0.1`, поэтому origin-защита отклоняет POST формы входа с `localhost` до проверки учётных данных. PostgreSQL и процессы document/embedding workers запущены. Readiness `/api/health/documents?mode=readiness` отвечает `200 ready`. Причина прежнего `503`: Next.js запускался без root `.env`, поэтому web-процесс не получал настроенный `OPENAI_API_KEY`; процесс запущен с Node `--env-file=../../.env`. Проверки readiness не ослаблялись.
 
-Проверка обычной локальной БД обнаружила блокер доступа: в ней нет организаций и активных членств; существующая учётная запись `ADMIN` не привязана к организации. Разделы `/ru/admin/documents` и `/ru/portal/knowledge` требуют организационный контекст и отправляют неавторизованного пользователя на вход. Селектор организации в интерфейсе отсутствует. Не создавайте тестовую организацию и не меняйте членство/роль в рамках этой проверки; сначала попросите владельца окружения предоставить существующей учётной записи доступ к нужной организации. Пока это не сделано, загрузить файл и проверить RAG через UI нельзя.
+В основной локальной БД создана организация `Avantime` с каноническим tenant ID `avantime`, без вымышленных регистрационных данных. Единственная существующая учётная запись Alexander получила активное членство `MANAGER` (просмотр и загрузка); `ADMIN` и platform role `PLATFORM_OWNER` сохранены. Изменение записано в audit. У учётной записи активен TOTP, поэтому после изменения членства нужен новый вход и обычное подтверждение MFA. Логин и TOTP вводите только в браузере.
+
+Реальную загрузку PDF и ответ OpenAI в основной организации ещё не выполняли: они требуют свежей пользовательской сессии. Отдельный browser smoke прошёл на изолированной тестовой БД с синтетическим одностраничным PDF, fake embeddings/answers и citation на страницу 1; он не подтверждает работу реального provider и не создавал документы в основной БД.
 
 ## Проверка после предоставления доступа
 
-1. Откройте <http://127.0.0.1:3000/ru/portal/login?returnTo=%2Fru%2Fadmin%2Fdocuments> и войдите в существующую учётную запись кнопкой **«Войти»**.
-2. Перейдите на <http://127.0.0.1:3000/ru/admin/documents>. Отдельного выбора организации нет: документ будет сохранён в организации, к которой привязана ваша сессия. Перед загрузкой убедитесь, что это нужная организация.
+1. Откройте <http://127.0.0.1:3000/ru/portal/login?returnTo=%2Fru%2Fportal%2Fdocuments>, войдите в существующую учётную запись и подтвердите активный TOTP. Нужна новая сессия, созданная после назначения членства.
+2. Перейдите на <http://127.0.0.1:3000/ru/portal/documents>. Страница доступна участникам организации с `documents.view`; для загрузки нужен `documents.upload`. Отдельного выбора организации нет: документ будет сохранён в организации, к которой привязана ваша сессия. Перед загрузкой убедитесь, что это нужная организация.
 3. Подготовьте небольшой неконфиденциальный PDF с выделяемым текстом, например публичную инструкцию или памятку на 1–3 страницы. Максимальный размер файла — **20 MiB**. Сервер принимает PDF, PNG и JPEG, но для этой проверки используйте только текстовый PDF: OCR выключен, сканы могут не обработаться или потребовать ручной проверки.
-4. Нажмите **«Загрузить документ»** и выберите PDF. Извлечённый текст и релевантные фрагменты документа будут передаваться внешнему AI-провайдеру OpenAI для embeddings и ответов. Не загружайте конфиденциальные или персональные данные.
-5. В списке дождитесь статуса **«Обработан»**; рядом должно отображаться `index: completed`. Список сам не обновляется: обновите страницу браузера. Карточка документа показывает статус обработки, а вкладка **«Извлечённый текст»** позволяет проверить результат извлечения.
+4. Нажмите **«Загрузить PDF»** и выберите PDF. Извлечённый текст и релевантные фрагменты документа будут передаваться внешнему AI-провайдеру OpenAI для embeddings и ответов. Не загружайте конфиденциальные или персональные данные.
+5. В списке дождитесь статуса **«Обработан»**; рядом должно отображаться `index: completed`. Пока обработка или индексация не завершена, список автоматически обновляется. Карточка документа показывает статус обработки, а вкладка **«Извлечённый текст»** позволяет проверить результат извлечения.
 6. Откройте <http://127.0.0.1:3000/ru/portal/knowledge>. В блоке **«Задать вопрос базе знаний»** введите запрос и нажмите **«Получить ответ AI»**. Источники показываются под ответом; откройте ссылку источника, затем выберите указанную **«Страница N»** в PDF viewer. Ссылка открывает документ, но не прокручивает PDF автоматически к этой странице.
 
 Примеры запросов:
@@ -25,40 +27,25 @@
 
 Если документ показывает **«Ошибка»** или **«Карантин»**, не загружайте дубликат. Проверьте, что оба worker-процесса работают, и попросите оператора посмотреть безопасные логи в `.data/manual-check/logs/`. Если embeddings или ответы AI недоступны либо превышен лимит, не повторяйте платный запрос: остановите проверку и свяжитесь с оператором. Диагностика без вызова моделей: `npm run documents:worker-check`, `npm run documents:health-check`, `npm run ai:budget-check` из корня репозитория с тем же runtime environment.
 
-Для этого локального запуска общий PostgreSQL-backed предел ручной AI-сессии установлен переменной `BROWSER_REAL_AI_DIAGNOSTIC_MODE=1` и ограничивает сумму до **€0,05** между web и embedding worker. Обычные пределы заданы `AI_DAILY_BUDGET_EUR=0.20` и `AI_MONTHLY_BUDGET_EUR=0.20`; провайдер вызывается только после резервирования стоимости. Настройки применяются только к запущенным процессам, ключ OpenAI берётся из игнорируемого `.env` и не копируется в Git. Не включайте real-AI browser smoke: он создаёт тестовые данные и не нужен для ручной проверки.
+Для tenant `avantime` действует `AiBudgetPolicy`: €0,20 в день и €0,30 в месяц (имеет приоритет над `AI_DAILY_BUDGET_EUR` и `AI_MONTHLY_BUDGET_EUR`); провайдер вызывается только после резервирования стоимости. Настройки применяются к запущенным процессам; ключ OpenAI берётся из игнорируемого `.env` и не копируется в Git. Команда `test:browser:real-ai` использует отдельную тестовую БД и тестового пользователя, поэтому не подтверждает загрузку в tenant `avantime`.
 
 ## Перезапуск и остановка
 
-Из PowerShell в корне `D:\avantime-platform` сначала запустите существующий PostgreSQL без удаления контейнера или volume:
+Из PowerShell в корне `D:\avantime-platform` сначала запустите существующий PostgreSQL без удаления контейнера или volume, затем сайт в локальном real-профиле (OpenAI, pgvector, PostgreSQL ledger, `RAG_REASONING_EFFORT=low`, `RAG_MAX_OUTPUT_TOKENS=2000`, данные в `apps/web/.data`):
 
 ```powershell
 docker compose up -d postgres
-$runtime = Join-Path $PWD '.data\manual-check'
-$logs = Join-Path $runtime 'logs'
+$logs = Join-Path $PWD '.data\manual-check\logs'
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
-$env:DOCUMENT_STORAGE_DRIVER = 'local'
-$env:DOCUMENT_METADATA_DRIVER = 'postgresql'
-$env:DOCUMENT_PROCESSING_QUEUE_DRIVER = 'local'
-$env:DOCUMENT_DATA_DIR = $runtime
-$env:DOCUMENT_EMBEDDING_DRIVER = 'openai'
-$env:DOCUMENT_EMBEDDING_MODEL = 'text-embedding-3-small'
-$env:DOCUMENT_EMBEDDING_DIMENSIONS = '1536'
-$env:DOCUMENT_VECTOR_DRIVER = 'pgvector'
-$env:DOCUMENT_EMBEDDING_QUEUE_DRIVER = 'postgresql'
-$env:RAG_ANSWER_DRIVER = 'openai'
-$env:RAG_ANSWER_MODEL = 'gpt-5-mini'
-$env:AI_DAILY_BUDGET_EUR = '0.20'
-$env:AI_MONTHLY_BUDGET_EUR = '0.20'
-$env:AI_PROVIDER_MAX_ATTEMPTS = '1'
-$env:BROWSER_REAL_AI_KB_SMOKE = '1'
-$env:BROWSER_REAL_AI_DIAGNOSTIC_MODE = '1'
-$env:BROWSER_REAL_AI_DIAGNOSTICS_FILE = Join-Path $runtime 'ai-diagnostics.jsonl'
-$env:DOCUMENT_RAG_REQUIRED_FOR_READINESS = 'true'
-$env:DOCUMENT_WORKER_TENANT_ID = 'avantime'
-$env:DOCUMENT_WORKER_ID = 'manual-check'
-Start-Process npm.cmd -ArgumentList @('run','dev','-w','@avantime/web','--','--hostname','127.0.0.1','--port','3000') -WorkingDirectory $PWD -RedirectStandardOutput (Join-Path $logs 'web.log') -RedirectStandardError (Join-Path $logs 'web-error.log')
-Start-Process node.exe -ArgumentList @('--env-file=.env','--import','tsx','apps/web/scripts/run-document-worker.ts') -WorkingDirectory $PWD -RedirectStandardOutput (Join-Path $logs 'document-worker.log') -RedirectStandardError (Join-Path $logs 'document-worker-error.log')
-Start-Process node.exe -ArgumentList @('--env-file=.env','--import','tsx','apps/web/scripts/run-document-embedding-worker.ts') -WorkingDirectory $PWD -RedirectStandardOutput (Join-Path $logs 'embedding-worker.log') -RedirectStandardError (Join-Path $logs 'embedding-worker-error.log')
+$env:OPENAI_SDK_MAX_RETRIES = '0'
+Start-Process npm.cmd -ArgumentList @('run','dev','--workspace=@avantime/web','--','--hostname','127.0.0.1','--port','3000') -WorkingDirectory $PWD -RedirectStandardOutput (Join-Path $logs 'web.log') -RedirectStandardError (Join-Path $logs 'web-error.log')
+```
+
+Workers запускайте только когда нужно обработать загруженный документ, и только командами локального профиля; общие команды `documents:worker` и `documents:embedding-worker` с `--env-file=.env` берут fake-драйверы из `.env`:
+
+```powershell
+Start-Process npm.cmd -ArgumentList @('run','documents:worker:local','--workspace=@avantime/web') -WorkingDirectory $PWD -RedirectStandardOutput (Join-Path $logs 'document-worker.log') -RedirectStandardError (Join-Path $logs 'document-worker-error.log')
+Start-Process npm.cmd -ArgumentList @('run','documents:embedding-worker:local','--workspace=@avantime/web') -WorkingDirectory $PWD -RedirectStandardOutput (Join-Path $logs 'embedding-worker.log') -RedirectStandardError (Join-Path $logs 'embedding-worker-error.log')
 ```
 
 Для остановки только сайта и двух workers выполните:

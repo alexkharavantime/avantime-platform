@@ -6,9 +6,9 @@ import { localePath, type Locale } from '../../../lib/i18n';
 import { getLocale } from '../../../lib/i18n-server';
 
 const copy = {
-  lv: { eyebrow: 'Uzņēmuma dokumenti', title: 'Dokumenti', description: 'Apstrādes, OCR, manuālās pārbaudes un indeksēšanas statuss bez iekšējām tehniskām detaļām.' },
-  ru: { eyebrow: 'Документы компании', title: 'Документы', description: 'Состояние обработки, OCR, ручной проверки и индексации без внутренних технических деталей.' },
-  en: { eyebrow: 'Company documents', title: 'Documents', description: 'Processing, OCR, manual review and indexing status without internal technical details.' },
+  lv: { eyebrow: 'Uzņēmuma dokumenti', title: 'Zināšanu bāzes dokumenti', description: 'PDF augšupielāde un apstrādes, OCR, manuālās pārbaudes un indeksēšanas statuss.' },
+  ru: { eyebrow: 'Документы компании', title: 'Документы базы знаний', description: 'Загрузка PDF и состояние обработки, OCR, ручной проверки и индексации.' },
+  en: { eyebrow: 'Company documents', title: 'Knowledge base documents', description: 'Upload PDFs and review processing, OCR, manual review and indexing status.' },
 } satisfies Record<Locale, { eyebrow: string; title: string; description: string }>;
 
 export default async function PortalDocumentsPage() {
@@ -23,7 +23,10 @@ export default async function PortalDocumentsPage() {
       <h1 className="mt-3 text-4xl font-black tracking-tight">{text.title}</h1>
       <p className="mt-3 max-w-3xl text-slate-600">{text.description}</p>
       <div className="mt-8">
-        <PortalDocumentList locale={locale} />
+        <PortalDocumentList
+          locale={locale}
+          canUpload={hasOrganizationPermission(session, 'documents.upload')}
+        />
       </div>
     </div>
   );

@@ -19,16 +19,17 @@ type DocumentUploadProps = {
 };
 
 const copy = {
-  lv: { uploading: 'Augšupielādē…', upload: 'Augšupielādēt dokumentu', error: 'Neizdevās augšupielādēt dokumentu.' },
-  ru: { uploading: 'Загружаем…', upload: 'Загрузить документ', error: 'Не удалось загрузить документ.' },
-  en: { uploading: 'Uploading…', upload: 'Upload document', error: 'Could not upload the document.' },
-} satisfies Record<Locale, { uploading: string; upload: string; error: string }>;
+  lv: { uploading: 'Augšupielādē…', upload: 'Augšupielādēt PDF', uploaded: 'PDF augšupielādēts, apstrāde sākta.', privacy: 'Izgūtais teksts tiks nosūtīts ārējam AI pakalpojumu sniedzējam.', error: 'Neizdevās augšupielādēt dokumentu.' },
+  ru: { uploading: 'Загружаем…', upload: 'Загрузить PDF', uploaded: 'PDF загружен, обработка началась.', privacy: 'Извлечённый текст будет передан внешнему AI-провайдеру.', error: 'Не удалось загрузить документ.' },
+  en: { uploading: 'Uploading…', upload: 'Upload PDF', uploaded: 'PDF uploaded; processing has started.', privacy: 'Extracted text will be sent to an external AI provider.', error: 'Could not upload the document.' },
+} satisfies Record<Locale, { uploading: string; upload: string; uploaded: string; privacy: string; error: string }>;
 
 export function DocumentUpload({ locale, onUploaded }: DocumentUploadProps) {
   const text = copy[locale];
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -39,6 +40,7 @@ export function DocumentUpload({ locale, onUploaded }: DocumentUploadProps) {
 
     setUploading(true);
     setError('');
+    setSuccess('');
 
     try {
       const formData = new FormData();
@@ -49,13 +51,18 @@ export function DocumentUpload({ locale, onUploaded }: DocumentUploadProps) {
         body: formData,
       });
 
-      const result = await response.json();
+      const result = (await response.json()) as {
+        document?: UploadedDocument;
+        error?: string;
+      };
 
       if (!response.ok) {
-        throw new Error(text.error);
+        throw new Error(result.error || text.error);
       }
+      if (!result.document) throw new Error(text.error);
 
       onUploaded?.(result.document);
+      setSuccess(text.uploaded);
     } catch (uploadError) {
       setError(
         uploadError instanceof Error ? uploadError.message : text.error,
@@ -89,6 +96,8 @@ export function DocumentUpload({ locale, onUploaded }: DocumentUploadProps) {
       </button>
 
       {error ? <p className="mt-2 max-w-sm text-sm font-semibold text-red-600">{error}</p> : null}
+      {success ? <p role="status" className="mt-2 max-w-sm text-sm font-semibold text-emerald-700">{success}</p> : null}
+      <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{text.privacy}</p>
     </div>
   );
 }

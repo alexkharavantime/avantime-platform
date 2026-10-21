@@ -84,6 +84,35 @@ test.describe('portal browser smoke', () => {
     await assertNoBrowserErrors();
   });
 
+  test('document upload is visible only to users with upload permission', async ({
+    page,
+    loginAs,
+  }) => {
+    await page.context().clearCookies();
+    await loginAs('identityManager');
+    const managerDocumentsResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/documents/upload' &&
+        response.request().method() === 'GET',
+    );
+    await page.goto('/ru/portal/documents');
+    await expect(page.getByRole('button', { name: 'Загрузить PDF' })).toBeVisible();
+    expect((await managerDocumentsResponse).status()).toBe(200);
+    await expect(page.getByRole('heading', { level: 2, name: 'Документов пока нет' })).toBeVisible();
+
+    await page.context().clearCookies();
+    await loginAs('identityViewer');
+    const viewerDocumentsResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/documents/upload' &&
+        response.request().method() === 'GET',
+    );
+    await page.goto('/ru/portal/documents');
+    await expect(page.getByRole('button', { name: 'Загрузить PDF' })).toHaveCount(0);
+    expect((await viewerDocumentsResponse).status()).toBe(200);
+    await expect(page.getByRole('heading', { level: 2, name: 'Документов пока нет' })).toBeVisible();
+  });
+
   test('ADMIN uses the ordinary login flow and can open document management', async ({
     page,
     loginAs,
