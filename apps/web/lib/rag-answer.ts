@@ -197,8 +197,27 @@ export function buildRagSystemInstructions(language: string) {
   ].join(' ');
 }
 
+const SOURCE_ID_LIST = '[A-Za-z][A-Za-z0-9_-]{0,31}(?:\\s*[,;]\\s*[A-Za-z][A-Za-z0-9_-]{0,31})*';
+
+function splitSourceIds(list: string) {
+  return list.split(/[,;]/u).map((sourceId) => sourceId.trim());
+}
+
 export function sanitizeAnswerCitations(answer: string, allowedSourceIds: ReadonlySet<string>) {
   return answer
+    // "[S1, S3]" -> "[S1][S3]"; unknown IDs are removed below.
+    .replace(new RegExp(`\\[\\s*(${SOURCE_ID_LIST})\\s*\\]`, 'gu'), (_marker, list: string) =>
+      splitSourceIds(list)
+        .map((sourceId) => `[${sourceId}]`)
+        .join(''),
+    )
+    // "(S1)" or "(S1, S2)" -> "[S1][S2]" only when every ID is a server-supplied source.
+    .replace(new RegExp(`\\(\\s*(${SOURCE_ID_LIST})\\s*\\)`, 'gu'), (marker, list: string) => {
+      const sourceIds = splitSourceIds(list);
+      return sourceIds.every((sourceId) => allowedSourceIds.has(sourceId))
+        ? sourceIds.map((sourceId) => `[${sourceId}]`).join('')
+        : marker;
+    })
     .replace(/\[([A-Za-z][A-Za-z0-9_-]{0,31})\]/g, (marker, sourceId: string) =>
       allowedSourceIds.has(sourceId) ? marker : '',
     )
