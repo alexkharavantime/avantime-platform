@@ -177,6 +177,34 @@ function tokenize(value: string) {
     .slice(0, 100);
 }
 
+// Common Russian inflection endings, longest first; stems keep at least four letters.
+const russianEndings = [
+  'иями', 'ются', 'ется', 'ями', 'ами', 'ого', 'его', 'ому', 'ему', 'ыми', 'ими', 'ой', 'ей',
+  'ий', 'ый', 'ая', 'яя', 'ое', 'ее', 'ые', 'ие', 'ов', 'ев', 'ам', 'ям', 'ах', 'ях', 'ом', 'ем',
+  'ую', 'юю', 'ия', 'ию', 'ии', 'у', 'ю', 'а', 'я', 'о', 'е', 'ё', 'ы', 'и', 'ь',
+].sort((first, second) => second.length - first.length);
+
+function lexicalStem(token: string) {
+  if (!/^[\p{Script=Cyrillic}-]+$/u.test(token)) return token;
+  for (const ending of russianEndings) {
+    if (token.endsWith(ending) && token.length - ending.length >= 4) {
+      return token.slice(0, -ending.length);
+    }
+  }
+  return token;
+}
+
+// Stems treated as equivalent query terms.
+const lexicalSynonymGroups = [['сырь', 'материал']];
+
+function lexicalTermAlternatives(query: string) {
+  const stems = [...new Set(tokenize(query).map(lexicalStem))];
+  return stems.map((stem) => {
+    const group = lexicalSynonymGroups.find((candidates) => candidates.includes(stem));
+    return group ?? [stem];
+  });
+}
+
 function requestedPage(query: string) {
   const words = normalizeText(query).split(' ');
   for (let index = 0; index < words.length; index += 1) {
@@ -219,19 +247,17 @@ function countOccurrences(source: string, query: string) {
 export function lexicalScore(text: string, query: string) {
   const normalizedText = normalizeText(text);
   const normalizedQuery = normalizeText(query);
-  const tokens = [...new Set(tokenize(query))];
+  const terms = lexicalTermAlternatives(query);
   const exactMatches = countOccurrences(normalizedText, normalizedQuery);
-  const tokenMatches = tokens.reduce(
-    (total, token) => total + countOccurrences(normalizedText, token),
-    0,
+  const termMatches = terms.map((alternatives) =>
+    Math.max(...alternatives.map((alternative) => countOccurrences(normalizedText, alternative))),
   );
+  const tokenMatches = termMatches.reduce((total, count) => total + count, 0);
   const coverage =
-    tokens.length > 0
-      ? tokens.filter((token) => normalizedText.includes(token)).length / tokens.length
-      : 0;
+    terms.length > 0 ? termMatches.filter((count) => count > 0).length / terms.length : 0;
   const phrase = exactMatches > 0 ? 1 : 0;
   const textLength = Math.max(1, normalizedText.split(' ').filter(Boolean).length);
-  const averageTermFrequency = tokens.length > 0 ? tokenMatches / tokens.length : 0;
+  const averageTermFrequency = terms.length > 0 ? tokenMatches / terms.length : 0;
   const frequency =
     averageTermFrequency > 0 ? Math.log1p(averageTermFrequency) / Math.log1p(textLength) : 0;
   return Number((phrase * 0.35 + coverage * 0.45 + frequency * 0.2).toFixed(6));
