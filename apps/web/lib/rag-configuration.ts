@@ -45,6 +45,7 @@ export type RagConfiguration = {
     model: string;
     maximumContextCharacters: number;
     maximumOutputTokens: number;
+    reasoningEffort?: RagReasoningEffort;
     timeoutMs: number;
   };
   limits: {
@@ -59,6 +60,9 @@ export type RagConfiguration = {
     monthlyBudgetEur: number;
   };
 };
+
+export const ragReasoningEfforts = ['minimal', 'low', 'medium', 'high'] as const;
+export type RagReasoningEffort = (typeof ragReasoningEfforts)[number];
 
 function parseEnum<T extends string>(
   environment: Record<string, string | undefined>,
@@ -301,6 +305,16 @@ export function loadRagConfiguration(
         18_000,
       ),
       maximumOutputTokens: parsePositiveInteger(environment, 'RAG_MAX_OUTPUT_TOKENS', 1_000),
+      ...(environment.RAG_REASONING_EFFORT?.trim()
+        ? {
+            reasoningEffort: parseEnum<RagReasoningEffort>(
+              environment,
+              'RAG_REASONING_EFFORT',
+              'low',
+              ragReasoningEfforts,
+            ),
+          }
+        : {}),
       timeoutMs: parsePositiveInteger(environment, 'RAG_TIMEOUT_MS', 45_000),
     },
     limits: {

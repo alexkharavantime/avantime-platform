@@ -16,7 +16,11 @@ import {
   type DistributedAiRateLimiter,
 } from './ai-control';
 import type { DocumentTenantContext } from './document-model';
-import type { AiProviderDriver, RagConfiguration } from './rag-configuration';
+import type {
+  AiProviderDriver,
+  RagConfiguration,
+  RagReasoningEffort,
+} from './rag-configuration';
 
 export type EmbeddingPurpose = 'document' | 'query';
 
@@ -64,6 +68,7 @@ export type RagGenerationRequest = {
   language: string;
   model: string;
   maximumOutputTokens: number;
+  reasoningEffort?: RagReasoningEffort;
   systemInstructions: string;
   sources: readonly RagContextSource[];
   correlationId: string;
@@ -381,12 +386,12 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   private readonly client: OpenAI;
   private readonly requestStatuses = new Map<string, number>();
   private readonly configured: boolean;
-  private readonly reasoningEffort?: 'minimal';
+  private readonly reasoningEffort?: RagReasoningEffort;
 
   constructor(
     apiKey: string,
     fetchImplementation?: typeof globalThis.fetch,
-    reasoningEffort?: 'minimal',
+    reasoningEffort?: RagReasoningEffort,
   ) {
     this.configured = apiKey.trim().length > 0;
     this.reasoningEffort = reasoningEffort;
@@ -443,7 +448,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   async generate(request: RagGenerationRequest, signal: AbortSignal): Promise<RagGenerationResult> {
     const reasoningEffort =
       this.reasoningEffort ??
-      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 'minimal' : undefined);
+      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 'minimal' : request.reasoningEffort);
     const response = await this.client.responses.create(
       {
         model: request.model,
@@ -707,6 +712,9 @@ export class DefaultAiGateway implements AiGateway {
       ...request,
       model: this.configuration.answer.model,
       maximumOutputTokens,
+      ...(this.configuration.answer.reasoningEffort
+        ? { reasoningEffort: this.configuration.answer.reasoningEffort }
+        : {}),
     };
     const estimatedInput = estimateTokens([
       generationRequest.systemInstructions,

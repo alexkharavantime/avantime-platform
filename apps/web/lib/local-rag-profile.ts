@@ -35,6 +35,8 @@ export function configureLocalRagProfile(
       RAG_ANSWER_DRIVER: 'openai',
       AI_PROVIDER_MAX_ATTEMPTS: '1',
     });
+    // Default reasoning leaves too few output tokens for answer text within RAG_MAX_OUTPUT_TOKENS.
+    environment.RAG_REASONING_EFFORT ||= 'low';
     if (target !== 'web') environment.DOCUMENT_WORKER_TENANT_ID ||= 'avantime';
     return;
   }

@@ -85,6 +85,8 @@ async function inspectRealProfile() {
           dimensions: ragConfiguration.embedding.dimensions,
         },
         answerModel: ragConfiguration.answer.model,
+        answerReasoningEffort: ragConfiguration.answer.reasoningEffort ?? 'provider-default',
+        maximumOutputTokens: ragConfiguration.answer.maximumOutputTokens,
         attempts: {
           provider: ragConfiguration.limits.providerMaxAttempts,
           documentProcessing: documentConfiguration.retryPolicy.maxAttempts,

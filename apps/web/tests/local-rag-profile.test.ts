@@ -80,3 +80,29 @@ test('explicit local real profile applies documented local adapters and shared d
     path.resolve(fileURLToPath(repositoryRoot), 'apps', 'web', '.data'),
   );
 });
+
+test('local real profile limits answer reasoning unless an effort is configured explicitly', () => {
+  const defaultEnvironment: Record<string, string | undefined> = { NODE_ENV: 'test' };
+  configureLocalRagProfile(defaultEnvironment, 'real', 'web');
+  assert.equal(defaultEnvironment.RAG_REASONING_EFFORT, 'low');
+
+  const explicitEnvironment: Record<string, string | undefined> = {
+    NODE_ENV: 'test',
+    RAG_REASONING_EFFORT: 'medium',
+  };
+  configureLocalRagProfile(explicitEnvironment, 'real', 'web');
+  assert.equal(explicitEnvironment.RAG_REASONING_EFFORT, 'medium');
+});
+
+test('RAG reasoning effort is optional and validated', () => {
+  const base = { NODE_ENV: 'test', DOCUMENT_EMBEDDING_DRIVER: 'fake', RAG_ANSWER_DRIVER: 'fake' };
+  assert.equal(loadRagConfiguration(base).answer.reasoningEffort, undefined);
+  assert.equal(
+    loadRagConfiguration({ ...base, RAG_REASONING_EFFORT: 'low' }).answer.reasoningEffort,
+    'low',
+  );
+  assert.throws(
+    () => loadRagConfiguration({ ...base, RAG_REASONING_EFFORT: 'extreme' }),
+    /RAG_REASONING_EFFORT has an unsupported value/u,
+  );
+});
