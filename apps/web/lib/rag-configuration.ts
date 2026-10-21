@@ -190,6 +190,10 @@ export function loadRagConfiguration(
     'DOCUMENT_RAG_REQUIRED_FOR_READINESS',
     production,
   );
+  const disableBrowserSessionCaps =
+    !production &&
+    environment.BROWSER_REAL_AI_KB_SMOKE === '1' &&
+    environment.BROWSER_REAL_AI_DISABLE_SESSION_CAPS === '1';
 
   if (production) {
     requireValue(environment, 'DOCUMENT_EMBEDDING_DRIVER');
@@ -319,10 +323,10 @@ export function loadRagConfiguration(
     },
     limits: {
       providerMaxAttempts: Number(providerMaxAttempts),
-      ...(environment.BROWSER_REAL_AI_KB_SMOKE === '1'
+      ...(environment.BROWSER_REAL_AI_KB_SMOKE === '1' && !disableBrowserSessionCaps
         ? { sessionProviderOperationLimit: 12 }
         : {}),
-      ...(environment.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1'
+      ...(environment.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' && !disableBrowserSessionCaps
         ? { sessionBudgetLimitEur: 0.05 }
         : {}),
       queryMaximumCharacters: parsePositiveInteger(environment, 'RAG_QUERY_MAX_CHARACTERS', 2_000),

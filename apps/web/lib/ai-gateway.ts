@@ -156,6 +156,20 @@ function estimateCost(inputTokens: number, outputTokens: number) {
   return Number((inputTokens * 0.000_001 + outputTokens * 0.000_004).toFixed(6));
 }
 
+function openAiSdkMaxRetries(environment = process.env) {
+  if (environment.BROWSER_REAL_AI_KB_SMOKE === '1') return 0;
+  const configured = environment.OPENAI_SDK_MAX_RETRIES;
+  if (configured === undefined) return 2;
+  if (!/^\d+$/u.test(configured)) {
+    throw new Error('OPENAI_SDK_MAX_RETRIES must be a non-negative integer.');
+  }
+  const retries = Number(configured);
+  if (!Number.isSafeInteger(retries)) {
+    throw new Error('OPENAI_SDK_MAX_RETRIES must be a non-negative integer.');
+  }
+  return retries;
+}
+
 function safeTokenCount(value: unknown) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -420,7 +434,7 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
     this.client = new OpenAI({
       apiKey,
       baseURL: normalizeOpenAiBaseUrl(process.env.OPENAI_BASE_URL),
-      maxRetries: process.env.BROWSER_REAL_AI_KB_SMOKE === '1' ? 0 : 2,
+      maxRetries: openAiSdkMaxRetries(),
       fetch: async (input, init) => {
         const response = await fetcher(input, init);
         const requestId = response.headers.get('x-request-id');
@@ -877,6 +891,7 @@ export class DefaultAiGateway implements AiGateway {
       requestType,
       request.correlationId,
       this.estimateReservedCost(estimateCost(estimateTokens(request.texts), 0)),
+      request.usageIdempotencyKey,
     );
     const startedAt = Date.now();
     let attemptCount = 0;

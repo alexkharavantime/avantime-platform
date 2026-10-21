@@ -128,6 +128,15 @@ export interface LexicalRetriever {
   retrieve(request: RetrievalRequest): Promise<RetrievalResult[]>;
 }
 
+const lexicalStopWords = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'how', 'in', 'is', 'it',
+  'of', 'on', 'or', 'the', 'this', 'to', 'was', 'what', 'when', 'where', 'which', 'who', 'why',
+  'with', 'you', 'а', 'без', 'бы', 'в', 'во', 'для', 'до', 'же', 'за', 'и', 'из', 'к', 'ко',
+  'ли', 'на', 'над', 'не', 'но', 'о', 'об', 'от', 'по', 'под', 'при', 'с', 'со', 'то', 'у',
+  'уже', 'что', 'это', 'ar', 'bet', 'bez', 'bija', 'būs', 'es', 'ir', 'ja', 'kā', 'kas', 'ko',
+  'kur', 'lai', 'no', 'par', 'pa', 'pie', 'tā', 'tas', 'un', 'uz', 'vai', 'vēl',
+]);
+
 export interface SemanticRetriever {
   retrieve(request: RetrievalRequest): Promise<RetrievalResult[]>;
 }
@@ -164,8 +173,34 @@ function normalizeText(value: string) {
 function tokenize(value: string) {
   return normalizeText(value)
     .split(' ')
-    .filter((token) => token.length >= 2)
+    .filter((token) => token.length >= 2 && !lexicalStopWords.has(token))
     .slice(0, 100);
+}
+
+function requestedPage(query: string) {
+  const words = normalizeText(query).split(' ');
+  for (let index = 0; index < words.length; index += 1) {
+    const current = words[index];
+    const next = words[index + 1] ?? '';
+    if (
+      (['title', 'cover', 'front'].includes(current) && next.startsWith('page')) ||
+      (current.startsWith('титульн') && next.startsWith('страниц')) ||
+      current.startsWith('titullap')
+    ) {
+      return 1;
+    }
+    if (
+      (current.startsWith('page') ||
+        current.startsWith('страниц') ||
+        current === 'lapa' ||
+        current.startsWith('lapā')) &&
+      /^\d{1,4}$/u.test(next)
+    ) {
+      const page = Number(next);
+      if (page > 0) return page;
+    }
+  }
+  return undefined;
 }
 
 function countOccurrences(source: string, query: string) {
@@ -291,8 +326,8 @@ export class DefaultLexicalRetriever implements LexicalRetriever {
 
           chunkId: chunk.id,
           chunkIndex: chunk.index,
-          pageStart: null,
-          pageEnd: null,
+          pageStart: chunk.pageStart ?? null,
+          pageEnd: chunk.pageEnd ?? null,
           preview: preview(chunk.text, query),
           score,
           scoreComponents: {
@@ -424,6 +459,7 @@ export class DefaultHybridRetriever implements HybridRetriever {
 
   async retrieve(request: RetrievalRequest) {
     const { topK } = validateRequest(request, this.configuration);
+    const page = requestedPage(request.query);
     const candidateLimit = Math.min(100, Math.max(topK * 3, topK));
     const [lexical, semantic] = await Promise.all([
       this.lexical.retrieve({ ...request, topK: candidateLimit }),
@@ -461,27 +497,42 @@ export class DefaultHybridRetriever implements HybridRetriever {
     }
     const weightTotal =
       this.configuration.hybrid.lexicalWeight + this.configuration.hybrid.semanticWeight;
-    const candidates = [...combined.values()].map((result) => {
-      const hybrid =
-        (result.lexicalNormalized * this.configuration.hybrid.lexicalWeight +
-          result.semanticNormalized * this.configuration.hybrid.semanticWeight) /
-        weightTotal;
-      return {
-        ...result,
-        score: Number(hybrid.toFixed(6)),
-        scoreComponents: {
-          lexical: Number(result.lexicalNormalized.toFixed(6)),
-          semantic: Number(result.semanticNormalized.toFixed(6)),
-          hybrid: Number(hybrid.toFixed(6)),
-        },
-      };
-    });
+    const candidates = [...combined.values()]
+      .map((result) => {
+        const hybrid =
+          (result.lexicalNormalized * this.configuration.hybrid.lexicalWeight +
+            result.semanticNormalized * this.configuration.hybrid.semanticWeight) /
+          weightTotal;
+        return {
+          ...result,
+          score: Number(hybrid.toFixed(6)),
+          scoreComponents: {
+            lexical: Number(result.lexicalNormalized.toFixed(6)),
+            semantic: Number(result.semanticNormalized.toFixed(6)),
+            hybrid: Number(hybrid.toFixed(6)),
+          },
+        };
+      });
     const exclusions = new Map<string, RetrievalTraceCandidate['exclusionReason']>();
     const ranked = candidates
       .filter((result) => {
         const key = `${result.sourceType}:${result.sourceId}:${result.chunkId}`;
-        if (result.score < this.configuration.hybrid.minimumScore) {
+        if (
+          page === undefined
+            ? result.score < this.configuration.hybrid.minimumScore
+            : result.score <= 0
+        ) {
           exclusions.set(key, 'below_minimum_score');
+          return false;
+        }
+        if (
+          page !== undefined &&
+          (result.pageStart === null ||
+            result.pageEnd === null ||
+            result.pageStart > page ||
+            result.pageEnd < page)
+        ) {
+          exclusions.set(key, 'page_filter');
           return false;
         }
         return true;

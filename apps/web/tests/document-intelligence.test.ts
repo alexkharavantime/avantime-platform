@@ -159,6 +159,22 @@ test('quality assessment rejects garbage even when it is long', () => {
   assert.equal(result.requiresOcr, true);
 });
 
+test('quality assessment accepts dotted leaders when the surrounding text is sufficient', () => {
+  const result = quality.assess({
+    text: `Chapter details ${'.'.repeat(40)} 12 ${'Readable prose supplies enough words. '.repeat(5)}`,
+    pageCount: 1,
+  });
+  assert.equal(result.sufficient, true);
+  assert.equal(result.reason, 'SUFFICIENT');
+});
+
+test('quality assessment still rejects a text layer made only of dots', () => {
+  const result = quality.assess({ text: '.'.repeat(300), pageCount: 1 });
+  assert.equal(result.sufficient, false);
+  assert.equal(result.reason, 'LOW_ALPHANUMERIC_RATIO');
+  assert.equal(result.requiresOcr, true);
+});
+
 test('normalization preserves financial identifiers and page boundaries', () => {
   const normalized = normalizeDocumentText(
     'IBAN: LV80 BANK 0000 1234\r\nAmount: 1 234,56 EUR\0\n\n\n\n\f\nReg. No. 40001234567',

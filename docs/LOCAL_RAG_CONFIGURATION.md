@@ -30,6 +30,11 @@ usage ledger, and sets one provider attempt. It validates the database budget po
 pgvector readiness before starting Next.js. It does not start either worker, create an
 embedding, submit a question or re-index a document.
 
+The OpenAI SDK uses two retries by default. For a controlled manual run, set
+`OPENAI_SDK_MAX_RETRIES=0` in the process environment; this does not change the gateway
+attempt limit (`AI_PROVIDER_MAX_ATTEMPTS`). The dedicated real-AI browser smoke mode
+continues to force SDK retries off.
+
 The fake provider is opt-in:
 
 ```powershell

@@ -542,6 +542,40 @@ test('hybrid ranking applies weights, duplicate suppression and per-document div
     ranked.length,
   );
 });
+
+test('hybrid retrieval honors explicit title-page and numbered-page references', async () => {
+  const configuration = loadRagConfiguration({
+    NODE_ENV: 'test',
+    DOCUMENT_EMBEDDING_DRIVER: 'fake',
+    RAG_ANSWER_DRIVER: 'fake',
+    HYBRID_TOP_K: '3',
+    HYBRID_MAX_CHUNKS_PER_DOCUMENT: '3',
+    HYBRID_MIN_SCORE: '0',
+  });
+  const pageOne = { ...result('document-a', 'page-one', 0.7, 'lexical'), pageStart: 1, pageEnd: 1 };
+  const pageTwo = { ...result('document-a', 'page-two', 1, 'lexical'), pageStart: 2, pageEnd: 2 };
+  const pageFour = { ...result('document-a', 'page-four', 0.8, 'lexical'), pageStart: 4, pageEnd: 4 };
+  const hybrid = new DefaultHybridRetriever(
+    { retrieve: async () => [pageTwo, pageOne, pageFour] },
+    { retrieve: async () => [pageTwo, pageFour] },
+    configuration,
+  );
+
+  const titlePageResults = await hybrid.retrieve({
+    tenant: tenantA,
+    query: 'Какой теме посвящен курс на титульной странице?',
+    correlationId: 'hybrid-title-page-reference',
+  });
+  const numberedPageResults = await hybrid.retrieve({
+    tenant: tenantA,
+    query: 'What is described on page 4?',
+    correlationId: 'hybrid-numbered-page-reference',
+  });
+
+  assert.deepEqual(titlePageResults.map((item) => item.pageStart), [1]);
+  assert.deepEqual(numberedPageResults.map((item) => item.pageStart), [4]);
+});
+
 test('hybrid trace records selected chunks and exclusion reasons without source text', async () => {
   const configuration = loadRagConfiguration({
     NODE_ENV: 'test',
@@ -1649,6 +1683,7 @@ test('explicit real-AI browser mode retains PostgreSQL accounting under next dev
     BROWSER_REAL_AI_KB_SMOKE: '1',
     BROWSER_REAL_AI_DIAGNOSTIC_MODE: '1',
     BROWSER_REAL_AI_DIAGNOSTIC_INCLUDE_SOURCE_TEXT: '1',
+    BROWSER_REAL_AI_DISABLE_SESSION_CAPS: '1',
     BROWSER_REAL_AI_DIAGNOSTICS_FILE: path.join(dataDirectory, 'provider-events.jsonl'),
     DOCUMENT_DATA_DIR: dataDirectory,
     DOCUMENT_EMBEDDING_DRIVER: 'fake',
@@ -1680,6 +1715,8 @@ test('explicit real-AI browser mode retains PostgreSQL accounting under next dev
       },
     });
     assert.ok(services.rag);
+    assert.equal(services.rag.configuration.limits.sessionBudgetLimitEur, undefined);
+    assert.equal(services.rag.configuration.limits.sessionProviderOperationLimit, undefined);
     assert.ok(services.rag.events instanceof JsonlAiOperationalEventSink);
     assert.equal(services.rag.events.includeRetrievedText, true);
     services.rag.events.record({
@@ -1823,6 +1860,42 @@ test('OpenAI real-AI smoke disables SDK retries for quota errors', async () => {
   }
 });
 
+test('OpenAI SDK retry override disables retries outside browser smoke mode', async () => {
+  const previousSmokeFlag = process.env.BROWSER_REAL_AI_KB_SMOKE;
+  const previousRetryLimit = process.env.OPENAI_SDK_MAX_RETRIES;
+  delete process.env.BROWSER_REAL_AI_KB_SMOKE;
+  process.env.OPENAI_SDK_MAX_RETRIES = '0';
+  let requestCount = 0;
+  try {
+    const provider = new OpenAiGatewayProvider('scoped-test-key', async () => {
+      requestCount += 1;
+      return new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    await assert.rejects(
+      provider.embed(
+        {
+          tenant: tenantA,
+          texts: ['synthetic input'],
+          model: 'text-embedding-3-small',
+          dimensions: 1_536,
+          purpose: 'query',
+          correlationId: 'sdk-retry-override-test',
+        },
+        new AbortController().signal,
+      ),
+    );
+    assert.equal(requestCount, 1);
+  } finally {
+    if (previousSmokeFlag === undefined) delete process.env.BROWSER_REAL_AI_KB_SMOKE;
+    else process.env.BROWSER_REAL_AI_KB_SMOKE = previousSmokeFlag;
+    if (previousRetryLimit === undefined) delete process.env.OPENAI_SDK_MAX_RETRIES;
+    else process.env.OPENAI_SDK_MAX_RETRIES = previousRetryLimit;
+  }
+});
+
 test('lexical search works without AI and answer generation fails closed', async () => {
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'avantime-no-ai-'));
   const environment = {
@@ -1876,6 +1949,40 @@ test('lexical search works without AI and answer generation fails closed', async
     );
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test('lexical search ranks rare query terms above common wording across chunks', async () => {
+  const current = await fixture();
+  try {
+    await addCompletedDocument(current.services, tenantA, 'title-document', [
+      chunk('title-chunk', 0, 'Operations Analytics Guide'),
+    ]);
+    await addCompletedDocument(
+      current.services,
+      tenantA,
+      'common-word-document',
+      Array.from({ length: 10 }, (_, index) =>
+        chunk(`common-word-${index}`, index, 'What is the subject of this manual?'),
+      ),
+    );
+    assert.ok(current.services.rag);
+    const lexical = new DefaultLexicalRetriever(
+      current.services.metadata,
+      current.services.processing,
+      current.services.rag.configuration,
+    );
+
+    const results = await lexical.retrieve({
+      tenant: tenantA,
+      query: 'What is the subject of the Operations Analytics Guide?',
+      topK: 5,
+      correlationId: 'lexical-discriminative-terms',
+    });
+
+    assert.equal(results[0]?.chunkId, 'title-chunk');
+  } finally {
+    await current.cleanup();
   }
 });
 
