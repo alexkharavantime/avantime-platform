@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { localePath, portalCopy, type Locale } from '../../lib/i18n';
 
 export function LoginForm({
@@ -23,6 +23,7 @@ export function LoginForm({
   const [email, setEmail] = useState(demoEnabled ? 'demo@avantime.lv' : '');
   const [password, setPassword] = useState(demoEnabled ? 'avantime' : '');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const passwordInputId = useId();
   const [error, setError] = useState(oidcError ? copy.oidcError : '');
   const [pending, setPending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -160,10 +161,16 @@ export function LoginForm({
           />
         </label>
       ) : (
-        <label className="block">
-          <span className="mb-2 block text-sm font-bold text-slate-700">{copy.passwordLabel}</span>
+        <div>
+          <label
+            htmlFor={passwordInputId}
+            className="mb-2 block text-sm font-bold text-slate-700"
+          >
+            {copy.passwordLabel}
+          </label>
           <div className="relative">
             <input
+              id={passwordInputId}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type={passwordVisible ? 'text' : 'password'}
@@ -203,7 +210,7 @@ export function LoginForm({
               </svg>
             </button>
           </div>
-        </label>
+        </div>
       )}
       {enrollmentRequired && challengeToken !== 'restricted-enrollment' && (
         <p

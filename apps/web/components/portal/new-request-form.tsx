@@ -34,8 +34,8 @@ export function NewRequestForm({ locale }: { locale: Locale }) {
         setError(text.error);
         return;
       }
+      // A refresh here could pre-empt the pending navigation and leave the user on the form.
       router.push(localePath(locale, `/portal/requests/${encodeURIComponent(data.request.id)}`));
-      router.refresh();
     } catch {
       setError(text.error);
     } finally {
