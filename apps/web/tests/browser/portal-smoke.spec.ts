@@ -71,7 +71,8 @@ test.describe('portal browser smoke', () => {
     loginAs,
   }) => {
     await page.context().clearCookies();
-    await loginAs('identityClient');
+    // identityClient gets MFA and a new password from the identity lifecycle specs.
+    await loginAs('identityManager');
     await page.goto('/ru/portal/requests');
     await expect(page.getByRole('heading', { level: 1, name: 'Обращения' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Обращений пока нет' })).toBeVisible();

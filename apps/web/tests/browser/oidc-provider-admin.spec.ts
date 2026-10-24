@@ -44,7 +44,7 @@ test.describe.serial('TASK-010 OIDC provider administration', () => {
     );
     const providerDetailPage = page.waitForResponse(
       (response) =>
-        /^\/portal\/settings\/security\/identity-providers\/[^/]+$/u.test(
+        /^(?:\/(?:lv|ru|en))?\/portal\/settings\/security\/identity-providers\/[^/]+$/u.test(
           new URL(response.url()).pathname,
         ) &&
         response.request().resourceType() === 'fetch' &&
