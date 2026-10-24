@@ -57,7 +57,7 @@ test.describe.serial('TASK-010 OIDC provider administration', () => {
 
     await expect(page).toHaveURL(/\/portal\/settings\/security\/identity-providers\/[^/]+$/u);
     await expect(page.getByText('NOT_VALIDATED', { exact: true })).toBeVisible();
-    await expect(page.getByText(/настроен · key browser-v1/u)).toBeVisible();
+    await expect(page.getByText(/настроен · ключ browser-v1/u)).toBeVisible();
     await expect(page.getByLabel('Новая ссылка на client secret')).toHaveValue('');
     await expect(page.locator('body')).not.toContainText('OIDC_BROWSER_CLIENT_SECRET');
     await assertNoBrowserErrors();
