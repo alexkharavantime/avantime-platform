@@ -6,6 +6,7 @@ import {
   loadDocumentIntegrationEnvironment,
   runIntegrationCommand,
 } from './document-integration-environment';
+import { reconcilePasswordResetTokens } from './password-reset-reconciliation';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
 
@@ -153,6 +154,7 @@ async function main() {
     await admin.$executeRawUnsafe(`CREATE DATABASE "${bootstrapDatabaseName}"`);
     const bootstrapEnvironment = { ...environment, DATABASE_URL: bootstrapUrl.toString() };
     await prepareLegacyAccountBaseline(repositoryRoot, schema, bootstrapEnvironment);
+    reconcilePasswordResetTokens({ repositoryRoot, schema, environment: bootstrapEnvironment });
     await runIntegrationCommand('npx', ['prisma', 'migrate', 'deploy', '--schema', schema], {
       cwd: repositoryRoot,
       environment: bootstrapEnvironment,
@@ -173,6 +175,7 @@ async function main() {
   }
 
   await prepareLegacyAccountBaseline(repositoryRoot, schema, environment);
+  reconcilePasswordResetTokens({ repositoryRoot, schema, environment });
   await runIntegrationCommand('npx', ['prisma', 'migrate', 'deploy', '--schema', schema], {
     cwd: repositoryRoot,
     environment,

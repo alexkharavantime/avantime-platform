@@ -1,6 +1,4 @@
-import { spawnSync } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import {
@@ -8,6 +6,7 @@ import {
   loadDocumentIntegrationEnvironment,
   runIntegrationCommand,
 } from './document-integration-environment';
+import { reconcilePasswordResetTokens as reconcileExistingPasswordResetTokens } from './password-reset-reconciliation';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
 const EXPECTED_MIGRATION_COUNT = 22;
@@ -93,48 +92,20 @@ async function deployMigrations(
   });
 }
 
-const PASSWORD_RESET_MIGRATION = '20260930130000_password_reset_tokens';
-
-// Mirrors docker/run-staging-migrations.sh: databases built from the historical account baseline
-// already contain "PasswordResetToken", so its migration is recorded only after an exact match.
+// Databases built from the historical account baseline already contain "PasswordResetToken".
 async function reconcilePasswordResetTokens(options: {
   repositoryRoot: string;
   schema: string;
   environment: NodeJS.ProcessEnv;
   targetDatabaseUrl: string;
 }) {
-  const commandEnvironment = {
-    ...options.environment,
-    DATABASE_URL: options.targetDatabaseUrl,
-  };
-  assertSafeDocumentIntegrationEnvironment(commandEnvironment);
-  const check = path.join(
-    options.repositoryRoot,
-    'packages',
-    'database',
-    'prisma',
-    'reconciliation',
-    `${PASSWORD_RESET_MIGRATION}.sql`,
-  );
-  const prismaCli = createRequire(
-    path.join(options.repositoryRoot, 'packages', 'database', 'package.json'),
-  ).resolve('prisma/build/index.js');
-  const checkResult = spawnSync(
-    process.execPath,
-    [prismaCli, 'db', 'execute', '--file', check, '--schema', options.schema],
-    { cwd: options.repositoryRoot, env: commandEnvironment, encoding: 'utf8' },
-  );
-  const checkOutput = `${checkResult.stdout ?? ''}${checkResult.stderr ?? ''}`;
-  if (checkResult.status !== 0) {
-    if (checkOutput.includes('AVANTIME_RECONCILE_NOT_REQUIRED')) return 'not_required' as const;
-    throw new Error(`PasswordResetToken reconciliation check failed:\n${checkOutput}`);
-  }
-  await runIntegrationCommand(
-    'npx',
-    ['prisma', 'migrate', 'resolve', '--applied', PASSWORD_RESET_MIGRATION, '--schema', options.schema],
-    { cwd: options.repositoryRoot, environment: commandEnvironment },
-  );
-  return 'reconciled' as const;
+  const environment = { ...options.environment, DATABASE_URL: options.targetDatabaseUrl };
+  assertSafeDocumentIntegrationEnvironment(environment);
+  return reconcileExistingPasswordResetTokens({
+    repositoryRoot: options.repositoryRoot,
+    schema: options.schema,
+    environment,
+  });
 }
 
 async function assertAppliedMigrationSet(
