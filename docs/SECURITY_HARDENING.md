@@ -81,7 +81,7 @@ RootFS, operations and OCR integration images report no Critical or High finding
 and add only a distinct `CMD`, so one freshly rebuilt worker is the canonical worker scan target.
 
 Alpine runtime images contain `libcrypto3` and `libssl3 3.5.8-r0`. Worker and OCR `esbuild`
-binaries are rebuilt with Go `1.26.6` in build-only stages. The OCR Debian 12 scan warns that distro
+binaries are rebuilt with Go `1.26.10` in build-only stages. The OCR Debian 12 scan warns that distro
 vulnerability data may be incomplete because Grype treats the end of regular support as EOL.
 Debian's official lifecycle keeps Bookworm amd64 under
 [LTS through 2028-06-30](https://www.debian.org/releases/bookworm/); scanner LTS-feed coverage and a
