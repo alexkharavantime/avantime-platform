@@ -63,6 +63,37 @@ function runPrisma(args: string[]) {
   }
 }
 
+// The historical baseline already contains "PasswordResetToken"; see
+// packages/database/prisma/reconciliation/20260930130000_password_reset_tokens.sql.
+function reconcilePasswordResetTokens() {
+  const migration = '20260930130000_password_reset_tokens';
+  const check = spawnSync(
+    process.execPath,
+    [
+      require.resolve('prisma/build/index.js'),
+      'db',
+      'execute',
+      '--file',
+      path.join(repositoryRoot, 'packages/database/prisma/reconciliation', `${migration}.sql`),
+      '--schema',
+      'prisma/schema.prisma',
+    ],
+    {
+      cwd: databaseDirectory,
+      env: { ...process.env, DATABASE_URL: BROWSER_DATABASE_URL },
+      encoding: 'utf8',
+    },
+  );
+  if (check.status === 0) {
+    runPrisma(['migrate', 'resolve', '--applied', migration]);
+    return;
+  }
+  const output = `${check.stdout ?? ''}${check.stderr ?? ''}`;
+  if (!output.includes('AVANTIME_RECONCILE_NOT_REQUIRED')) {
+    throw new Error(`PasswordResetToken reconciliation check failed:\n${output}`);
+  }
+}
+
 async function createIsolatedDatabase(databaseUrl: URL) {
   const adminUrl = new URL(databaseUrl);
   adminUrl.pathname = '/postgres';
@@ -636,6 +667,7 @@ async function main() {
     'prisma/schema.prisma',
   ]);
   runPrisma(['migrate', 'resolve', '--applied', firstMigration]);
+  reconcilePasswordResetTokens();
   runPrisma(['migrate', 'deploy']);
   runPrisma(['db', 'push', '--skip-generate']);
   await seedDatabase();

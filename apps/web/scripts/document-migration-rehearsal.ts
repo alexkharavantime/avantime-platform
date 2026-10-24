@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process';
+import { readdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import {
@@ -7,7 +10,7 @@ import {
 } from './document-integration-environment';
 
 const FIRST_MIGRATION = '20260727150000_document_metadata_persistence';
-const EXPECTED_MIGRATION_COUNT = 17;
+const EXPECTED_MIGRATION_COUNT = 22;
 const PRE_OIDC_ROLLOUT_MIGRATIONS = [
   '20260727190000_document_processing_queue',
   '20260728120000_document_intelligence',
@@ -18,6 +21,8 @@ const PRE_OIDC_ROLLOUT_MIGRATIONS = [
   '20260730180000_identity_completion',
 ] as const;
 const LEGACY_OIDC_REFERENCE = 'legacy-oidc-reference-for-rehearsal';
+const LEGACY_RESET_TOKEN_ID = 'integration-legacy-reset-token';
+const LEGACY_RESET_TOKEN_HASH = 'b'.repeat(64);
 
 type RehearsalPrismaClient = {
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<unknown>;
@@ -86,6 +91,75 @@ async function deployMigrations(
     cwd: repositoryRoot,
     environment: commandEnvironment,
   });
+}
+
+const PASSWORD_RESET_MIGRATION = '20260930130000_password_reset_tokens';
+
+// Mirrors docker/run-staging-migrations.sh: databases built from the historical account baseline
+// already contain "PasswordResetToken", so its migration is recorded only after an exact match.
+async function reconcilePasswordResetTokens(options: {
+  repositoryRoot: string;
+  schema: string;
+  environment: NodeJS.ProcessEnv;
+  targetDatabaseUrl: string;
+}) {
+  const commandEnvironment = {
+    ...options.environment,
+    DATABASE_URL: options.targetDatabaseUrl,
+  };
+  assertSafeDocumentIntegrationEnvironment(commandEnvironment);
+  const check = path.join(
+    options.repositoryRoot,
+    'packages',
+    'database',
+    'prisma',
+    'reconciliation',
+    `${PASSWORD_RESET_MIGRATION}.sql`,
+  );
+  const prismaCli = createRequire(
+    path.join(options.repositoryRoot, 'packages', 'database', 'package.json'),
+  ).resolve('prisma/build/index.js');
+  const checkResult = spawnSync(
+    process.execPath,
+    [prismaCli, 'db', 'execute', '--file', check, '--schema', options.schema],
+    { cwd: options.repositoryRoot, env: commandEnvironment, encoding: 'utf8' },
+  );
+  const checkOutput = `${checkResult.stdout ?? ''}${checkResult.stderr ?? ''}`;
+  if (checkResult.status !== 0) {
+    if (checkOutput.includes('AVANTIME_RECONCILE_NOT_REQUIRED')) return 'not_required' as const;
+    throw new Error(`PasswordResetToken reconciliation check failed:\n${checkOutput}`);
+  }
+  await runIntegrationCommand(
+    'npx',
+    ['prisma', 'migrate', 'resolve', '--applied', PASSWORD_RESET_MIGRATION, '--schema', options.schema],
+    { cwd: options.repositoryRoot, environment: commandEnvironment },
+  );
+  return 'reconciled' as const;
+}
+
+async function assertAppliedMigrationSet(
+  client: RehearsalPrismaClient,
+  migrationsDirectory: string,
+  scenario: string,
+) {
+  const expected = (await readdir(migrationsDirectory, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  const applied = (
+    await client.$queryRawUnsafe<Array<{ migration_name: string }>>(
+      `SELECT migration_name FROM "_prisma_migrations"
+       WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`,
+    )
+  ).map((row) => row.migration_name);
+  if (
+    expected.length !== EXPECTED_MIGRATION_COUNT ||
+    JSON.stringify(applied) !== JSON.stringify(expected)
+  ) {
+    throw new Error(
+      `${scenario} database applied ${applied.length} of ${expected.length} repository migrations; expected ${EXPECTED_MIGRATION_COUNT}.`,
+    );
+  }
 }
 
 async function applyAndResolveMigration(options: {
@@ -206,6 +280,12 @@ async function createLegacyAccountBaseline(targetDatabaseUrl: string, withIdenti
           'integration-identity-company'
         )`,
       );
+      await client.$executeRawUnsafe(
+        `INSERT INTO "PasswordResetToken" ("id", "tokenHash", "userId", "expiresAt")
+         VALUES ($1, $2, 'integration-identity-user', CURRENT_TIMESTAMP + INTERVAL '1 hour')`,
+        LEGACY_RESET_TOKEN_ID,
+        LEGACY_RESET_TOKEN_HASH,
+      );
     }
   } finally {
     await client.$disconnect();
@@ -248,12 +328,18 @@ async function rehearseEmptyDatabase(options: {
       environment: commandEnvironment,
     },
   );
+  if ((await reconcilePasswordResetTokens(options)) !== 'reconciled') {
+    throw new Error('Empty database baseline did not reconcile its PasswordResetToken table.');
+  }
   await deployMigrations(
     options.repositoryRoot,
     options.schema,
     options.environment,
     options.targetDatabaseUrl,
   );
+  if ((await reconcilePasswordResetTokens(options)) !== 'not_required') {
+    throw new Error('PasswordResetToken reconciliation is not idempotent.');
+  }
   await deployMigrations(
     options.repositoryRoot,
     options.schema,
@@ -263,14 +349,7 @@ async function rehearseEmptyDatabase(options: {
 
   const client = await createPrismaClient(options.targetDatabaseUrl);
   try {
-    const migrations = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
-      'SELECT COUNT(*)::bigint AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL',
-    );
-    if (Number(migrations[0]?.count ?? 0) !== EXPECTED_MIGRATION_COUNT) {
-      throw new Error(
-        `Empty database did not apply exactly ${EXPECTED_MIGRATION_COUNT} platform migrations.`,
-      );
-    }
+    await assertAppliedMigrationSet(client, options.migrationsDirectory, 'Empty');
     const vector = await client.$queryRawUnsafe<Array<{ extension: boolean; tableReady: boolean }>>(
       `SELECT
         EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS "extension",
@@ -421,6 +500,9 @@ async function rehearseLegacyDatabase(options: {
     await preRollout.$disconnect();
   }
 
+  if ((await reconcilePasswordResetTokens(options)) !== 'reconciled') {
+    throw new Error('Legacy database did not reconcile its PasswordResetToken table.');
+  }
   await deployMigrations(
     options.repositoryRoot,
     options.schema,
@@ -541,6 +623,21 @@ async function rehearseLegacyDatabase(options: {
     ) {
       throw new Error('Legacy identity was not normalized safely.');
     }
+    const resetTokens = await verified.$queryRawUnsafe<
+      Array<{ id: string; tokenHash: string; userId: string; usedAt: Date | null }>
+    >(
+      `SELECT "id", "tokenHash", "userId", "usedAt" FROM "PasswordResetToken" WHERE "id" = $1`,
+      LEGACY_RESET_TOKEN_ID,
+    );
+    if (
+      resetTokens.length !== 1 ||
+      resetTokens[0]?.tokenHash !== LEGACY_RESET_TOKEN_HASH ||
+      resetTokens[0]?.userId !== 'integration-identity-user' ||
+      resetTokens[0]?.usedAt !== null
+    ) {
+      throw new Error('Existing PasswordResetToken data was not preserved by the upgrade.');
+    }
+    await assertAppliedMigrationSet(verified, options.migrationsDirectory, 'Legacy');
     const identityTables = await verified.$queryRawUnsafe<
       Array<{
         sessions: boolean;
