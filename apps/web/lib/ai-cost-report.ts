@@ -38,8 +38,8 @@ export async function getAiCostSummary(options: {
        COUNT(*) AS "requestCount", SUM("inputTokens") AS "inputTokens",
        SUM("outputTokens") AS "outputTokens", SUM("embeddingUnits") AS "embeddingUnits",
        SUM("estimatedCostEur")::text AS "estimatedCostEur",
-       CASE WHEN COUNT("actualCostEur") = 0 THEN NULL
-         ELSE SUM("actualCostEur")::text END AS "actualCostEur"
+       CASE WHEN COUNT("actualCostEur") = COUNT(*) THEN SUM("actualCostEur")::text
+         ELSE NULL END AS "actualCostEur"
      FROM "AiUsageLedger"
      WHERE "occurredAt" >= $1 AND "occurredAt" < $2
        AND ($3::text IS NULL OR "companyId" = $3)

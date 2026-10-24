@@ -45,9 +45,13 @@ export type RagConfiguration = {
     model: string;
     maximumContextCharacters: number;
     maximumOutputTokens: number;
+    reasoningEffort?: RagReasoningEffort;
     timeoutMs: number;
   };
   limits: {
+    providerMaxAttempts: number;
+    sessionProviderOperationLimit?: number;
+    sessionBudgetLimitEur?: number;
     queryMaximumCharacters: number;
     rateLimitPerMinute: number;
     rateLimitPerDay: number;
@@ -56,6 +60,9 @@ export type RagConfiguration = {
     monthlyBudgetEur: number;
   };
 };
+
+export const ragReasoningEfforts = ['minimal', 'low', 'medium', 'high'] as const;
+export type RagReasoningEffort = (typeof ragReasoningEfforts)[number];
 
 function parseEnum<T extends string>(
   environment: Record<string, string | undefined>,
@@ -149,10 +156,15 @@ export function loadRagConfiguration(
   const production =
     environment.NODE_ENV === 'production' &&
     !(environment.APP_ENV === 'staging' && environment.STAGING_MODE === 'local');
+  const defaultProviderDriver = environment.NODE_ENV === 'test' ? 'fake' : 'disabled';
+  const providerMaxAttempts = parseEnum(environment, 'AI_PROVIDER_MAX_ATTEMPTS', '2', [
+    '1',
+    '2',
+  ] as const);
   const embeddingDriver = parseEnum(
     environment,
     'DOCUMENT_EMBEDDING_DRIVER',
-    production ? 'disabled' : 'fake',
+    defaultProviderDriver,
     AI_PROVIDER_DRIVERS,
   );
   const vectorDriver = parseEnum(
@@ -164,7 +176,7 @@ export function loadRagConfiguration(
   const answerDriver = parseEnum(
     environment,
     'RAG_ANSWER_DRIVER',
-    production ? 'disabled' : 'fake',
+    defaultProviderDriver,
     AI_PROVIDER_DRIVERS,
   );
   const embeddingQueueDriver = parseEnum(
@@ -178,6 +190,10 @@ export function loadRagConfiguration(
     'DOCUMENT_RAG_REQUIRED_FOR_READINESS',
     production,
   );
+  const disableBrowserSessionCaps =
+    !production &&
+    environment.BROWSER_REAL_AI_KB_SMOKE === '1' &&
+    environment.BROWSER_REAL_AI_DISABLE_SESSION_CAPS === '1';
 
   if (production) {
     requireValue(environment, 'DOCUMENT_EMBEDDING_DRIVER');
@@ -293,9 +309,26 @@ export function loadRagConfiguration(
         18_000,
       ),
       maximumOutputTokens: parsePositiveInteger(environment, 'RAG_MAX_OUTPUT_TOKENS', 1_000),
+      ...(environment.RAG_REASONING_EFFORT?.trim()
+        ? {
+            reasoningEffort: parseEnum<RagReasoningEffort>(
+              environment,
+              'RAG_REASONING_EFFORT',
+              'low',
+              ragReasoningEfforts,
+            ),
+          }
+        : {}),
       timeoutMs: parsePositiveInteger(environment, 'RAG_TIMEOUT_MS', 45_000),
     },
     limits: {
+      providerMaxAttempts: Number(providerMaxAttempts),
+      ...(environment.BROWSER_REAL_AI_KB_SMOKE === '1' && !disableBrowserSessionCaps
+        ? { sessionProviderOperationLimit: 12 }
+        : {}),
+      ...(environment.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' && !disableBrowserSessionCaps
+        ? { sessionBudgetLimitEur: 0.05 }
+        : {}),
       queryMaximumCharacters: parsePositiveInteger(environment, 'RAG_QUERY_MAX_CHARACTERS', 2_000),
       rateLimitPerMinute: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_MINUTE', 30),
       rateLimitPerDay: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_DAY', 5_000),

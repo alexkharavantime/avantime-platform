@@ -7,7 +7,7 @@ const BOOTSTRAP_SINGLETON = 'first-platform-owner-v1';
 const CONFIRMATION_PHRASE = 'BOOTSTRAP FIRST PLATFORM OWNER';
 const SAFE_REFERENCE = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{2,199}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const ALLOWED_ENVIRONMENTS = new Set(['integration', 'staging']);
+const ALLOWED_ENVIRONMENTS = new Set(['integration', 'staging', 'local']);
 const RECENT_AUTH_WINDOW_MS = 10 * 60_000;
 const MAX_AUTHORIZATION_LIFETIME_MS = 15 * 60_000;
 

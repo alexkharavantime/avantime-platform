@@ -4,21 +4,13 @@ import { useState } from 'react';
 
 import type { TeamMember } from '../../lib/team';
 import type { OrganizationRole } from '../../lib/session';
+import type { Locale } from '../../lib/i18n';
 
-const roleLabels: Record<OrganizationRole, string> = {
-  OWNER: 'Владелец',
-  ADMIN: 'Администратор',
-  MANAGER: 'Менеджер',
-  MEMBER: 'Участник',
-  VIEWER: 'Наблюдатель',
+const copy: Record<Locale, { roles: Record<OrganizationRole, string>; statuses: Record<TeamMember['status'], string>; error: string; saved: string; ownerPrompt: string; ownerCancelled: string; roleConfirm: string; statusConfirm: string; restore: string; suspend: string; remove: string; jobMissing: string; suspendButton: string; restoreButton: string; removeButton: string; bootstrapPrompt: string; bootstrapButton: string }> = {
+  lv: { roles: { OWNER: 'Īpašnieks', ADMIN: 'Administrators', MANAGER: 'Vadītājs', MEMBER: 'Dalībnieks', VIEWER: 'Skatītājs' }, statuses: { ACTIVE: 'Aktīvs', INVITED: 'Uzaicināts', SUSPENDED: 'Apturēts', REMOVED: 'Noņemts' }, error: 'Neizdevās mainīt dalībnieku.', saved: 'Izmaiņas saglabātas. Dalībnieka aktīvās sesijas ir pārskatītas.', ownerPrompt: 'Ievadiet ASSIGN OWNER, lai apstiprinātu.', ownerCancelled: 'Īpašnieka piešķiršana atcelta.', roleConfirm: 'Mainīt dalībnieka lomu uz', statusConfirm: 'Apstipriniet darbību: mainīt dalībnieka piekļuvi.', restore: 'atjaunot', suspend: 'apturēt', remove: 'noņemt', jobMissing: 'Amats nav norādīts', suspendButton: 'Apturēt', restoreButton: 'Atjaunot', removeButton: 'Noņemt piekļuvi', bootstrapPrompt: 'Ievadiet ASSIGN OWNER, lai piešķirtu pirmo īpašnieku.', bootstrapButton: 'Piešķirt pirmo īpašnieku' },
+  ru: { roles: { OWNER: 'Владелец', ADMIN: 'Администратор', MANAGER: 'Менеджер', MEMBER: 'Участник', VIEWER: 'Наблюдатель' }, statuses: { ACTIVE: 'Активен', INVITED: 'Приглашён', SUSPENDED: 'Приостановлен', REMOVED: 'Удалён' }, error: 'Не удалось изменить участника.', saved: 'Изменение сохранено. Активные сессии участника пересмотрены.', ownerPrompt: 'Введите ASSIGN OWNER для подтверждения.', ownerCancelled: 'Назначение владельца отменено.', roleConfirm: 'Изменить роль участника на', statusConfirm: 'Подтвердите действие: изменить доступ участника.', restore: 'восстановить', suspend: 'приостановить', remove: 'удалить', jobMissing: 'Должность не указана', suspendButton: 'Приостановить', restoreButton: 'Восстановить', removeButton: 'Удалить доступ', bootstrapPrompt: 'Введите ASSIGN OWNER для назначения первого владельца.', bootstrapButton: 'Назначить первого владельца' },
+  en: { roles: { OWNER: 'Owner', ADMIN: 'Administrator', MANAGER: 'Manager', MEMBER: 'Member', VIEWER: 'Viewer' }, statuses: { ACTIVE: 'Active', INVITED: 'Invited', SUSPENDED: 'Suspended', REMOVED: 'Removed' }, error: 'Could not update the member.', saved: 'Changes saved. The member’s active sessions were reviewed.', ownerPrompt: 'Enter ASSIGN OWNER to confirm.', ownerCancelled: 'Owner assignment cancelled.', roleConfirm: 'Change the member role to', statusConfirm: 'Confirm this action: change the member’s access.', restore: 'restore', suspend: 'suspend', remove: 'remove', jobMissing: 'Job title not provided', suspendButton: 'Suspend', restoreButton: 'Restore', removeButton: 'Remove access', bootstrapPrompt: 'Enter ASSIGN OWNER to assign the first owner.', bootstrapButton: 'Assign first owner' },
 };
-
-const statusLabels = {
-  ACTIVE: 'Активен',
-  INVITED: 'Приглашён',
-  SUSPENDED: 'Приостановлен',
-  REMOVED: 'Удалён',
-} as const;
 
 export function TeamManagement({
   initialMembers,
@@ -27,6 +19,7 @@ export function TeamManagement({
   mayRemoveMembers,
   currentUserId,
   canBootstrapOwner,
+  locale,
 }: {
   initialMembers: TeamMember[];
   assignableRoles: OrganizationRole[];
@@ -34,10 +27,12 @@ export function TeamManagement({
   mayRemoveMembers: boolean;
   currentUserId: string;
   canBootstrapOwner: boolean;
+  locale: Locale;
 }) {
   const [members, setMembers] = useState(initialMembers);
   const [message, setMessage] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const text = copy[locale];
 
   async function mutate(member: TeamMember, body: Record<string, unknown>) {
     setBusyId(member.id);
@@ -59,7 +54,7 @@ export function TeamManagement({
     };
     setBusyId(null);
     if (!response.ok) {
-      setMessage(data.error ?? 'Не удалось изменить участника.');
+      setMessage(text.error);
       return;
     }
     if (data.membership) {
@@ -85,30 +80,30 @@ export function TeamManagement({
         ),
       );
     }
-    setMessage('Изменение сохранено. Активные сессии участника пересмотрены.');
+    setMessage(text.saved);
   }
 
   async function changeRole(member: TeamMember, role: OrganizationRole) {
     if (role === member.role) return;
     const confirmation =
-      role === 'OWNER' ? window.prompt('Введите ASSIGN OWNER для подтверждения.') : undefined;
+      role === 'OWNER' ? window.prompt(text.ownerPrompt) : undefined;
     if (role === 'OWNER' && confirmation !== 'ASSIGN OWNER') {
-      setMessage('Назначение владельца отменено.');
+      setMessage(text.ownerCancelled);
       return;
     }
-    if (!window.confirm(`Изменить роль участника на «${roleLabels[role]}»?`)) return;
+    if (!window.confirm(`${text.roleConfirm} «${text.roles[role]}»?`)) return;
     await mutate(member, { action: 'role', role, confirmation });
   }
 
   async function changeStatus(member: TeamMember, status: 'ACTIVE' | 'SUSPENDED' | 'REMOVED') {
     const label =
-      status === 'ACTIVE' ? 'восстановить' : status === 'SUSPENDED' ? 'приостановить' : 'удалить';
-    if (!window.confirm(`Подтвердите действие: ${label} доступ участника.`)) return;
+      status === 'ACTIVE' ? text.restore : status === 'SUSPENDED' ? text.suspend : text.remove;
+    if (!window.confirm(`${text.statusConfirm} (${label}).`)) return;
     await mutate(member, { action: 'status', status });
   }
 
   async function bootstrapOwner(member: TeamMember) {
-    const confirmation = window.prompt('Введите ASSIGN OWNER для назначения первого владельца.');
+    const confirmation = window.prompt(text.bootstrapPrompt);
     if (confirmation !== 'ASSIGN OWNER') return;
     await mutate(member, { action: 'bootstrap-owner', confirmation });
   }
@@ -132,12 +127,12 @@ export function TeamManagement({
                 <div>
                   <p className="font-black">{member.name}</p>
                   <p className="text-sm text-slate-500">
-                    {member.jobTitle || 'Должность не указана'}
+                    {member.jobTitle || text.jobMissing}
                   </p>
                 </div>
                 <p className="break-all text-sm text-slate-600">{member.email}</p>
                 <div>
-                  <span className="sr-only">Роль: </span>
+                      <span className="sr-only">{text.roles[member.role]}: </span>
                   {mayManageRoles ? (
                     <select
                       aria-label={`Роль участника ${member.name}`}
@@ -149,22 +144,22 @@ export function TeamManagement({
                       className="w-full rounded-xl border border-slate-300 px-3 py-2"
                     >
                       {!assignableRoles.includes(member.role) && (
-                        <option value={member.role}>{roleLabels[member.role]}</option>
+                        <option value={member.role}>{text.roles[member.role]}</option>
                       )}
                       {assignableRoles.map((role) => (
                         <option key={role} value={role}>
-                          {roleLabels[role]}
+                          {text.roles[role]}
                         </option>
                       ))}
                     </select>
                   ) : (
                     <span className="text-sm font-bold text-slate-700">
-                      {roleLabels[member.role]}
+                      {text.roles[member.role]}
                     </span>
                   )}
                 </div>
                 <span className="text-sm font-bold text-slate-700">
-                  {statusLabels[member.status]}
+                  {text.statuses[member.status]}
                 </span>
               </div>
               {mayRemoveMembers && !isSelf && (
@@ -176,7 +171,7 @@ export function TeamManagement({
                       onClick={() => void changeStatus(member, 'SUSPENDED')}
                       className="rounded-lg border border-amber-300 px-3 py-2 text-sm font-bold text-amber-800"
                     >
-                      Приостановить
+                      {text.suspendButton}
                     </button>
                   ) : (
                     <button
@@ -185,7 +180,7 @@ export function TeamManagement({
                       onClick={() => void changeStatus(member, 'ACTIVE')}
                       className="rounded-lg border border-emerald-300 px-3 py-2 text-sm font-bold text-emerald-800"
                     >
-                      Восстановить
+                      {text.restoreButton}
                     </button>
                   )}
                   <button
@@ -194,7 +189,7 @@ export function TeamManagement({
                     onClick={() => void changeStatus(member, 'REMOVED')}
                     className="rounded-lg border border-red-300 px-3 py-2 text-sm font-bold text-red-700"
                   >
-                    Удалить доступ
+                    {text.removeButton}
                   </button>
                 </div>
               )}
@@ -205,7 +200,7 @@ export function TeamManagement({
                   onClick={() => void bootstrapOwner(member)}
                   className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white"
                 >
-                  Назначить первого владельца
+                  {text.bootstrapButton}
                 </button>
               )}
             </li>

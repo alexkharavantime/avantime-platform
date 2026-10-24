@@ -2,11 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { localePath, portalCopy, type Locale } from '../../lib/i18n';
 
 const RESET_STORAGE_KEY = 'avantime.password-reset';
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ locale }: { locale: Locale }) {
   const router = useRouter();
+  const copy = portalCopy[locale].auth;
   const [email, setEmail] = useState('');
   const [result, setResult] = useState('');
 
@@ -25,14 +27,14 @@ export function ForgotPasswordForm() {
     setResult(data.error ?? data.message ?? '');
     if (data.resetToken) {
       window.sessionStorage.setItem(RESET_STORAGE_KEY, data.resetToken);
-      router.push('/portal/reset-password');
+      router.push(localePath(locale, '/portal/reset-password'));
     }
   }
 
   return (
     <form onSubmit={submit} className="mt-8 space-y-5">
       <label className="block">
-        <span className="mb-2 block text-sm font-bold">Email</span>
+        <span className="mb-2 block text-sm font-bold">{copy.emailLabel}</span>
         <input
           type="email"
           autoComplete="email"
@@ -43,7 +45,7 @@ export function ForgotPasswordForm() {
         />
       </label>
       <button className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white">
-        Получить инструкцию
+        {copy.forgotSubmit}
       </button>
       {result && (
         <p role="status" className="rounded-2xl bg-slate-50 p-4 text-sm leading-6">

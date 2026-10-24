@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { isSameOriginMutation } from '../lib/identity-auth';
 import { sendIdentityEmail } from '../lib/identity-email';
+import { validateLocalFirstOwnerEnvironment } from '../lib/local-first-owner-bootstrap';
 import { evaluateMfaPolicy, isOrganizationLoginMethodAllowed } from '../lib/identity-policy';
 import { MemoryIdentityRateLimiter } from '../lib/identity-rate-limit';
 import { identityTestResponseEnabled, parseIdentityMutation } from '../lib/identity-route';
@@ -237,6 +238,51 @@ test('tenant MFA policy respects enforcement, grace, explicit exemption, and act
   );
   assert.equal(
     evaluateMfaPolicy({ role: 'CLIENT', hasActiveMfa: true, now }).challengeRequired,
+    true,
+  );
+});
+
+test('local first-owner setup is loopback-only and requires enforced administrator MFA', () => {
+  const environment = {
+    NODE_ENV: 'development',
+    DATABASE_URL: 'postgresql://local:local@127.0.0.1:5432/avantime?schema=public',
+    AUTH_ADMIN_MFA_REQUIRED: 'true',
+    MFA_ENCRYPTION_KEY: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
+    MFA_ENCRYPTION_KEY_VERSION: 'local-test-v1',
+    SESSION_SECRET: 'local-test-session-secret-with-32-characters',
+    APP_URL: 'http://localhost:3000',
+  };
+  assert.equal(validateLocalFirstOwnerEnvironment(environment, 'prepare').databaseName, 'avantime');
+  assert.equal(
+    validateLocalFirstOwnerEnvironment(
+      { ...environment, MFA_ENCRYPTION_KEY: '' },
+      'complete',
+    ).databaseName,
+    'avantime',
+  );
+  assert.throws(
+    () => validateLocalFirstOwnerEnvironment({ ...environment, NODE_ENV: 'production' }, 'prepare'),
+    /LOCAL_FIRST_OWNER_PRODUCTION_DENIED/u,
+  );
+  assert.throws(
+    () =>
+      validateLocalFirstOwnerEnvironment(
+        { ...environment, DATABASE_URL: 'postgresql://remote/db' },
+        'prepare',
+      ),
+    /LOCAL_FIRST_OWNER_DATABASE_DENIED/u,
+  );
+  assert.throws(
+    () =>
+      validateLocalFirstOwnerEnvironment(
+        { ...environment, AUTH_ADMIN_MFA_REQUIRED: 'false' },
+        'prepare',
+      ),
+    /LOCAL_FIRST_OWNER_MFA_ENFORCEMENT_REQUIRED/u,
+  );
+  assert.equal(
+    evaluateMfaPolicy({ role: 'ADMIN', hasActiveMfa: false, requireAdminMfa: true })
+      .enrollmentRequired,
     true,
   );
 });

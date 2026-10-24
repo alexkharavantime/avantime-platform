@@ -1,0 +1,160 @@
+{
+  "accounting": {
+    "name": "Business Accounting",
+    "headline": "Organised records. A clear view of the numbers.",
+    "lead": "Which invoices are still unpaid? Why do account balances differ? Is everything ready for month-end? Business Accounting brings everyday bookkeeping into one system. Avantime configures documents and data flows to help accountants check transactions, investigate discrepancies and prepare the reports they need.",
+    "cardText": "Documents, payments and account balances in one system, configured around the way your company works.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Keep documents within reach",
+        "text": "Record business transactions and find supporting documents in the accounting database. A clear entry process helps prevent missing records and duplicate entries."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Understand outstanding balances",
+        "text": "Review customer and supplier accounts and match documents with payments. This makes it easier to investigate outstanding amounts and prepare reconciliations."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Reduce re-entry between systems",
+        "text": "An agreed integration with your trade management system can transfer the required data into accounting. The transfer scope and rules are configured for your accounting workflow."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Reports that help you check the records",
+        "text": "Use accounting reports to review balances and movements. We help configure useful views and investigate discrepancies before closing a period."
+      }
+    ],
+    "approachTitle": "Start with your accounting workflow",
+    "approachText": "We review your configuration, documents and integrations, then identify what can be handled through settings and what needs customisation. We agree on data checks before making changes. Reporting requirements, banking formats and local requirements are assessed for your particular version.",
+    "ctaText": "Tell us which tasks take up most of your accountant’s time. We will help identify what can be simplified.",
+    "ctaButton": "Discuss your accounting needs",
+    "seo": {
+      "title": "Business Accounting | Avantime",
+      "description": "Business accounting with documents, payments, balances and reports. Configuration, customisation and data integration by Avantime."
+    },
+    "imageId": "accounting"
+  },
+  "manufacturing": {
+    "name": "Manufacturing Enterprise Management (UPP)",
+    "headline": "See the whole production picture, from materials to cost.",
+    "lead": "The order is confirmed—but are the materials available? What has been produced, and what did the batch cost? When purchasing, the warehouse and production each use separate spreadsheets, answers take time to assemble. UPP connects these processes in a shared system. Avantime helps businesses already using UPP configure and improve their existing workflows.",
+    "cardText": "Materials, production output and costs in a connected accounting system. Configuration and improvement of your UPP solution.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Plan material requirements",
+        "text": "Link production plans to raw material and purchasing requirements. This gives purchasing teams a basis for preparing supplies for upcoming production."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Connect output with material movements",
+        "text": "Record material issues and finished output within shared records. Managers can compare production progress with warehouse data."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Understand how costs are calculated",
+        "text": "Collect production costs and analyse their allocation. We help review calculation settings and identify the data that drives the result."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Reduce disconnected spreadsheets",
+        "text": "Work with linked purchasing, inventory, production and financial data. Additional reports and integrations are developed for agreed business requirements."
+      }
+    ],
+    "approachTitle": "Improve the system around your operations",
+    "approachText": "We first review your UPP version, customisations and actual transaction workflows. We identify problem areas, agree on changes and check the results against representative examples. For a new project, we assess the appropriate application and its support arrangements separately.",
+    "ctaText": "Show us where records disagree or a report still needs manual assembly. We will start with that specific task.",
+    "ctaButton": "Discuss your UPP system",
+    "seo": {
+      "title": "Manufacturing Enterprise Management (UPP) | Avantime",
+      "description": "UPP for materials, production and costing. Configuration, troubleshooting and improvement of existing systems with Avantime."
+    },
+    "imageId": "manufacturing"
+  },
+  "addressed-warehouse": {
+    "name": "Bin Location Management",
+    "headline": "A clear location for every item. A clear process for every pick.",
+    "lead": "The item is in stock—but someone still has to find it. If only an experienced colleague knows the right shelf, a holiday or a new shift can disrupt the work. Location-based storage links goods to a specific zone, rack and bin. The warehouse becomes easier to navigate for experienced staff and newcomers alike.",
+    "cardText": "Find stock by location and organise put-away and order picking. We configure location-based storage around your warehouse.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Know where to look",
+        "text": "A consistent storage-location structure helps staff find the required goods. Full bin-level inventory tracks quantities at each location, not just across the warehouse."
+      },
+      {
+        "id": "benefit-2",
+        "title": "A process from receipt to dispatch",
+        "text": "Define how incoming goods are put away, movements recorded and orders picked. Shared rules help employees carry out operations consistently."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Investigate discrepancies more easily",
+        "text": "Location-level records let you compare physical stock with system data. Stocktaking becomes a check of specific bins."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Use barcodes where they help",
+        "text": "Scanners and handheld terminals can help identify products and locations. We design the workflow after checking application capabilities and device compatibility."
+      }
+    ],
+    "approachTitle": "Designed around your actual warehouse",
+    "approachText": "We review the layout, product range and picking process, then define location codes, operating rules and equipment requirements. A selected area can be used to check the approach before expanding it. The automation scope is agreed for your configuration.",
+    "ctaText": "Tell us where your warehouse loses time: finding stock, put-away, counting or picking orders.",
+    "ctaButton": "Discuss warehouse automation",
+    "seo": {
+      "title": "Bin Location Management | Avantime",
+      "description": "Bin location management, put-away, picking and stocktaking. Warehouse workflow and equipment configuration with Avantime."
+    },
+    "imageId": "addressed-warehouse"
+  },
+  "platform": {
+    "name": "1C:Enterprise Platform",
+    "headline": "A foundation for business systems that can evolve.",
+    "lead": "Today your company needs accounting and inventory. Tomorrow it may need a new report, an online-store integration or access for another department. The 1C:Enterprise platform provides the technology for these tasks. Business applications, also known as configurations, run on it and give employees the tools to process documents and maintain records.",
+    "cardText": "A flexible foundation for business applications: customisation, integration and room to grow with your company.",
+    "benefits": [
+      {
+        "id": "benefit-1",
+        "title": "Adapt to your processes",
+        "text": "Forms, reports and application logic can be tailored to your business. The approach depends on the configuration, compatibility and future maintenance."
+      },
+      {
+        "id": "benefit-2",
+        "title": "Plan for growth",
+        "text": "The platform supports file-based and client-server operation. Infrastructure can be reviewed as workloads grow; performance also depends on hardware and application design."
+      },
+      {
+        "id": "benefit-3",
+        "title": "Connect other systems",
+        "text": "Data-exchange tools and programming interfaces support integrations with websites and external services. Each connection needs configuration and testing."
+      },
+      {
+        "id": "benefit-4",
+        "title": "Choose suitable access",
+        "text": "Different client applications and browser access are available for compatible solutions. The choice depends on the application, licences and infrastructure."
+      },
+      {
+        "id": "benefit-5",
+        "title": "Match access to responsibilities",
+        "text": "Access-control mechanisms let you restrict the data and operations available to employees. Roles and permissions are configured around users’ tasks."
+      },
+      {
+        "id": "benefit-6",
+        "title": "Build reports around your questions",
+        "text": "Platform tools support reports and data views for specific business needs. Their content depends on the application and the quality of the underlying records."
+      }
+    ],
+    "approachTitle": "The platform is the foundation. The application is the working tool.",
+    "approachText": "A platform capability is not automatically available in every 1C application. Avantime helps bring together business requirements, a suitable configuration and the technical environment—from setup and integrations to the improvement of existing systems.",
+    "ctaText": "Tell us what your current system cannot yet do. Let’s discuss how it could be implemented with 1C.",
+    "ctaButton": "Explore your options with 1C",
+    "seo": {
+      "title": "1C:Enterprise Platform | Avantime",
+      "description": "The 1C:Enterprise platform for customisation, scaling, integrations, access control and reporting. Business solutions with Avantime."
+    },
+    "imageId": "platform"
+  }
+}

@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { MemoryAiCostController, MemoryAiRateLimiter, RedisAiRateLimiter } from '../lib/ai-control';
+import {
+  AiBudgetDeniedError,
+  MemoryAiCostController,
+  MemoryAiRateLimiter,
+  RedisAiRateLimiter,
+} from '../lib/ai-control';
 import {
   createBackupPlan,
   decryptBackupPayload,
@@ -38,6 +43,7 @@ function productionEnvironment() {
     IDENTITY_EMAIL_DRIVER: 'resend',
     MAIL_FROM: 'security@portal.example.com',
     RESEND_API_KEY: 'resend-key-with-more-than-20-characters',
+    ACCESS_REQUEST_NOTIFICATION_EMAIL: 'owner@portal.example.com',
     DATABASE_URL: 'postgresql://user:password@database.example.com/avantime?sslmode=verify-full',
     DOCUMENT_STORAGE_DRIVER: 's3',
     DOCUMENT_METADATA_DRIVER: 'postgresql',
@@ -184,7 +190,7 @@ test('budget reservations prevent concurrent overspend and usage reconciliation 
     idempotencyKey: 'request-1',
     estimatedCostEur: 0.75,
   };
-  const [first, duplicate, overspend] = await Promise.all([
+  const [firstResult, duplicateResult, overspendResult] = await Promise.allSettled([
     controller.reserve(request),
     controller.reserve(request),
     controller.reserve({
@@ -193,9 +199,21 @@ test('budget reservations prevent concurrent overspend and usage reconciliation 
       idempotencyKey: 'request-2',
     }),
   ]);
+  assert.ok(firstResult.status === 'fulfilled');
+  const first = firstResult.value;
   assert.ok(first);
-  assert.equal(duplicate, null);
-  assert.equal(overspend, null);
+  assert.equal(
+    duplicateResult.status === 'rejected' &&
+      duplicateResult.reason instanceof AiBudgetDeniedError &&
+      duplicateResult.reason.reason === 'idempotency_conflict',
+    true,
+  );
+  assert.equal(
+    overspendResult.status === 'rejected' &&
+      overspendResult.reason instanceof AiBudgetDeniedError &&
+      overspendResult.reason.reason === 'insufficient_reservation',
+    true,
+  );
   const event = {
     reservation: first!,
     inputTokens: 10,
@@ -260,6 +278,12 @@ test('production config rejects local adapters, placeholders, missing TLS, and p
     validateProductionConfiguration({
       ...productionEnvironment(),
       OIDC_ALLOWED_HOSTS: 'localhost',
+    }),
+  );
+  assert.throws(() =>
+    validateProductionConfiguration({
+      ...productionEnvironment(),
+      ACCESS_REQUEST_NOTIFICATION_EMAIL: 'not-an-email',
     }),
   );
 });

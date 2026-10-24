@@ -31,3 +31,25 @@ For managed staging, the additional TASK-014 boundary and preflight must pass be
 or execute. The independent reviewer verifies the exact target and evidence SHA. Provider delivery
 and new-login observations are external gates; the durable inbox notification ID alone is not proof
 of delivery. See [Managed staging validation](./MANAGED_STAGING_VALIDATION.md).
+
+## Empty local development database
+
+The governance command above intentionally does not create an identity and remains limited to
+integration or staging. For the explicitly approved empty local database `avantime`, use the
+local-only CLI:
+
+1. Set `AUTH_ADMIN_MFA_REQUIRED=true` and provide local `MFA_ENCRYPTION_KEY`,
+	`MFA_ENCRYPTION_KEY_VERSION`, `SESSION_SECRET` and `APP_URL`.
+2. Run `npm run identity:first-owner -- prepare alexander@solutions.lv`. It creates one provisional
+	`ADMIN` identity without a credential and writes a 30-minute password-activation link to a
+	current-user-only local file. The token is stored in the database only as a hash.
+3. The user opens that local file, chooses a password, enrolls TOTP and completes a fresh TOTP login.
+4. Run `npm run identity:first-owner -- complete alexander@solutions.lv` within ten minutes of that
+	login. The CLI calls the same owner bootstrap service, which rechecks the active MFA method,
+	session, TOTP audit event and singleton ledger under the advisory lock.
+
+This command is a local process, not an HTTP route. It rejects production, non-loopback databases,
+any database other than `avantime`, any existing user/role/bootstrap, and execution without admin
+MFA enforcement. Re-running preparation can only renew the token for the same uncredentialed
+provisional identity; it cannot create another user. This local path does not replace the two-person
+managed ceremony for integration/staging or the production identity ceremony.

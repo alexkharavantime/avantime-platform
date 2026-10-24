@@ -6,8 +6,8 @@ import { expect, test } from './fixtures';
 async function login(page: Page, identity: keyof typeof browserIdentities) {
   const credentials = browserIdentities[identity];
   await page.goto('/portal/login');
-  await page.getByLabel('Email').fill(credentials.email);
-  await page.getByLabel('Пароль').fill(credentials.password);
+  await page.getByLabel('Электронная почта').fill(credentials.email);
+  await page.getByLabel('Пароль', { exact: true }).fill(credentials.password);
   await page.getByRole('button', { name: 'Войти' }).click();
   await page.waitForURL(/\/portal$/u);
 }
@@ -49,7 +49,7 @@ test.describe.serial('TASK-011 organization permissions', () => {
     ).toBeVisible();
     await page.goto('/portal/settings/security');
     await expect(
-      page.getByRole('link', { name: 'Управлять identity providers и SSO policy' }),
+      page.getByRole('link', { name: 'Управлять поставщиками идентификации и политикой SSO' }),
     ).toBeVisible();
     await page.waitForLoadState('networkidle');
 
@@ -63,7 +63,7 @@ test.describe.serial('TASK-011 organization permissions', () => {
     const managerDeepLink = await page.request.get('/portal/settings/security/identity-providers', {
       maxRedirects: 0,
     });
-    await expectServerRedirect(managerDeepLink, '/portal');
+    await expectServerRedirect(managerDeepLink, '/ru/portal');
 
     await page.context().clearCookies();
     await loginAs('identityViewer');
@@ -73,7 +73,7 @@ test.describe.serial('TASK-011 organization permissions', () => {
       viewerNavigation.getByRole('link', { name: 'Управление документами' }),
     ).toHaveCount(0);
     const viewerDeepLink = await page.request.get('/portal/requests/new', { maxRedirects: 0 });
-    await expectServerRedirect(viewerDeepLink, '/portal/requests');
+    await expectServerRedirect(viewerDeepLink, '/ru/portal/requests');
     await assertNoBrowserErrors();
   });
 
@@ -172,7 +172,7 @@ test.describe.serial('TASK-011 organization permissions', () => {
     await expect(page.getByText('Загрузить документ')).toBeVisible();
     await page.goto('/portal/settings/security');
     await expect(
-      page.getByRole('link', { name: 'Управлять identity providers и SSO policy' }),
+      page.getByRole('link', { name: 'Управлять поставщиками идентификации и политикой SSO' }),
     ).toHaveCount(0);
 
     await page.context().clearCookies();
@@ -228,7 +228,7 @@ test.describe.serial('TASK-011 organization permissions', () => {
     await page.goto('/portal/team');
     await expect(page.getByRole('heading', { level: 1, name: 'Команда компании' })).toBeVisible();
     await runAxe('organization-team-governance');
-    await page.getByRole('button', { name: 'Меню' }).click();
+    await page.getByRole('button', { name: 'Открыть меню' }).click();
     const mobileNavigation = page.getByRole('dialog', { name: 'Мобильная навигация' });
     await expect(mobileNavigation.getByRole('link', { name: 'Команда' })).toBeVisible();
     await expect(

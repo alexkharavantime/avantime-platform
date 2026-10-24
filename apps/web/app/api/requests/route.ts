@@ -5,14 +5,18 @@ import {
   validateRequestCreationPayload,
   validateRequestIdempotencyKey,
 } from '../../../lib/request-creation';
-import { createRequest, listRequests } from '../../../lib/requests-store';
+import { createRequest, listRequestsStrict } from '../../../lib/requests-store';
 
 export async function GET(request: Request) {
   const authorization = await authorizeOrganizationApi('requests.view', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });
   if (authorization.response) return authorization.response;
-  return NextResponse.json({ requests: await listRequests(authorization.session) });
+  try {
+    return NextResponse.json({ requests: await listRequestsStrict(authorization.session) });
+  } catch {
+    return NextResponse.json({ error: 'Обращения временно недоступны.' }, { status: 503 });
+  }
 }
 
 export async function POST(request: Request) {

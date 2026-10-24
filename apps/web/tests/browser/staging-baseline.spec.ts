@@ -7,8 +7,8 @@ test.describe('@staging-smoke TASK-015 browser baseline', () => {
     assertNoBrowserErrors,
   }) => {
     await page.goto('/portal/login');
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Пароль')).toBeVisible();
+    await expect(page.getByLabel('Электронная почта')).toBeVisible();
+    await expect(page.getByLabel('Пароль', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Войти' })).toBeVisible();
 
     await loginAs('tenantA');
