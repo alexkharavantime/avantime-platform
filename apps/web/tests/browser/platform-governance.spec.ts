@@ -7,8 +7,8 @@ async function loginOnPage(
 ) {
   const credentials = browserIdentities[identity];
   await page.goto('/portal/login');
-  await page.getByLabel('Email').fill(credentials.email);
-  await page.getByLabel('Пароль').fill(credentials.password);
+  await page.getByLabel('Электронная почта').fill(credentials.email);
+  await page.getByLabel('Пароль', { exact: true }).fill(credentials.password);
   const responsePromise = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === '/api/auth/login' &&
@@ -88,7 +88,7 @@ test.describe('@platform-governance scope separation', () => {
     expect(ended.status()).toBe(204);
     await page.reload();
     await expect(page.getByText('TASK-013-BROWSER')).toHaveCount(0);
-    await expect(page.getByText('Активных support-сессий нет.')).toBeVisible();
+    await expect(page.getByText('Активных сессий поддержки нет.')).toBeVisible();
   });
 
   test('second actor approves owner assignment and replay is denied', async ({

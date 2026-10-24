@@ -35,8 +35,11 @@ export default defineConfig({
       },
     ],
   ],
+  globalSetup: './tests/browser/global-setup.ts',
   use: {
     baseURL: BROWSER_BASE_URL,
+    // Assertions use Russian copy; unprefixed portal URLs follow the browser language.
+    locale: 'ru-RU',
     launchOptions: localChromiumExecutable
       ? { executablePath: localChromiumExecutable }
       : undefined,

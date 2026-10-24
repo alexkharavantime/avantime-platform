@@ -9,8 +9,8 @@ test.describe.serial('production identity browser lifecycle', () => {
 
   async function submitPrimary(page: Page, email: string, password: string) {
     await page.goto('/portal/login');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Пароль').fill(password);
+    await page.getByLabel('Электронная почта').fill(email);
+    await page.getByLabel('Пароль', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Войти' }).click();
   }
 
@@ -27,8 +27,8 @@ test.describe.serial('production identity browser lifecycle', () => {
     expect(unknown).toBe(wrong);
 
     await page.goto('/portal/login?returnTo=https://evil.example.test/path');
-    await page.getByLabel('Email').fill(browserIdentities.identityClient.email);
-    await page.getByLabel('Пароль').fill(currentPassword);
+    await page.getByLabel('Электронная почта').fill(browserIdentities.identityClient.email);
+    await page.getByLabel('Пароль', { exact: true }).fill(currentPassword);
     await page.getByRole('button', { name: 'Войти' }).click();
     await expect(page).toHaveURL(/\/portal$/u);
   });
@@ -68,29 +68,29 @@ test.describe.serial('production identity browser lifecycle', () => {
   test('invalid OTP, OTP replay, recovery use and recovery reuse are safe', async ({ page }) => {
     await page.context().clearCookies();
     await submitPrimary(page, browserIdentities.identityClient.email, currentPassword);
-    await page.getByLabel('Код MFA или recovery code').fill('000000');
+    await page.getByLabel('Код MFA или резервный код').fill('000000');
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page.getByText('Неверный код подтверждения.')).toBeVisible();
 
     await page.getByRole('button', { name: 'Начать вход заново' }).click();
-    await page.getByLabel('Пароль').fill(currentPassword);
+    await page.getByLabel('Пароль', { exact: true }).fill(currentPassword);
     await page.getByRole('button', { name: 'Войти' }).click();
-    await page.getByLabel('Код MFA или recovery code').fill(recoveryCodes[0]);
+    await page.getByLabel('Код MFA или резервный код').fill(recoveryCodes[0]);
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page).toHaveURL(/\/portal$/u);
 
     await page.context().clearCookies();
     await submitPrimary(page, browserIdentities.identityClient.email, currentPassword);
-    await page.getByLabel('Код MFA или recovery code').fill(recoveryCodes[0]);
+    await page.getByLabel('Код MFA или резервный код').fill(recoveryCodes[0]);
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page.getByText('Неверный код подтверждения.')).toBeVisible();
 
     await waitForFreshTotpCounter();
     await page.getByRole('button', { name: 'Начать вход заново' }).click();
-    await page.getByLabel('Пароль').fill(currentPassword);
+    await page.getByLabel('Пароль', { exact: true }).fill(currentPassword);
     await page.getByRole('button', { name: 'Войти' }).click();
     await page
-      .getByLabel('Код MFA или recovery code')
+      .getByLabel('Код MFA или резервный код')
       .fill(totpAtCounter(secret, Math.floor(Date.now() / 1000 / 30)));
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page).toHaveURL(/\/portal$/u);
@@ -100,7 +100,7 @@ test.describe.serial('production identity browser lifecycle', () => {
 
   test('session list revokes another and current session', async ({ page, browser }) => {
     await submitPrimary(page, browserIdentities.identityClient.email, currentPassword);
-    await page.getByLabel('Код MFA или recovery code').fill(recoveryCodes[2]);
+    await page.getByLabel('Код MFA или резервный код').fill(recoveryCodes[2]);
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page).toHaveURL(/\/portal$/u);
     await page.goto('/portal/settings/security');
@@ -109,17 +109,17 @@ test.describe.serial('production identity browser lifecycle', () => {
     const otherContext = await browser.newContext();
     const otherPage = await otherContext.newPage();
     await submitPrimary(otherPage, browserIdentities.identityClient.email, currentPassword);
-    await otherPage.getByLabel('Код MFA или recovery code').fill(recoveryCodes[1]);
+    await otherPage.getByLabel('Код MFA или резервный код').fill(recoveryCodes[1]);
     await otherPage.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(otherPage).toHaveURL(/\/portal$/u);
 
     await page.reload();
     const sessionRows = page
       .locator('section')
-      .filter({ hasText: 'Активные сессии' })
+      .filter({ hasText: 'Активные сеансы' })
       .locator('li');
     await expect(sessionRows).toHaveCount(2);
-    const otherRow = sessionRows.filter({ hasNotText: 'текущая' });
+    const otherRow = sessionRows.filter({ hasNotText: 'текущий' });
     await otherRow.getByRole('button', { name: 'Завершить' }).click();
     await expect(sessionRows).toHaveCount(1);
     await otherPage.goto('/portal');
@@ -132,7 +132,7 @@ test.describe.serial('production identity browser lifecycle', () => {
 
   test('password change and body-only reset mock invalidate sessions', async ({ page }) => {
     await submitPrimary(page, browserIdentities.identityClient.email, currentPassword);
-    await page.getByLabel('Код MFA или recovery code').fill(recoveryCodes[5]);
+    await page.getByLabel('Код MFA или резервный код').fill(recoveryCodes[5]);
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page).toHaveURL(/\/portal$/u);
     await page.goto('/portal/settings/security');
@@ -144,10 +144,10 @@ test.describe.serial('production identity browser lifecycle', () => {
     currentPassword = changedPassword;
 
     await page.goto('/portal/forgot-password');
-    await page.getByLabel('Email').fill(browserIdentities.identityClient.email);
+    await page.getByLabel('Электронная почта').fill(browserIdentities.identityClient.email);
     const resetPasswordPage = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === '/portal/reset-password' &&
+        /^(?:\/(?:lv|ru|en))?\/portal\/reset-password$/u.test(new URL(response.url()).pathname) &&
         response.request().resourceType() === 'fetch' &&
         response.ok(),
       { timeout: 50_000 },
@@ -175,13 +175,13 @@ test.describe.serial('production identity browser lifecycle', () => {
     await expect(page).toHaveURL(/\/admin$/u);
     await page.goto('/portal/settings/security');
     await page.getByLabel('Требование').selectOption('ALL_MEMBERS');
-    await page.getByLabel('Grace period, дней').fill('7');
+    await page.getByLabel('Льготный период, дней').fill('7');
     await page.getByRole('button', { name: 'Сохранить политику' }).click();
     await expect(page.getByRole('status')).toContainText('Политика MFA обновлена');
 
     await page.context().clearCookies();
     await submitPrimary(page, browserIdentities.identityClient.email, currentPassword);
-    await page.getByLabel('Код MFA или recovery code').fill(recoveryCodes[6]);
+    await page.getByLabel('Код MFA или резервный код').fill(recoveryCodes[6]);
     await page.getByRole('button', { name: 'Подтвердить' }).click();
     await expect(page).toHaveURL(/\/portal$/u);
     const policyResponse = await page.evaluate(async () => {

@@ -209,7 +209,7 @@ test.describe('restricted first TOTP enrollment', () => {
     });
 
     await page.waitForTimeout(30_000 - (Date.now() % 30_000) + 500);
-    await page.getByLabel('Код MFA или recovery code').fill(
+    await page.getByLabel('Код MFA или резервный код').fill(
       totpAtCounter(secret, Math.floor(Date.now() / 30_000)),
     );
     await page.getByRole('button', { name: 'Подтвердить' }).click();

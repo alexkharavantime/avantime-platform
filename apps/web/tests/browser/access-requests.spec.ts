@@ -11,6 +11,9 @@ import {
 import { expect, test } from './fixtures';
 
 const prisma = new PrismaClient({ datasourceUrl: BROWSER_DATABASE_URL });
+
+// These scenarios assert English copy on unprefixed portal URLs; prefixed /ru/ pages are unaffected.
+test.use({ locale: 'en-US' });
 let originalIdentityPolicy: {
   mfaRequirement: 'OPTIONAL' | 'ADMINS' | 'ALL_MEMBERS';
   gracePeriodDays: number;
@@ -697,93 +700,108 @@ test('verified email change preserves identity and platform role relationships',
   });
   expect(sessionsBefore.length).toBeGreaterThan(0);
 
-  await page.goto('/ru/portal/settings/security');
-  await page.getByLabel('Новая электронная почта').fill(nextEmail);
-  const requestPromise = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname === '/api/account/security/email-change' &&
-      response.request().method() === 'POST',
-  );
-  await page.getByRole('button', { name: 'Отправить ссылку подтверждения' }).click();
-  const requestResponse = await requestPromise;
-  expect(requestResponse.status()).toBe(200);
-  const requestBody = (await requestResponse.json()) as {
-    emailAccepted: boolean;
-    emailDeliveryConfirmed: boolean;
-    verificationToken?: string;
-  };
-  expect(requestBody.emailAccepted).toBe(false);
-  expect(requestBody.emailDeliveryConfirmed).toBe(false);
-  expect(requestBody.verificationToken).toBeTruthy();
-  const pendingVerification = await prisma.emailChangeVerification.findFirst({
-    where: { userId: ownerId, usedAt: null },
-    select: { tokenHash: true, expiresAt: true, emailNormalized: true },
-  });
-  expect(
-    Boolean(
-      pendingVerification &&
-        requestBody.verificationToken &&
-        pendingVerification.tokenHash ===
-          createHash('sha256').update(requestBody.verificationToken).digest('hex') &&
-        pendingVerification.expiresAt > new Date() &&
-        pendingVerification.emailNormalized === nextEmail,
-    ),
-  ).toBe(true);
-  expect(
-    (await prisma.user.findUniqueOrThrow({ where: { id: ownerId }, select: { email: true } })).email,
-  ).toBe(browserIdentities.identityOwner.email);
+  try {
+    await page.goto('/ru/portal/settings/security');
+    await page.getByLabel('Новая электронная почта').fill(nextEmail);
+    const requestPromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/account/security/email-change' &&
+        response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Отправить ссылку подтверждения' }).click();
+    const requestResponse = await requestPromise;
+    expect(requestResponse.status()).toBe(200);
+    const requestBody = (await requestResponse.json()) as {
+      emailAccepted: boolean;
+      emailDeliveryConfirmed: boolean;
+      verificationToken?: string;
+    };
+    expect(requestBody.emailAccepted).toBe(false);
+    expect(requestBody.emailDeliveryConfirmed).toBe(false);
+    expect(requestBody.verificationToken).toBeTruthy();
+    const pendingVerification = await prisma.emailChangeVerification.findFirst({
+      where: { userId: ownerId, usedAt: null },
+      select: { tokenHash: true, expiresAt: true, emailNormalized: true },
+    });
+    expect(
+      Boolean(
+        pendingVerification &&
+          requestBody.verificationToken &&
+          pendingVerification.tokenHash ===
+            createHash('sha256').update(requestBody.verificationToken).digest('hex') &&
+          pendingVerification.expiresAt > new Date() &&
+          pendingVerification.emailNormalized === nextEmail,
+      ),
+    ).toBe(true);
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: ownerId }, select: { email: true } })).email,
+    ).toBe(browserIdentities.identityOwner.email);
 
-  await page.goto(`/ru/portal/settings/security/confirm-email-change?token=${requestBody.verificationToken}`);
-  const confirmPromise = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname === '/api/auth/email-change/verify' &&
-      response.request().method() === 'POST',
-  );
-  await page.getByRole('button', { name: 'Подтвердить новый email' }).click();
-  const confirmResponse = await confirmPromise;
-  const confirmBody = (await confirmResponse.json()) as Record<string, unknown>;
-  expect(confirmResponse.status(), JSON.stringify(confirmBody)).toBe(200);
-  await expect(page.getByRole('status')).toContainText('Email изменён');
+    await page.goto(`/ru/portal/settings/security/confirm-email-change?token=${requestBody.verificationToken}`);
+    const confirmPromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/auth/email-change/verify' &&
+        response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Подтвердить новый email' }).click();
+    const confirmResponse = await confirmPromise;
+    const confirmBody = (await confirmResponse.json()) as Record<string, unknown>;
+    expect(confirmResponse.status(), JSON.stringify(confirmBody)).toBe(200);
+    await expect(page.getByRole('status')).toContainText('Email изменён');
 
-  const ownerAfter = await prisma.user.findUniqueOrThrow({
-    where: { id: ownerId },
-    select: {
-      id: true,
-      email: true,
-      emailNormalized: true,
-      emailVerifiedAt: true,
-      role: true,
-      platformRoleAssignments: { select: { id: true, role: true, active: true } },
-      memberships: {
-        select: { id: true, companyId: true, organizationRole: true, status: true, active: true },
+    const ownerAfter = await prisma.user.findUniqueOrThrow({
+      where: { id: ownerId },
+      select: {
+        id: true,
+        email: true,
+        emailNormalized: true,
+        emailVerifiedAt: true,
+        role: true,
+        platformRoleAssignments: { select: { id: true, role: true, active: true } },
+        memberships: {
+          select: { id: true, companyId: true, organizationRole: true, status: true, active: true },
+        },
+        credentials: { select: { identifierNormalized: true } },
       },
-      credentials: { select: { identifierNormalized: true } },
-    },
-  });
-  expect(ownerAfter).toMatchObject({
-    id: ownerBefore.id,
-    email: nextEmail,
-    emailNormalized: nextEmail,
-    emailVerifiedAt: expect.any(Date),
-    role: ownerBefore.role,
-    platformRoleAssignments: ownerBefore.platformRoleAssignments,
-    memberships: ownerBefore.memberships,
-    credentials: [{ identifierNormalized: nextEmail }],
-  });
-  const sessionsAfter = await prisma.userSession.count({
-    where: { userId: ownerId, revokedAt: null },
-  });
-  expect(sessionsAfter).toBe(0);
+    });
+    expect(ownerAfter).toMatchObject({
+      id: ownerBefore.id,
+      email: nextEmail,
+      emailNormalized: nextEmail,
+      emailVerifiedAt: expect.any(Date),
+      role: ownerBefore.role,
+      platformRoleAssignments: ownerBefore.platformRoleAssignments,
+      memberships: ownerBefore.memberships,
+      credentials: [{ identifierNormalized: nextEmail }],
+    });
+    const sessionsAfter = await prisma.userSession.count({
+      where: { userId: ownerId, revokedAt: null },
+    });
+    expect(sessionsAfter).toBe(0);
 
-  await page.context().clearCookies();
-  await page.goto('/ru/portal/login');
-  await page.locator('input[type="email"]').fill(nextEmail);
-  await page.locator('input[type="password"]').fill(browserIdentities.identityOwner.password);
-  const loginPromise = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname === '/api/auth/login' &&
-      response.request().method() === 'POST',
-  );
-  await page.locator('form').getByRole('button').last().click();
-  expect((await loginPromise).status()).toBe(200);
+    await page.context().clearCookies();
+    await page.goto('/ru/portal/login');
+    await page.locator('input[type="email"]').fill(nextEmail);
+    await page.locator('input[type="password"]').fill(browserIdentities.identityOwner.password);
+    const loginPromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/auth/login' &&
+        response.request().method() === 'POST',
+    );
+    await page.locator('form').getByRole('button').last().click();
+    expect((await loginPromise).status()).toBe(200);
+  } finally {
+    // Later tests sign in as identityOwner with the seeded address.
+    const seededEmail = browserIdentities.identityOwner.email;
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: ownerId },
+        data: { email: seededEmail, emailNormalized: seededEmail },
+      }),
+      prisma.userCredential.updateMany({
+        where: { userId: ownerId },
+        data: { identifierNormalized: seededEmail },
+      }),
+    ]);
+  }
 });

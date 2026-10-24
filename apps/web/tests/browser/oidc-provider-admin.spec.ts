@@ -10,30 +10,32 @@ test.describe.serial('TASK-010 OIDC provider administration', () => {
     testInfo.setTimeout(120_000);
     await loginAs('identityAdmin');
     await page.goto('/portal/settings/security/identity-providers');
-    await expect(page.getByRole('heading', { name: 'Identity providers', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Поставщики идентификации', level: 1 })).toBeVisible();
     expect((await page.request.get('/api/account/security/identity-providers')).ok()).toBe(true);
     const newProviderPage = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === '/portal/settings/security/identity-providers/new' &&
+        /^(?:\/(?:lv|ru|en))?\/portal\/settings\/security\/identity-providers\/new$/u.test(
+          new URL(response.url()).pathname,
+        ) &&
         response.request().resourceType() === 'fetch' &&
         response.ok(),
       { timeout: 50_000 },
     );
-    await page.getByRole('link', { name: 'Добавить провайдера' }).click();
+    await page.getByRole('link', { name: 'Добавить поставщика' }).click();
     await newProviderPage;
     await expect(
-      page.getByRole('heading', { name: 'Новая OIDC конфигурация', level: 1 }),
+      page.getByRole('heading', { name: 'Новая конфигурация OIDC', level: 1 }),
     ).toBeVisible();
 
-    await page.getByLabel('Тип провайдера').selectOption('GENERIC_OIDC');
-    await page.getByLabel('Stable key').fill('browser-enterprise-oidc');
-    await page.getByLabel('Display name').fill('Browser Enterprise OIDC');
+    await page.getByLabel('Тип поставщика').selectOption('GENERIC_OIDC');
+    await page.getByLabel('Стабильный ключ').fill('browser-enterprise-oidc');
+    await page.getByLabel('Отображаемое имя').fill('Browser Enterprise OIDC');
     await page.getByLabel('Client ID').fill('browser-oidc-client');
     await page.getByLabel('Issuer').fill('http://127.0.0.1:4567');
     await page
       .getByLabel('Discovery URL')
       .fill('http://127.0.0.1:4567/.well-known/openid-configuration');
-    await page.getByLabel('Новый client-secret reference').fill('env:OIDC_BROWSER_CLIENT_SECRET');
+    await page.getByLabel('Новая ссылка на client secret').fill('env:OIDC_BROWSER_CLIENT_SECRET');
     const creationResponse = page.waitForResponse(
       (response) =>
         new URL(response.url()).pathname === '/api/account/security/identity-providers' &&
@@ -56,14 +58,14 @@ test.describe.serial('TASK-010 OIDC provider administration', () => {
     await expect(page).toHaveURL(/\/portal\/settings\/security\/identity-providers\/[^/]+$/u);
     await expect(page.getByText('NOT_VALIDATED', { exact: true })).toBeVisible();
     await expect(page.getByText(/настроен · key browser-v1/u)).toBeVisible();
-    await expect(page.getByLabel('Новый client-secret reference')).toHaveValue('');
+    await expect(page.getByLabel('Новая ссылка на client secret')).toHaveValue('');
     await expect(page.locator('body')).not.toContainText('OIDC_BROWSER_CLIENT_SECRET');
     await assertNoBrowserErrors();
 
     const providerId = new URL(page.url()).pathname.split('/').at(-1);
     expect(providerId).toBeTruthy();
     allowApiFailure('POST', `/api/account/security/identity-providers/${providerId}/status`, 409);
-    await page.getByRole('button', { name: 'Включить после validation' }).click();
+    await page.getByRole('button', { name: 'Включить после проверки' }).click();
     await expect(page.getByRole('status')).toContainText('Статус провайдера не изменён');
   });
 
@@ -101,7 +103,7 @@ test.describe.serial('TASK-010 OIDC provider administration', () => {
   }) => {
     await loginAs('identityAdmin');
     await page.goto('/portal/settings/security/identity-providers');
-    await expect(page.getByRole('heading', { name: 'Identity providers', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Поставщики идентификации', level: 1 })).toBeVisible();
     await runAxe('identity-providers');
     await assertNoBrowserErrors();
   });
