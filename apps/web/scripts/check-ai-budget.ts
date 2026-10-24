@@ -22,12 +22,14 @@ async function main() {
          FROM "AiUsageLedger" l
          WHERE l."companyId" = p."companyId"
            AND l."occurredAt" >= date_trunc('month', CURRENT_TIMESTAMP)
-           AND l."status" = 'SUCCEEDED'
+           AND l."status" IN ('SUCCEEDED', 'FAILED')
        ), 0)::text AS "monthUsageEur",
+       -- Same reservation filter as PostgreSQLAiCostController, which enforces the limits.
        COALESCE((
          SELECT SUM(r."estimatedCostEur") FROM "AiBudgetReservation" r
-         WHERE r."companyId" = p."companyId" AND r."status" = 'RESERVED'
-           AND r."expiresAt" > CURRENT_TIMESTAMP
+         WHERE r."companyId" = p."companyId"
+           AND r."status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+           AND (r."status" <> 'RESERVED' OR r."expiresAt" > CURRENT_TIMESTAMP)
        ), 0)::text AS "activeReservationsEur"
      FROM "AiBudgetPolicy" p ORDER BY p."companyId"`,
     );
