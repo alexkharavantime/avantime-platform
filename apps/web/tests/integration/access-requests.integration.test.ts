@@ -113,7 +113,8 @@ test('access request full lifecycle: submit, verify, approve, accept, first logi
 test('expired verification link is rejected and cannot be reused', async () => {
   const suffix = crypto.randomUUID();
   const email = `expired.${suffix}@example.test`;
-  const past = new Date(Date.now() - 60_000);
+  // Verification links stay valid for 30 minutes after the request is created.
+  const past = new Date(Date.now() - 31 * 60_000);
   const { token } = await createAccessRequest({
     name: 'Expired Candidate',
     email,
