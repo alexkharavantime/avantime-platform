@@ -103,7 +103,7 @@ export function IdentityProviderForm({
       body: JSON.stringify(body),
     });
     const data = (await response.json()) as SafeProvider & { error?: string };
-    if (!response.ok) throw new Error(text.error);
+    if (!response.ok) throw new Error(data.error || text.error);
     return data;
   }
 
