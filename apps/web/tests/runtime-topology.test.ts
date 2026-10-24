@@ -5,6 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import nextConfig, { repositoryRoot as configuredRepositoryRoot } from '../next.config';
+import { CURRENT_STAGING_MIGRATION } from '../lib/staging-configuration';
 
 const repositoryRoot = new URL('../../..', import.meta.url);
 
@@ -82,13 +83,25 @@ test('local smoke and managed preflight are separate fail-closed commands', asyn
   assert.doesNotMatch(localEnvironment, /COMMIT_SHA="local-validation"/u);
 });
 
+test('staging current migration is the newest repository migration', async () => {
+  const migrations = (
+    await readdir(new URL('packages/database/prisma/migrations/', repositoryRoot), {
+      withFileTypes: true,
+    })
+  )
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  assert.equal(CURRENT_STAGING_MIGRATION, migrations.at(-1));
+});
+
 test('tracked staging templates use the current migration and no stale task release marker', async () => {
   const [managed, local] = await Promise.all([
     repositoryFile('.env.staging.example'),
     repositoryFile('.env.staging.local.example'),
   ]);
   for (const source of [managed, local]) {
-    assert.match(source, /20260902120000_task_018_knowledge_delete_lifecycle/u);
+    assert.match(source, /20260930140000_local_owner_bootstrap/u);
     assert.doesNotMatch(source, /20260803180000_jira_status_comment_sync|task-016-local/u);
   }
 });
