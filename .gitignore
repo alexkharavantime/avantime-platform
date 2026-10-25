@@ -1,5 +1,6 @@
 node_modules
 .next
+.next-browser-tests
 .turbo
 dist
 coverage
@@ -25,3 +26,5 @@ coverage
 # Generated browser reports, traces, screenshots and isolated fixture data
 .artifacts/
 .tmp/
+
+incoming/

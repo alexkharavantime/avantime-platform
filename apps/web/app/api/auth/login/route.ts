@@ -14,14 +14,24 @@ import {
 } from '../../../../lib/identity-route';
 import { recordIdentitySecurityEvent } from '../../../../lib/identity-security-events';
 import { safeReturnTo } from '../../../../lib/safe-return-to';
-import { createUserSession, SESSION_COOKIE, sessionCookieOptions } from '../../../../lib/session';
+import { MFA_ENROLLMENT_COOKIE } from '../../../../lib/session-constants';
+import {
+  createUserSession,
+  expiredMfaEnrollmentCookieOptions,
+  mfaEnrollmentCookieOptions,
+  SESSION_COOKIE,
+  sessionCookieOptions,
+} from '../../../../lib/session';
 
 const INVALID_CREDENTIALS = 'Неверный email или пароль.';
 
 export async function POST(request: Request) {
   const correlationId = request.headers.get('x-avantime-correlation-id') ?? crypto.randomUUID();
   if (!isSameOriginMutation(request)) {
-    return NextResponse.json({ error: 'Запрос входа отклонён.' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Запрос входа отклонён.', errorCode: 'AUTH_REQUEST_REJECTED' },
+      { status: 403 },
+    );
   }
 
   let body: {
@@ -32,13 +42,19 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as typeof body;
   } catch {
-    return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
+    return NextResponse.json(
+      { error: INVALID_CREDENTIALS, errorCode: 'AUTH_INVALID_CREDENTIALS' },
+      { status: 401 },
+    );
   }
   const email = typeof body.email === 'string' ? normalizeIdentityEmail(body.email) : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const returnTo = typeof body.returnTo === 'string' ? safeReturnTo(body.returnTo) : undefined;
   if (!email || !password) {
-    return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
+    return NextResponse.json(
+      { error: INVALID_CREDENTIALS, errorCode: 'AUTH_INVALID_CREDENTIALS' },
+      { status: 401 },
+    );
   }
 
   try {
@@ -67,12 +83,15 @@ export async function POST(request: Request) {
         notify: Boolean(securityContext.userId && securityContext.companyId),
       });
       return NextResponse.json(
-        { error: 'Слишком много попыток. Повторите позже.' },
+        { error: 'Слишком много попыток. Повторите позже.', errorCode: 'AUTH_RATE_LIMITED' },
         { status: 429 },
       );
     }
   } catch {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
 
   const result = await authenticatePrimaryCredential({
@@ -87,10 +106,16 @@ export async function POST(request: Request) {
       result: 'FAILED',
       metadata: { reasonCode: 'INVALID_LOGIN' },
     });
-    return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
+    return NextResponse.json(
+      { error: INVALID_CREDENTIALS, errorCode: 'AUTH_INVALID_CREDENTIALS' },
+      { status: 401 },
+    );
   }
   if (result.status === 'UNAVAILABLE') {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
   if (result.status === 'MFA_REQUIRED') {
     await recordIdentitySecurityEvent({
@@ -106,11 +131,21 @@ export async function POST(request: Request) {
         reasonCode: result.enrollmentRequired ? 'ENROLLMENT_REQUIRED' : 'CHALLENGE_REQUIRED',
       },
     });
-    return NextResponse.json({
+    const response = NextResponse.json({
       mfaRequired: true,
       enrollmentRequired: result.enrollmentRequired,
-      challengeToken: result.challengeToken,
+      ...(!result.enrollmentRequired ? { challengeToken: result.challengeToken } : {}),
     });
+    if (result.enrollmentRequired) {
+      response.cookies.set(
+        MFA_ENROLLMENT_COOKIE,
+        result.challengeToken,
+        mfaEnrollmentCookieOptions(),
+      );
+    } else {
+      response.cookies.set(MFA_ENROLLMENT_COOKIE, '', expiredMfaEnrollmentCookieOptions());
+    }
+    return response;
   }
 
   try {
@@ -125,6 +160,7 @@ export async function POST(request: Request) {
       returnTo,
     });
     response.cookies.set(SESSION_COOKIE, created.token, sessionCookieOptions());
+    response.cookies.set(MFA_ENROLLMENT_COOKIE, '', expiredMfaEnrollmentCookieOptions());
     await recordIdentitySecurityEvent({
       context: {
         userId: result.identity.userId,
@@ -138,6 +174,9 @@ export async function POST(request: Request) {
     });
     return response;
   } catch {
-    return NextResponse.json({ error: 'Вход временно недоступен.' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Вход временно недоступен.', errorCode: 'AUTH_UNAVAILABLE' },
+      { status: 503 },
+    );
   }
 }

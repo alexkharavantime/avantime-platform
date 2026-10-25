@@ -11,7 +11,12 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 
-import { PostgreSQLAiCostController, RedisAiRateLimiter } from '../../lib/ai-control';
+import {
+  AiBudgetDeniedError,
+  PostgreSQLAiCostController,
+  RedisAiRateLimiter,
+  type AiBudgetReservation,
+} from '../../lib/ai-control';
 import { PostgreSQLProductionAuditTrail } from '../../lib/production-audit';
 import {
   createRedisCommandClient,
@@ -162,7 +167,7 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
       idempotencyKey: `usage-${suffix}-1`,
       estimatedCostEur: 0.75,
     };
-    const reservations = await Promise.all([
+    const reservations = await Promise.allSettled([
       firstCost.reserve(reservationRequest),
       secondCost.reserve({
         ...reservationRequest,
@@ -170,8 +175,21 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
         idempotencyKey: `usage-${suffix}-2`,
       }),
     ]);
-    assert.equal(reservations.filter(Boolean).length, 1);
-    const accepted = reservations.find(Boolean)!;
+    assert.equal(reservations.filter((result) => result.status === 'fulfilled').length, 1);
+    assert.ok(
+      reservations.some(
+        (result) =>
+          result.status === 'rejected' &&
+          result.reason instanceof AiBudgetDeniedError &&
+          result.reason.reason === 'insufficient_reservation',
+      ),
+    );
+    const acceptedResult = reservations.find(
+      (result): result is PromiseFulfilledResult<AiBudgetReservation> =>
+        result.status === 'fulfilled',
+    );
+    assert.ok(acceptedResult?.value);
+    const accepted = acceptedResult.value;
     await firstCost.reconcile({
       reservation: accepted,
       inputTokens: 100,
@@ -188,12 +206,59 @@ test('Redis queues, fencing, distributed rate limits, cost ledger and audit work
       estimatedCostEur: 0.7,
       status: 'SUCCEEDED',
     });
-    assert.equal(await secondCost.reserve(reservationRequest), null);
+    await assert.rejects(
+      secondCost.reserve(reservationRequest),
+      (error: unknown) =>
+        error instanceof AiBudgetDeniedError && error.reason === 'insufficient_reservation',
+    );
     const ledger = await database.$queryRawUnsafe<Array<{ count: bigint }>>(
       `SELECT COUNT(*) AS "count" FROM "AiUsageLedger" WHERE "companyId" = $1`,
       tenant.companyId,
     );
     assert.equal(Number(ledger[0].count), 1);
+
+    const [existingProviderOperations] = await database.$queryRawUnsafe<Array<{ count: number }>>(
+      `SELECT (
+         (SELECT COUNT(*) FROM "AiUsageLedger" WHERE "provider" IN ('openai', 'gemini')) +
+         (SELECT COUNT(*) FROM "AiBudgetReservation"
+          WHERE "provider" IN ('openai', 'gemini')
+            AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED'))
+       )::int AS "count"`,
+    );
+    const sessionCost = new PostgreSQLAiCostController(
+      loadDatabase,
+      1,
+      10,
+      300_000,
+      existingProviderOperations.count + 1,
+    );
+    const sessionRequest = {
+      ...reservationRequest,
+      provider: 'openai',
+      model: 'text-embedding-3-small',
+      estimatedCostEur: 0,
+      correlationId: `session-${suffix}-1`,
+      idempotencyKey: `session-${suffix}-1`,
+    };
+    const sessionReservation = await sessionCost.reserve(sessionRequest);
+    assert.ok(sessionReservation);
+    await sessionCost.reconcile({
+      reservation: sessionReservation,
+      inputTokens: 0,
+      outputTokens: 0,
+      embeddingUnits: 0,
+      estimatedCostEur: 0,
+      status: 'SUCCEEDED',
+    });
+    await assert.rejects(
+      sessionCost.reserve({
+        ...sessionRequest,
+        correlationId: `session-${suffix}-2`,
+        idempotencyKey: `session-${suffix}-2`,
+      }),
+      (error: unknown) =>
+        error instanceof AiBudgetDeniedError && error.reason === 'session_limit_reached',
+    );
 
     const audit = new PostgreSQLProductionAuditTrail(loadDatabase);
     await audit.append({

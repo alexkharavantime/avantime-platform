@@ -1,26 +1,30 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { localePath, portalCopy, type Locale } from '../../lib/i18n';
 
 export function LoginForm({
   returnTo,
+  locale,
   demoEnabled,
   oidcMfa = false,
   oidcEnrollmentRequired = false,
   oidcError = false,
 }: {
   returnTo?: string;
+  locale: Locale;
   demoEnabled: boolean;
   oidcMfa?: boolean;
   oidcEnrollmentRequired?: boolean;
   oidcError?: boolean;
 }) {
+  const copy = portalCopy[locale].auth;
   const [email, setEmail] = useState(demoEnabled ? 'demo@avantime.lv' : '');
   const [password, setPassword] = useState(demoEnabled ? 'avantime' : '');
-  const [error, setError] = useState(
-    oidcError ? 'Корпоративный вход не выполнен. Начните вход заново.' : '',
-  );
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const passwordInputId = useId();
+  const [error, setError] = useState(oidcError ? copy.oidcError : '');
   const [pending, setPending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [challengeToken, setChallengeToken] = useState(oidcMfa ? 'oidc-cookie' : '');
@@ -35,43 +39,66 @@ export function LoginForm({
     setError('');
     const mfaPending = Boolean(challengeToken);
     const oidcMfaPending = challengeToken === 'oidc-cookie';
-    const response = await fetch(
-      oidcMfaPending
-        ? '/api/auth/oidc/mfa/challenge'
-        : mfaPending
-          ? '/api/auth/mfa/challenge'
-          : '/api/auth/login',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          oidcMfaPending
-            ? { code: mfaCode }
-            : mfaPending
-              ? { challengeToken, code: mfaCode }
-              : { email, password, returnTo },
-        ),
-      },
-    );
-    const data = (await response.json()) as {
-      error?: string;
-      role?: 'CLIENT' | 'ADMIN';
-      mfaRequired?: boolean;
-      challengeToken?: string;
-      enrollmentRequired?: boolean;
-      returnTo?: string;
-    };
-    setPending(false);
-    if (!response.ok) return setError(data.error ?? 'Не удалось войти.');
-    if (data.mfaRequired && data.challengeToken) {
-      setChallengeToken(data.challengeToken);
-      setEnrollmentRequired(Boolean(data.enrollmentRequired));
-      setPassword('');
-      return;
+    try {
+      const response = await fetch(
+        oidcMfaPending
+          ? '/api/auth/oidc/mfa/challenge'
+          : mfaPending
+            ? '/api/auth/mfa/challenge'
+            : '/api/auth/login',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            oidcMfaPending
+              ? { code: mfaCode }
+              : mfaPending
+                ? { challengeToken, code: mfaCode }
+                : { email, password, returnTo },
+          ),
+        },
+      );
+      const data = (await response.json()) as {
+        error?: string;
+        errorCode?: string;
+        role?: 'CLIENT' | 'ADMIN';
+        mfaRequired?: boolean;
+        challengeToken?: string;
+        enrollmentRequired?: boolean;
+        returnTo?: string;
+      };
+      if (!response.ok) {
+        const messages: Record<string, string> = {
+          AUTH_INVALID_CREDENTIALS: copy.invalidCredentials,
+          AUTH_REQUEST_REJECTED: copy.requestRejected,
+          AUTH_RATE_LIMITED: copy.rateLimitError,
+          AUTH_UNAVAILABLE: copy.serviceUnavailable,
+          MFA_INVALID_CODE: copy.mfaInvalidCode,
+          MFA_CHALLENGE_EXPIRED: copy.mfaChallengeExpired,
+          MFA_RATE_LIMITED: copy.mfaRateLimited,
+        };
+        setError(messages[data.errorCode ?? ''] ?? copy.genericError);
+        return;
+      }
+      if (data.mfaRequired && data.enrollmentRequired) {
+        setChallengeToken('restricted-enrollment');
+        setEnrollmentRequired(true);
+        setPassword('');
+        return;
+      }
+      if (data.mfaRequired && data.challengeToken) {
+        setChallengeToken(data.challengeToken);
+        setEnrollmentRequired(Boolean(data.enrollmentRequired));
+        setPassword('');
+        return;
+      }
+      const destination = data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal');
+      window.location.replace(localePath(locale, destination));
+    } catch {
+      setError(copy.serviceUnavailable);
+    } finally {
+      setPending(false);
     }
-    window.location.replace(
-      data.returnTo ?? returnTo ?? (data.role === 'ADMIN' ? '/admin' : '/portal'),
-    );
   }
 
   function useAdminDemo() {
@@ -95,19 +122,19 @@ export function LoginForm({
             onClick={useClientDemo}
             className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 hover:border-blue-500"
           >
-            Клиент
+            {copy.demoClientButton}
           </button>
           <button
             type="button"
             onClick={useAdminDemo}
             className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 hover:border-blue-500"
           >
-            Администратор
+            {copy.demoAdminButton}
           </button>
         </div>
       )}
       <label className="block">
-        <span className="mb-2 block text-sm font-bold text-slate-700">Email</span>
+        <span className="mb-2 block text-sm font-bold text-slate-700">{copy.emailLabel}</span>
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -117,11 +144,13 @@ export function LoginForm({
           className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
         />
       </label>
-      {challengeToken ? (
+      {challengeToken === 'restricted-enrollment' ? (
+        <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+          {copy.mfaPolicyNotice}
+        </p>
+      ) : challengeToken ? (
         <label className="block">
-          <span className="mb-2 block text-sm font-bold text-slate-700">
-            Код MFA или recovery code
-          </span>
+          <span className="mb-2 block text-sm font-bold text-slate-700">{copy.mfaCodeLabel}</span>
           <input
             value={mfaCode}
             onChange={(event) => setMfaCode(event.target.value)}
@@ -132,24 +161,63 @@ export function LoginForm({
           />
         </label>
       ) : (
-        <label className="block">
-          <span className="mb-2 block text-sm font-bold text-slate-700">Пароль</span>
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            autoComplete="current-password"
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-600"
-          />
-        </label>
+        <div>
+          <label
+            htmlFor={passwordInputId}
+            className="mb-2 block text-sm font-bold text-slate-700"
+          >
+            {copy.passwordLabel}
+          </label>
+          <div className="relative">
+            <input
+              id={passwordInputId}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={passwordVisible ? 'text' : 'password'}
+              autoComplete="current-password"
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 pr-14 outline-none focus:border-blue-600"
+            />
+            <button
+              type="button"
+              aria-label={passwordVisible ? copy.hidePasswordLabel : copy.showPasswordLabel}
+              aria-pressed={passwordVisible}
+              onClick={() => setPasswordVisible((visible) => !visible)}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-2xl text-slate-500 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+              >
+                {passwordVisible ? (
+                  <>
+                    <path d="M3 3 21 21" />
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                    <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5.5 0 9 7 9 7a12 12 0 0 1-3.1 3.8" />
+                    <path d="M6.6 6.6C4.1 8.4 3 12 3 12s3.5 7 9 7a9.8 9.8 0 0 0 3-.5" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M2.5 12s3.4-7 9.5-7 9.5 7 9.5 7-3.4 7-9.5 7-9.5-7-9.5-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </>
+                )}
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
-      {enrollmentRequired && (
+      {enrollmentRequired && challengeToken !== 'restricted-enrollment' && (
         <p
           role="alert"
           className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800"
         >
-          Политика организации требует MFA. Обратитесь к администратору для безопасного
-          первоначального подключения.
+          {copy.mfaPolicyNotice}
         </p>
       )}
       {error && (
@@ -158,17 +226,32 @@ export function LoginForm({
         </p>
       )}
       <Link
-        href="/portal/forgot-password"
+        href={localePath(locale, '/portal/forgot-password')}
         className="block text-center text-sm font-bold text-blue-700"
       >
-        Забыли пароль?
+        {copy.forgotPasswordLink}
+      </Link>
+      <Link
+        href={localePath(locale, '/portal/request-access')}
+        className="block text-center text-sm font-bold text-slate-600"
+      >
+        {copy.requestAccessLink}
       </Link>
       <button
         disabled={pending || !hydrated || enrollmentRequired}
         className="w-full rounded-full bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
       >
-        {pending ? 'Проверяем…' : challengeToken ? 'Подтвердить' : 'Войти'}
+        {pending ? copy.submitPending : challengeToken ? copy.submitConfirm : copy.submit}
       </button>
+      {challengeToken === 'restricted-enrollment' && (
+        <button
+          type="button"
+          onClick={() => window.location.replace(localePath(locale, '/portal/mfa-enrollment'))}
+          className="w-full rounded-full border border-blue-600 px-5 py-3 font-bold text-blue-700"
+        >
+          {copy.mfaSetupAction}
+        </button>
+      )}
       {challengeToken && (
         <button
           type="button"
@@ -180,16 +263,16 @@ export function LoginForm({
           }}
           className="w-full text-sm font-bold text-slate-600"
         >
-          Начать вход заново
+          {copy.restartLogin}
         </button>
       )}
       {demoEnabled && (
         <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
           <p>
-            <strong>Клиент:</strong> demo@avantime.lv / avantime
+            <strong>{copy.demoNoticeClient}</strong> demo@avantime.lv / avantime
           </p>
           <p>
-            <strong>Администратор:</strong> admin@avantime.lv / admin
+            <strong>{copy.demoNoticeAdmin}</strong> admin@avantime.lv / admin
           </p>
         </div>
       )}

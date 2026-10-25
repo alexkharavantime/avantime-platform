@@ -26,6 +26,7 @@ export const PLATFORM_PERMISSIONS = [
   'platform.knowledge.manage',
   'platform.knowledge.publish',
   'platform.knowledge.visibility.manage',
+  'platform.access_requests.manage',
 ] as const;
 
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[number];
@@ -127,6 +128,7 @@ const ROLE_PERMISSIONS = {
     'platform.knowledge.manage',
     'platform.knowledge.publish',
     'platform.knowledge.visibility.manage',
+    'platform.access_requests.manage',
   ],
   PLATFORM_SUPPORT: [
     'platform.view',

@@ -36,7 +36,7 @@ test.describe('@responsive portal layouts', () => {
   }, testInfo) => {
     const width = page.viewportSize()?.width ?? 1440;
     await page.goto('/portal');
-    const menuButton = page.getByRole('button', { name: 'Меню', exact: true });
+    const menuButton = page.getByRole('button', { name: 'Открыть меню', exact: true });
     const dialog = page.getByRole('dialog', { name: 'Мобильная навигация' });
     const states: Record<string, unknown> = {};
     const activeElement = () =>
@@ -83,7 +83,7 @@ test.describe('@responsive portal layouts', () => {
 
     await menuButton.click();
     await expect(dialog).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Закрыть', exact: true })).toBeFocused();
+    await expect(dialog.getByRole('button', { name: 'Закрыть меню', exact: true })).toBeFocused();
     states.beforeTab = await menuState();
     await page.keyboard.press('Shift+Tab');
     await expect(dialog.locator(':focus')).toBeVisible();

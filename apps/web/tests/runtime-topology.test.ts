@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import nextConfig, { repositoryRoot as configuredRepositoryRoot } from '../next.config';
+import { CURRENT_STAGING_MIGRATION } from '../lib/staging-configuration';
 
 const repositoryRoot = new URL('../../..', import.meta.url);
 
@@ -27,18 +28,37 @@ test('staging and production reference manifests contain the canonical worker to
     repositoryFile('docker-compose.production.example.yml'),
     repositoryFile('docker/production.Dockerfile'),
   ]);
+  const normalizedStaging = staging.replace(/\r\n/gu, '\n');
 
   for (const worker of workers) {
     assert.match(staging, new RegExp(`^  ${worker}:`, 'mu'));
     assert.match(production, new RegExp(`^  ${worker}:`, 'mu'));
     assert.match(dockerfile, new RegExp(`^FROM worker-base AS ${worker}$`, 'mu'));
   }
-  assert.match(staging, /check-staging-worker\.ts', 'document'/u);
-  assert.match(staging, /check-staging-worker\.ts', 'embedding'/u);
-  assert.match(staging, /document-worker:\n\s+condition: service_healthy/u);
-  assert.match(staging, /embedding-worker:\n\s+condition: service_healthy/u);
+  assert.match(normalizedStaging, /check-staging-worker\.ts', 'document'/u);
+  assert.match(normalizedStaging, /check-staging-worker\.ts', 'embedding'/u);
+  assert.match(normalizedStaging, /document-worker:\n\s+condition: service_healthy/u);
+  assert.match(normalizedStaging, /embedding-worker:\n\s+condition: service_healthy/u);
   assert.match(production, /api\/health\/documents\?mode=readiness/u);
   assert.doesNotMatch(production, /task-00[1-9]|task-01[0-8]/u);
+});
+
+test('identity core baseline precedes migrations that extend User', async () => {
+  const migrationDirectory = new URL(
+    'packages/database/prisma/migrations/',
+    repositoryRoot,
+  );
+  const migrations = (await readdir(migrationDirectory)).sort();
+  const baselineIndex = migrations.indexOf('20260730000000_identity_core_baseline');
+  const identityIndex = migrations.indexOf('20260730120000_production_identity');
+  const baseline = await repositoryFile(
+    'packages/database/prisma/migrations/20260730000000_identity_core_baseline/migration.sql',
+  );
+
+  assert.ok(baselineIndex >= 0 && baselineIndex < identityIndex);
+  assert.match(baseline, /CREATE TYPE "UserRole" AS ENUM/u);
+  assert.match(baseline, /CREATE TABLE IF NOT EXISTS "Company"/u);
+  assert.match(baseline, /CREATE TABLE IF NOT EXISTS "User"/u);
 });
 
 test('local smoke and managed preflight are separate fail-closed commands', async () => {
@@ -63,13 +83,25 @@ test('local smoke and managed preflight are separate fail-closed commands', asyn
   assert.doesNotMatch(localEnvironment, /COMMIT_SHA="local-validation"/u);
 });
 
+test('staging current migration is the newest repository migration', async () => {
+  const migrations = (
+    await readdir(new URL('packages/database/prisma/migrations/', repositoryRoot), {
+      withFileTypes: true,
+    })
+  )
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  assert.equal(CURRENT_STAGING_MIGRATION, migrations.at(-1));
+});
+
 test('tracked staging templates use the current migration and no stale task release marker', async () => {
   const [managed, local] = await Promise.all([
     repositoryFile('.env.staging.example'),
     repositoryFile('.env.staging.local.example'),
   ]);
   for (const source of [managed, local]) {
-    assert.match(source, /20260902120000_task_018_knowledge_delete_lifecycle/u);
+    assert.match(source, /20260930140000_local_owner_bootstrap/u);
     assert.doesNotMatch(source, /20260803180000_jira_status_comment_sync|task-016-local/u);
   }
 });

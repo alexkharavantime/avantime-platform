@@ -151,7 +151,7 @@ export function createRagServices(
     knowledgeSemantic ? [knowledgeSemantic] : [],
   );
 
-  const hybrid = new DefaultHybridRetriever(lexical, semantic, configuration);
+  const hybrid = new DefaultHybridRetriever(lexical, semantic, configuration, events);
   const citationBuilder = new DefaultCitationBuilder(documents.metadata, documents.processing);
   const answers = new DefaultRagAnswerService(
     hybrid,

@@ -35,6 +35,14 @@ expires unreconciled reservations.
 - Reconciliation is idempotent by tenant/idempotency key.
 - Provider cost remains estimated until invoices/usage exports are reconciled.
 
+## Estimate rates
+
+Answer generation is estimated at €1 per million input tokens and €4 per million output
+tokens. Embeddings use a separate per-model rate in `lib/ai-gateway.ts`:
+`text-embedding-3-small` €0.02 and `text-embedding-3-large` €0.13 per million input
+tokens; other embedding models use €0.15. Rows written before this split priced
+embeddings at the answer input rate and remain unchanged in the append-only ledger.
+
 ## Operations
 
 ```bash

@@ -9,13 +9,24 @@ import {
   resolveOrganizationRole,
 } from '../../../lib/organization-permissions';
 import type { OrganizationRole } from '../../../lib/session';
+import { getLocale } from '../../../lib/i18n-server';
+import { localePath, type Locale } from '../../../lib/i18n';
 
-export const metadata: Metadata = { title: 'Команда компании — Avantime' };
+const copy: Record<Locale, { metadata: string; eyebrow: string; title: string; description: string }> = {
+  lv: { metadata: 'Uzņēmuma komanda — Avantime', eyebrow: 'Klienta kabinets', title: 'Uzņēmuma komanda', description: 'Darbinieki, kuri var izveidot un sekot jūsu uzņēmuma pieprasījumiem.' },
+  ru: { metadata: 'Команда компании — Avantime', eyebrow: 'Кабинет клиента', title: 'Команда компании', description: 'Сотрудники, которым доступно создание и отслеживание обращений вашей компании.' },
+  en: { metadata: 'Company team — Avantime', eyebrow: 'Client portal', title: 'Company team', description: 'People who can create and track requests for your company.' },
+};
+
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: copy[await getLocale()].metadata };
+}
 
 export default async function TeamPage() {
+  const locale = await getLocale();
   const session = await getValidatedPortalSession();
-  if (!session) redirect('/portal/login?returnTo=/portal/team');
-  if (!hasOrganizationPermission(session, 'members.view')) redirect('/portal');
+  if (!session) redirect(localePath(locale, '/portal/login?returnTo=/portal/team'));
+  if (!hasOrganizationPermission(session, 'members.view')) redirect(localePath(locale, '/portal'));
   const members = await listCompanyMembers(session);
   const actorRole = resolveOrganizationRole(session).role;
   const assignableRoles =
@@ -31,19 +42,18 @@ export default async function TeamPage() {
     OrganizationRole,
     'OWNER'
   >[];
+  const text = copy[locale];
   return (
     <section className="py-10">
       <div className="mx-auto max-w-6xl px-6">
-        <p className="eyebrow">Кабинет клиента</p>
+        <p className="eyebrow">{text.eyebrow}</p>
         <h1 className="mt-4 text-4xl font-black tracking-[-0.04em] sm:text-6xl">
-          Команда компании
+          {text.title}
         </h1>
-        <p className="mt-4 max-w-2xl text-lg text-slate-600">
-          Сотрудники, которым доступно создание и отслеживание обращений вашей компании.
-        </p>
+        <p className="mt-4 max-w-2xl text-lg text-slate-600">{text.description}</p>
         {hasOrganizationPermission(session, 'members.invite') && (
           <div className="mt-10">
-            <TeamInviteForm roles={invitableRoles} />
+            <TeamInviteForm roles={invitableRoles} locale={locale} />
           </div>
         )}
         <TeamManagement
@@ -52,6 +62,7 @@ export default async function TeamPage() {
           mayManageRoles={hasOrganizationPermission(session, 'members.role.manage')}
           mayRemoveMembers={hasOrganizationPermission(session, 'members.remove')}
           currentUserId={session.userId}
+          locale={locale}
           canBootstrapOwner={
             activeOwnerCount === 0 && actorRole === 'ADMIN' && session.role === 'ADMIN'
           }

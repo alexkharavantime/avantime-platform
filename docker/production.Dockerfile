@@ -39,7 +39,7 @@ RUN mkdir -p apps/web/public \
 # Keep the runtime dependency graph pinned to the application lockfile. Rebuild each
 # esbuild executable with the current patched Go toolchain so Trivy does not surface
 # vulnerabilities inherited from the upstream prebuilt Go binaries.
-FROM golang:1.26.6-alpine AS worker-esbuild-toolchain
+FROM golang:1.26.10-alpine AS worker-esbuild-toolchain
 
 FROM dependencies AS worker-dependencies
 COPY --from=worker-esbuild-toolchain /usr/local/go /usr/local/go

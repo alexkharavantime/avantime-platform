@@ -1,4 +1,4 @@
-FROM golang:1.26.6-alpine AS ocr-esbuild-builder
+FROM golang:1.26.10-alpine AS ocr-esbuild-builder
 ARG ESBUILD_VERSION=0.26.0
 RUN GOBIN=/tmp/esbuild-bin go install "github.com/evanw/esbuild/cmd/esbuild@v${ESBUILD_VERSION}"
 

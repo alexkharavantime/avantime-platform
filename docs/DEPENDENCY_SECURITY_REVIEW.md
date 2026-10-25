@@ -15,7 +15,7 @@ list is empty.
 
 Release-class images were rebuilt with Node `22.23.2`; Alpine runtime stages upgrade
 `libcrypto3`/`libssl3` to `3.5.8-r0`. Unused vulnerable packages and package managers are removed
-from final images. Worker and OCR `esbuild 0.26.0` binaries are rebuilt with Go `1.26.6` in isolated
+from final images. Worker and OCR `esbuild 0.26.0` binaries are rebuilt with Go `1.26.10` in isolated
 build stages. Fresh sequential Grype `0.112.0` scans using `--only-fixed --fail-on high` report no
 Critical or High findings for web, the canonical worker RootFS, migration, operations or the OCR
 integration image. Worker, operations and OCR each retain one Low `golang.org/x/sys` finding. The

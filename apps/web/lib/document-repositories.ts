@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -202,6 +203,9 @@ export type DocumentHistorySource = {
   chunkId: string;
   score: number;
   link?: string;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  excerpt?: string;
 };
 
 export type DocumentHistoryItem = {
@@ -1488,12 +1492,15 @@ export class LocalDocumentProcessingRepository implements DocumentProcessingRepo
 }
 
 export class LocalDocumentHistoryRepository implements DocumentHistoryRepository {
-  private readonly historyKey = 'knowledge-history.json';
-
   constructor(private readonly storage: DocumentStorage) {}
 
+  private historyKey(tenant: DocumentTenantContext) {
+    const userKey = createHash('sha256').update(tenant.userId).digest('hex');
+    return `knowledge-history-${userKey}.json`;
+  }
+
   async list(tenant: DocumentTenantContext) {
-    const content = await this.storage.read(tenant, 'history', this.historyKey);
+    const content = await this.storage.read(tenant, 'history', this.historyKey(tenant));
     if (!content) return [];
 
     try {
@@ -1508,7 +1515,7 @@ export class LocalDocumentHistoryRepository implements DocumentHistoryRepository
     await this.storage.write(
       tenant,
       'history',
-      this.historyKey,
+      this.historyKey(tenant),
       Buffer.from(JSON.stringify(history, null, 2), 'utf8'),
     );
   }

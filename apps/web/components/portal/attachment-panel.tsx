@@ -1,6 +1,7 @@
 'use client';
 
 import { ChangeEvent, useEffect, useState } from 'react';
+import type { Locale } from '../../lib/i18n';
 type Attachment = {
   id: string;
   name: string;
@@ -12,11 +13,18 @@ type Attachment = {
 
 export function AttachmentPanel({
   requestId,
+  locale,
   canUpload = true,
 }: {
   requestId: string;
+  locale: Locale;
   canUpload?: boolean;
 }) {
+  const copy = {
+    lv: { error: 'Neizdevās pievienot failu.', uploaded: 'Fails augšupielādēts un pieejams lejupielādei.', title: 'Pielikumi', limit: 'Līdz 10 MB. Faili tiek glabāti serverī.', loading: 'Augšupielādē…', add: 'Pievienot failu', empty: 'Pielikumu vēl nav.', download: 'Lejupielādēt', units: 'KB', locale: 'lv-LV' },
+    ru: { error: 'Не удалось добавить файл.', uploaded: 'Файл загружен и доступен для скачивания.', title: 'Вложения', limit: 'До 10 МБ. Файлы хранятся на сервере.', loading: 'Загрузка…', add: 'Добавить файл', empty: 'Вложений пока нет.', download: 'Скачать', units: 'КБ', locale: 'ru-RU' },
+    en: { error: 'Could not add the file.', uploaded: 'File uploaded and available to download.', title: 'Attachments', limit: 'Up to 10 MB. Files are stored on the server.', loading: 'Uploading…', add: 'Add file', empty: 'There are no attachments yet.', download: 'Download', units: 'KB', locale: 'en-GB' },
+  }[locale];
   const [items, setItems] = useState<Attachment[]>([]);
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(false);
@@ -40,22 +48,22 @@ export function AttachmentPanel({
     setPending(false);
     event.target.value = '';
     if (!response.ok || !data.attachment)
-      return setMessage(data.error ?? 'Не удалось добавить файл.');
+      return setMessage(copy.error);
     setItems((current) => [data.attachment!, ...current]);
-    setMessage('Файл загружен и доступен для скачивания.');
+    setMessage(copy.uploaded);
   }
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black">Вложения</h2>
-          <p className="mt-1 text-sm text-slate-500">До 10 МБ. Файлы сохраняются на сервере.</p>
+          <h2 className="text-2xl font-black">{copy.title}</h2>
+          <p className="mt-1 text-sm text-slate-500">{copy.limit}</p>
         </div>
         {canUpload && (
           <label
             className={`cursor-pointer rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white ${pending ? 'opacity-60' : ''}`}
           >
-            {pending ? 'Загрузка…' : 'Добавить файл'}
+            {pending ? copy.loading : copy.add}
             <input disabled={pending} type="file" className="hidden" onChange={choose} />
           </label>
         )}
@@ -63,7 +71,7 @@ export function AttachmentPanel({
       {message && <p className="mt-4 text-sm font-bold text-blue-700">{message}</p>}
       <div className="mt-5 space-y-3">
         {items.length === 0 ? (
-          <p className="text-slate-500">Вложений пока нет.</p>
+          <p className="text-slate-500">{copy.empty}</p>
         ) : (
           items.map((item) => (
             <div
@@ -73,13 +81,13 @@ export function AttachmentPanel({
               <div>
                 <p className="font-black">{item.name}</p>
                 <p className="text-xs text-slate-500">
-                  {(item.size / 1024).toFixed(1)} КБ ·{' '}
-                  {new Date(item.createdAt).toLocaleString('ru-RU')}
+                  {(item.size / 1024).toFixed(1)} {copy.units} ·{' '}
+                  {new Date(item.createdAt).toLocaleString(copy.locale)}
                 </p>
               </div>
               {item.downloadUrl && (
                 <a className="text-sm font-black text-blue-700" href={item.downloadUrl}>
-                  Скачать
+                  {copy.download}
                 </a>
               )}
             </div>

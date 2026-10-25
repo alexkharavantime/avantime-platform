@@ -160,6 +160,10 @@ export function validateProductionConfiguration(
   requireDriver(environment, 'IDENTITY_EMAIL_DRIVER', 'resend');
   requireValue(environment, 'MAIL_FROM');
   requireSecret(environment, 'RESEND_API_KEY', 20);
+  const accessRequestRecipient = requireValue(environment, 'ACCESS_REQUEST_NOTIFICATION_EMAIL');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(accessRequestRecipient)) {
+    throw new Error('ACCESS_REQUEST_NOTIFICATION_EMAIL is invalid.');
+  }
   const authOrigin = parseUrl(environment, 'AUTH_PUBLIC_ORIGIN');
   assertPublicProviderUrl(authOrigin, 'AUTH_PUBLIC_ORIGIN');
   assertOidcHostAllowlist(environment);

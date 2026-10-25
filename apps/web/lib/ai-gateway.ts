@@ -3,18 +3,24 @@ import { createHash } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
-import type { AiOperationalEventSink } from './ai-observability';
+import type { AiOperationalEventSink, AiProviderDiagnostic } from './ai-observability';
 import { NoopAiOperationalEventSink } from './ai-observability';
 import {
+  AiBudgetDeniedError,
   MemoryAiCostController,
   MemoryAiRateLimiter,
+  type AiBudgetBlockReason,
   type AiBudgetReservation,
   type AiCostController,
   type AiRequestType,
   type DistributedAiRateLimiter,
 } from './ai-control';
 import type { DocumentTenantContext } from './document-model';
-import type { AiProviderDriver, RagConfiguration } from './rag-configuration';
+import type {
+  AiProviderDriver,
+  RagConfiguration,
+  RagReasoningEffort,
+} from './rag-configuration';
 
 export type EmbeddingPurpose = 'document' | 'query';
 
@@ -39,6 +45,7 @@ export type EmbeddingResult = {
   model: string;
   dimensions: number;
   usage: AiUsage;
+  providerDiagnostic?: AiProviderDiagnostic;
 };
 
 export type RagContextSource = {
@@ -50,7 +57,9 @@ export type RagContextSource = {
 
   chunkId: string;
   title: string;
-  excerpt: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  text: string;
 };
 
 export type RagGenerationRequest = {
@@ -59,6 +68,7 @@ export type RagGenerationRequest = {
   language: string;
   model: string;
   maximumOutputTokens: number;
+  reasoningEffort?: RagReasoningEffort;
   systemInstructions: string;
   sources: readonly RagContextSource[];
   correlationId: string;
@@ -68,6 +78,7 @@ export type RagGenerationResult = {
   answer: string;
   model: string;
   usage: AiUsage;
+  providerDiagnostic?: AiProviderDiagnostic;
 };
 
 export type AiProviderAvailability = {
@@ -106,7 +117,9 @@ export interface AiGateway {
     },
   ): Promise<EmbeddingResult>;
   generateRagAnswer(
-    request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'>,
+    request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'> & {
+      maximumOutputTokens?: number;
+    },
   ): Promise<RagGenerationResult>;
   checkReadiness(): Promise<AiGatewayReadiness>;
 }
@@ -116,6 +129,7 @@ export type AiGatewayErrorCode =
   | 'AI_PROVIDER_UNAVAILABLE'
   | 'AI_RATE_LIMITED'
   | 'AI_BUDGET_EXCEEDED'
+  | 'AI_BUDGET_UNAVAILABLE'
   | 'AI_TIMEOUT'
   | 'AI_INVALID_RESPONSE'
   | 'AI_REQUEST_REJECTED';
@@ -125,6 +139,9 @@ export class AiGatewayError extends Error {
     readonly code: AiGatewayErrorCode,
     readonly transient: boolean,
     safeMessage: string,
+    readonly providerDiagnostic?: AiProviderDiagnostic,
+    readonly usage?: AiUsage,
+    readonly budgetReason?: AiBudgetBlockReason,
   ) {
     super(safeMessage);
     this.name = 'AiGatewayError';
@@ -137,6 +154,66 @@ function estimateTokens(texts: readonly string[]) {
 
 function estimateCost(inputTokens: number, outputTokens: number) {
   return Number((inputTokens * 0.000_001 + outputTokens * 0.000_004).toFixed(6));
+}
+
+// EUR per input token, rounded up from published embedding prices; unknown models use the highest rate.
+const embeddingInputTokenCostEur: Record<string, number> = {
+  'text-embedding-3-small': 0.000_000_02,
+  'text-embedding-3-large': 0.000_000_13,
+};
+const defaultEmbeddingInputTokenCostEur = 0.000_000_15;
+
+export function estimateEmbeddingCost(model: string, inputTokens: number) {
+  const rate = embeddingInputTokenCostEur[model] ?? defaultEmbeddingInputTokenCostEur;
+  return Number((inputTokens * rate).toFixed(8));
+}
+
+function openAiSdkMaxRetries(environment = process.env) {
+  if (environment.BROWSER_REAL_AI_KB_SMOKE === '1') return 0;
+  const configured = environment.OPENAI_SDK_MAX_RETRIES;
+  if (configured === undefined) return 2;
+  if (!/^\d+$/u.test(configured)) {
+    throw new Error('OPENAI_SDK_MAX_RETRIES must be a non-negative integer.');
+  }
+  const retries = Number(configured);
+  if (!Number.isSafeInteger(retries)) {
+    throw new Error('OPENAI_SDK_MAX_RETRIES must be a non-negative integer.');
+  }
+  return retries;
+}
+
+function safeTokenCount(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+function outputTokenDiagnostic(usage: unknown): Pick<
+  AiProviderDiagnostic,
+  'outputTokens' | 'reasoningTokens'
+> {
+  const record = usage && typeof usage === 'object' ? (usage as Record<string, unknown>) : {};
+  const details =
+    record.output_tokens_details && typeof record.output_tokens_details === 'object'
+      ? (record.output_tokens_details as Record<string, unknown>)
+      : {};
+  const outputTokens = safeTokenCount(record.output_tokens);
+  const reasoningTokens = safeTokenCount(details.reasoning_tokens);
+  return {
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+  };
+}
+
+function escapeXmlAttribute(value: string) {
+  return value
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;')
+    .replace(/'/gu, '&apos;');
+}
+
+function escapeXmlText(value: string) {
+  return value.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
 }
 
 function validateEmbeddingResult(
@@ -160,16 +237,73 @@ function validateEmbeddingResult(
   }
 }
 
-function classifyProviderError(error: unknown): AiGatewayError {
-  if (error instanceof AiGatewayError) return error;
-  const status =
-    error && typeof error === 'object' && 'status' in error
-      ? Number((error as { status?: unknown }).status)
-      : undefined;
-  if (status === 429 || (status !== undefined && status >= 500)) {
-    return new AiGatewayError('AI_PROVIDER_UNAVAILABLE', true, 'AI provider временно недоступен.');
+function safeDiagnosticToken(value: unknown, maximumLength = 64) {
+  if (typeof value !== 'string' || value.length > maximumLength) return undefined;
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(value) ? value : undefined;
+}
+
+export function normalizeOpenAiBaseUrl(baseUrl?: string) {
+  const normalized = new URL(baseUrl?.trim() || 'https://api.openai.com/v1');
+  if (normalized.origin === 'https://api.openai.com' && normalized.pathname === '/') {
+    normalized.pathname = '/v1';
   }
-  return new AiGatewayError('AI_REQUEST_REJECTED', false, 'AI provider отклонил запрос.');
+  return normalized.toString().replace(/\/$/u, '');
+}
+
+function diagnosticProvider(provider: string): AiProviderDiagnostic['provider'] {
+  return provider === 'openai' ||
+    provider === 'gemini' ||
+    provider === 'fake' ||
+    provider === 'disabled'
+    ? provider
+    : 'unknown';
+}
+
+function classifyProviderError(
+  error: unknown,
+  provider: AiProviderDiagnostic['provider'],
+  operation: AiProviderDiagnostic['operation'],
+): AiGatewayError {
+  if (error instanceof AiGatewayError) return error;
+  const record = error && typeof error === 'object' ? (error as Record<string, unknown>) : {};
+  const nestedError =
+    record.error && typeof record.error === 'object'
+      ? (record.error as Record<string, unknown>)
+      : {};
+  const headers = record.headers as { get?: (name: string) => string | null } | undefined;
+  const requestId = record.requestID ?? record.request_id ?? headers?.get?.('x-request-id');
+  const status = typeof record.status === 'number' ? record.status : undefined;
+  const diagnostic: AiProviderDiagnostic = {
+    provider,
+    operation,
+    ...(status !== undefined ? { httpStatus: status } : {}),
+    ...(safeDiagnosticToken(record.name)
+      ? { providerErrorName: safeDiagnosticToken(record.name) }
+      : {}),
+    ...(safeDiagnosticToken(record.type ?? nestedError.type)
+      ? { providerErrorType: safeDiagnosticToken(record.type ?? nestedError.type) }
+      : {}),
+    ...(safeDiagnosticToken(record.code ?? nestedError.code)
+      ? { providerErrorCode: safeDiagnosticToken(record.code ?? nestedError.code) }
+      : {}),
+    ...(safeDiagnosticToken(requestId, 128)
+      ? { providerRequestId: safeDiagnosticToken(requestId, 128) }
+      : {}),
+  };
+  if (status === 429 || (status !== undefined && status >= 500)) {
+    return new AiGatewayError(
+      'AI_PROVIDER_UNAVAILABLE',
+      true,
+      'AI provider временно недоступен.',
+      diagnostic,
+    );
+  }
+  return new AiGatewayError(
+    'AI_REQUEST_REJECTED',
+    false,
+    'AI provider отклонил запрос.',
+    diagnostic,
+  );
 }
 
 async function withTimeout<T>(
@@ -238,7 +372,7 @@ export class DeterministicFakeAiProvider implements EmbeddingProvider, RagAnswer
   ): Promise<RagGenerationResult> {
     void _signal;
     const excerpts = request.sources.slice(0, 3).map((source) => {
-      const compact = source.excerpt.replace(/\s+/g, ' ').trim().slice(0, 280);
+      const compact = source.text.replace(/\s+/g, ' ').trim().slice(0, 280);
       return `${compact} [${source.sourceId}]`;
     });
     return {
@@ -251,7 +385,7 @@ export class DeterministicFakeAiProvider implements EmbeddingProvider, RagAnswer
         inputTokens: estimateTokens([
           request.question,
           request.systemInstructions,
-          ...request.sources.map((source) => source.excerpt),
+          ...request.sources.map((source) => source.text),
         ]),
         outputTokens: estimateTokens(excerpts),
         estimatedCostEur: 0,
@@ -297,9 +431,41 @@ export class DisabledAiProvider implements EmbeddingProvider, RagAnswerProvider 
 export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvider {
   readonly id = 'openai';
   private readonly client: OpenAI;
+  private readonly requestStatuses = new Map<string, number>();
+  private readonly configured: boolean;
+  private readonly reasoningEffort?: RagReasoningEffort;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(
+    apiKey: string,
+    fetchImplementation?: typeof globalThis.fetch,
+    reasoningEffort?: RagReasoningEffort,
+  ) {
+    this.configured = apiKey.trim().length > 0;
+    this.reasoningEffort = reasoningEffort;
+    const fetcher = fetchImplementation ?? globalThis.fetch;
+    this.client = new OpenAI({
+      apiKey,
+      baseURL: normalizeOpenAiBaseUrl(process.env.OPENAI_BASE_URL),
+      maxRetries: openAiSdkMaxRetries(),
+      fetch: async (input, init) => {
+        const response = await fetcher(input, init);
+        const requestId = response.headers.get('x-request-id');
+        if (requestId) this.requestStatuses.set(requestId, response.status);
+        return response;
+      },
+    });
+  }
+
+  private responseDiagnostic(requestId: unknown, operation: AiProviderDiagnostic['operation']) {
+    const safeRequestId = safeDiagnosticToken(requestId, 128);
+    const httpStatus = safeRequestId ? this.requestStatuses.get(safeRequestId) : undefined;
+    if (safeRequestId) this.requestStatuses.delete(safeRequestId);
+    return {
+      provider: 'openai' as const,
+      operation,
+      ...(httpStatus !== undefined ? { httpStatus } : {}),
+      ...(safeRequestId ? { providerRequestId: safeRequestId } : {}),
+    };
   }
 
   async embed(request: EmbeddingRequest, signal: AbortSignal): Promise<EmbeddingResult> {
@@ -317,15 +483,19 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
       vectors: response.data.map((item) => item.embedding),
       model: response.model,
       dimensions: request.dimensions,
+      providerDiagnostic: this.responseDiagnostic(response._request_id, 'embedding'),
       usage: {
         inputTokens,
         outputTokens: 0,
-        estimatedCostEur: estimateCost(inputTokens, 0),
+        estimatedCostEur: estimateEmbeddingCost(request.model, inputTokens),
       },
     };
   }
 
   async generate(request: RagGenerationRequest, signal: AbortSignal): Promise<RagGenerationResult> {
+    const reasoningEffort =
+      this.reasoningEffort ??
+      (process.env.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' ? 'minimal' : request.reasoningEffort);
     const response = await this.client.responses.create(
       {
         model: request.model,
@@ -333,14 +503,59 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
         instructions: request.systemInstructions,
         input: assembleProviderContext(request),
         max_output_tokens: request.maximumOutputTokens,
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       },
       { signal },
     );
+    const responseError = response.error as unknown as Record<string, unknown> | null;
+    if ((response.status && response.status !== 'completed') || response.error) {
+      const inputTokens = response.usage?.input_tokens;
+      const outputTokens = response.usage?.output_tokens;
+      const usage =
+        typeof inputTokens === 'number' &&
+        Number.isSafeInteger(inputTokens) &&
+        inputTokens >= 0 &&
+        typeof outputTokens === 'number' &&
+        Number.isSafeInteger(outputTokens) &&
+        outputTokens >= 0
+          ? {
+              inputTokens,
+              outputTokens,
+              estimatedCostEur: estimateCost(inputTokens, outputTokens),
+            }
+          : undefined;
+      const diagnostic: AiProviderDiagnostic = {
+        ...this.responseDiagnostic(response._request_id, 'answer'),
+        ...(response.status ? { responseStatus: response.status } : {}),
+        ...(safeDiagnosticToken(responseError?.type)
+          ? { responseErrorType: safeDiagnosticToken(responseError?.type) }
+          : {}),
+        ...(safeDiagnosticToken(response.error?.code)
+          ? { responseErrorCode: safeDiagnosticToken(response.error?.code) }
+          : {}),
+        ...(safeDiagnosticToken(response.incomplete_details?.reason)
+          ? { incompleteReason: safeDiagnosticToken(response.incomplete_details?.reason) }
+          : {}),
+        ...outputTokenDiagnostic(response.usage),
+      };
+      throw new AiGatewayError(
+        response.status === 'failed' ? 'AI_PROVIDER_UNAVAILABLE' : 'AI_INVALID_RESPONSE',
+        response.status === 'failed',
+        'AI provider не завершил генерацию ответа.',
+        diagnostic,
+        usage,
+      );
+    }
     const inputTokens = response.usage?.input_tokens ?? 0;
     const outputTokens = response.usage?.output_tokens ?? 0;
     return {
       answer: response.output_text?.trim() ?? '',
       model: request.model,
+      providerDiagnostic: {
+        ...this.responseDiagnostic(response._request_id, 'answer'),
+        responseStatus: response.status,
+        ...outputTokenDiagnostic(response.usage),
+      },
       usage: {
         inputTokens,
         outputTokens,
@@ -350,26 +565,14 @@ export class OpenAiGatewayProvider implements EmbeddingProvider, RagAnswerProvid
   }
 
   async checkAvailability(): Promise<AiProviderAvailability> {
-    try {
-      await this.client.models.list();
-      return {
-        configured: true,
-        available: true,
-        capabilities: {
-          embeddings: true,
-          answers: true,
-        },
-      };
-    } catch {
-      return {
-        configured: true,
-        available: false,
-        capabilities: {
-          embeddings: true,
-          answers: true,
-        },
-      };
-    }
+    return {
+      configured: this.configured,
+      available: this.configured,
+      capabilities: {
+        embeddings: true,
+        answers: true,
+      },
+    };
   }
 }
 
@@ -406,7 +609,7 @@ export class GeminiAiGatewayProvider implements EmbeddingProvider, RagAnswerProv
       usage: {
         inputTokens,
         outputTokens: 0,
-        estimatedCostEur: estimateCost(inputTokens, 0),
+        estimatedCostEur: estimateEmbeddingCost(request.model, inputTokens),
       },
     };
   }
@@ -422,7 +625,7 @@ export class GeminiAiGatewayProvider implements EmbeddingProvider, RagAnswerProv
     });
     const inputTokens =
       response.usageMetadata?.promptTokenCount ??
-      estimateTokens([request.question, ...request.sources.map((source) => source.excerpt)]);
+      estimateTokens([request.question, ...request.sources.map((source) => source.text)]);
     const outputTokens =
       response.usageMetadata?.candidatesTokenCount ?? estimateTokens([response.text ?? '']);
     return {
@@ -464,7 +667,7 @@ export function assembleProviderContext(request: RagGenerationRequest) {
   const sources = request.sources
     .map(
       (source) =>
-        `<source id="${source.sourceId}" document="${source.documentId}" chunk="${source.chunkId}">\n${source.excerpt}\n</source>`,
+        `<source id="${escapeXmlAttribute(source.sourceId)}" type="${source.sourceType}" document="${escapeXmlAttribute(source.documentId ?? '')}" article="${escapeXmlAttribute(source.articleId ?? '')}" title="${escapeXmlAttribute(source.title)}" chunk="${escapeXmlAttribute(source.chunkId)}" page_start="${source.pageStart ?? ''}" page_end="${source.pageEnd ?? ''}">\n${escapeXmlText(source.text)}\n</source>`,
     )
     .join('\n\n');
   return [
@@ -512,6 +715,8 @@ export class DefaultAiGateway implements AiGateway {
         configuration.limits.dailyBudgetEur,
         configuration.limits.monthlyBudgetEur,
         now,
+        configuration.limits.sessionProviderOperationLimit,
+        configuration.limits.sessionBudgetLimitEur,
       );
   }
 
@@ -538,11 +743,31 @@ export class DefaultAiGateway implements AiGateway {
     });
   }
 
-  async generateRagAnswer(request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'>) {
+  async generateRagAnswer(
+    request: Omit<RagGenerationRequest, 'model' | 'maximumOutputTokens'> & {
+      maximumOutputTokens?: number;
+    },
+  ) {
+    const maximumOutputTokens =
+      request.maximumOutputTokens ?? this.configuration.answer.maximumOutputTokens;
+    if (
+      !Number.isSafeInteger(maximumOutputTokens) ||
+      maximumOutputTokens <= 0 ||
+      maximumOutputTokens > this.configuration.answer.maximumOutputTokens
+    ) {
+      throw new AiGatewayError('AI_REQUEST_REJECTED', false, 'AI output token limit is invalid.');
+    }
+    const generationRequest: RagGenerationRequest = {
+      ...request,
+      model: this.configuration.answer.model,
+      maximumOutputTokens,
+      ...(this.configuration.answer.reasoningEffort
+        ? { reasoningEffort: this.configuration.answer.reasoningEffort }
+        : {}),
+    };
     const estimatedInput = estimateTokens([
-      request.question,
-      request.systemInstructions,
-      ...request.sources.map((source) => source.excerpt),
+      generationRequest.systemInstructions,
+      assembleProviderContext(generationRequest),
     ]);
     const reservation = await this.authorize(
       request.tenant,
@@ -550,22 +775,24 @@ export class DefaultAiGateway implements AiGateway {
       this.configuration.answer.model,
       'rag_answer',
       request.correlationId,
-      estimateCost(estimatedInput, this.configuration.answer.maximumOutputTokens),
+      this.estimateReservedCost(estimateCost(estimatedInput, maximumOutputTokens)),
     );
     const startedAt = Date.now();
+    let attemptCount = 0;
     try {
-      const result = await this.withRetry(() =>
-        withTimeout(this.configuration.answer.timeoutMs, (signal) =>
-          this.answerProvider.generate(
-            {
-              ...request,
-              model: this.configuration.answer.model,
-              maximumOutputTokens: this.configuration.answer.maximumOutputTokens,
-            },
-            signal,
+      const retried = await this.withRetry(
+        () =>
+          withTimeout(this.configuration.answer.timeoutMs, (signal) =>
+            this.answerProvider.generate(
+              generationRequest,
+              signal,
+            ),
           ),
-        ),
+        diagnosticProvider(this.answerProvider.id),
+        'answer',
       );
+      const { result, attemptCount: attempts } = retried;
+      attemptCount = attempts;
       if (!result.answer.trim()) {
         throw new AiGatewayError('AI_INVALID_RESPONSE', false, 'AI provider не вернул ответ.');
       }
@@ -577,23 +804,80 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'success',
         durationMs: Date.now() - startedAt,
+        attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
+        actualCostEur: null,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
+        providerDiagnostic: {
+          ...(result.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.answerProvider.id),
+            operation: 'answer',
+          }),
+          stage: 'rag_answer',
+          attemptCount,
+        },
       });
       return result;
     } catch (error) {
-      await this.costController.release(reservation);
-      const normalized = classifyProviderError(error);
-      this.events.record({
-        name: 'provider_call',
-        occurredAt: new Date().toISOString(),
-        companyId: request.tenant.companyId,
-        correlationId: request.correlationId,
-        outcome: 'failure',
-        durationMs: Date.now() - startedAt,
-        errorCode: normalized.code,
-      });
+      const classified = classifyProviderError(
+        error,
+        diagnosticProvider(this.answerProvider.id),
+        'answer',
+      );
+      attemptCount ||= classified.providerDiagnostic?.attemptCount ?? 0;
+      const normalized = new AiGatewayError(
+        classified.code,
+        classified.transient,
+        classified.message,
+        {
+          ...(classified.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.answerProvider.id),
+            operation: 'answer',
+          }),
+          stage: 'rag_answer',
+          attemptCount,
+        },
+      );
+      const failedUsage = error instanceof AiGatewayError ? error.usage : undefined;
+      try {
+        this.events.record({
+          name: 'provider_call',
+          occurredAt: new Date().toISOString(),
+          companyId: request.tenant.companyId,
+          correlationId: request.correlationId,
+          outcome: 'failure',
+          durationMs: Date.now() - startedAt,
+          attemptCount,
+          reservedCostEur: reservation.estimatedCostEur,
+          actualCostEur: null,
+          ...(failedUsage
+            ? {
+                inputTokens: failedUsage.inputTokens,
+                outputTokens: failedUsage.outputTokens,
+                estimatedCostEur: failedUsage.estimatedCostEur,
+              }
+            : {}),
+          errorCode: normalized.code,
+          providerDiagnostic: normalized.providerDiagnostic,
+        });
+      } finally {
+        if (failedUsage) {
+          await this.recordUsage(reservation, failedUsage, 0, 'FAILED');
+        } else {
+          await this.costController.release(reservation);
+        }
+      }
+      if (normalized.providerDiagnostic) {
+        console.warn(
+          JSON.stringify({
+            event: 'ai_provider_failure',
+            errorCode: normalized.code,
+            ...normalized.providerDiagnostic,
+          }),
+        );
+      }
       throw normalized;
     }
   }
@@ -618,15 +902,24 @@ export class DefaultAiGateway implements AiGateway {
       request.model,
       requestType,
       request.correlationId,
-      estimateCost(estimateTokens(request.texts), 0),
+      this.estimateReservedCost(
+        estimateEmbeddingCost(request.model, estimateTokens(request.texts)),
+      ),
+      request.usageIdempotencyKey,
     );
     const startedAt = Date.now();
+    let attemptCount = 0;
     try {
-      const result = await this.withRetry(() =>
-        withTimeout(this.configuration.embedding.timeoutMs, (signal) =>
-          this.embeddingProvider.embed(request, signal),
-        ),
+      const retried = await this.withRetry(
+        () =>
+          withTimeout(this.configuration.embedding.timeoutMs, (signal) =>
+            this.embeddingProvider.embed(request, signal),
+          ),
+        diagnosticProvider(this.embeddingProvider.id),
+        'embedding',
       );
+      const { result, attemptCount: attempts } = retried;
+      attemptCount = attempts;
       validateEmbeddingResult(result, request.texts.length, request.dimensions);
       await this.recordUsage(reservation, result.usage, request.texts.length);
       this.events.record({
@@ -636,13 +929,42 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'success',
         durationMs: Date.now() - startedAt,
+        attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
+        actualCostEur: null,
         inputTokens: result.usage.inputTokens,
         estimatedCostEur: result.usage.estimatedCostEur,
+        providerDiagnostic: {
+          ...(result.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.embeddingProvider.id),
+            operation: 'embedding',
+          }),
+          stage: requestType,
+          attemptCount,
+        },
       });
       return result;
     } catch (error) {
       await this.costController.release(reservation);
-      const normalized = classifyProviderError(error);
+      const classified = classifyProviderError(
+        error,
+        diagnosticProvider(this.embeddingProvider.id),
+        'embedding',
+      );
+      attemptCount ||= classified.providerDiagnostic?.attemptCount ?? 0;
+      const normalized = new AiGatewayError(
+        classified.code,
+        classified.transient,
+        classified.message,
+        {
+          ...(classified.providerDiagnostic ?? {
+            provider: diagnosticProvider(this.embeddingProvider.id),
+            operation: 'embedding',
+          }),
+          stage: requestType,
+          attemptCount,
+        },
+      );
       this.events.record({
         name: 'provider_call',
         occurredAt: new Date().toISOString(),
@@ -650,20 +972,42 @@ export class DefaultAiGateway implements AiGateway {
         correlationId: request.correlationId,
         outcome: 'failure',
         durationMs: Date.now() - startedAt,
+        attemptCount,
+        reservedCostEur: reservation.estimatedCostEur,
         errorCode: normalized.code,
+        providerDiagnostic: normalized.providerDiagnostic,
       });
+      if (normalized.providerDiagnostic) {
+        console.warn(
+          JSON.stringify({
+            event: 'ai_provider_failure',
+            errorCode: normalized.code,
+            ...normalized.providerDiagnostic,
+          }),
+        );
+      }
       throw normalized;
     }
   }
 
-  private async withRetry<T>(action: () => Promise<T>) {
+  private async withRetry<T>(
+    action: () => Promise<T>,
+    provider: AiProviderDiagnostic['provider'],
+    operation: AiProviderDiagnostic['operation'],
+  ): Promise<{ result: T; attemptCount: number }> {
     let lastError: AiGatewayError | undefined;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    for (let attempt = 1; attempt <= this.configuration.limits.providerMaxAttempts; attempt += 1) {
       try {
-        return await action();
+        return { result: await action(), attemptCount: attempt };
       } catch (error) {
-        lastError = classifyProviderError(error);
-        if (!lastError.transient || attempt === 2) throw lastError;
+        const classified = classifyProviderError(error, provider, operation);
+        lastError = new AiGatewayError(classified.code, classified.transient, classified.message, {
+          ...(classified.providerDiagnostic ?? { provider, operation }),
+          attemptCount: attempt,
+        }, classified.usage);
+        if (!lastError.transient || attempt === this.configuration.limits.providerMaxAttempts) {
+          throw lastError;
+        }
       }
     }
     throw lastError;
@@ -694,17 +1038,52 @@ export class DefaultAiGateway implements AiGateway {
     if (!allowed) {
       throw new AiGatewayError('AI_RATE_LIMITED', true, 'Лимит AI-запросов временно исчерпан.');
     }
-    const reservation = await this.costController.reserve({
-      tenant,
-      provider,
-      model,
-      requestType,
-      correlationId,
-      idempotencyKey: usageIdempotencyKey ?? `${requestType}:${correlationId}`,
-      estimatedCostEur,
-    });
+    let reservation: AiBudgetReservation | null;
+    try {
+      reservation = await this.costController.reserve({
+        tenant,
+        provider,
+        model,
+        requestType,
+        correlationId,
+        idempotencyKey: usageIdempotencyKey ?? `${requestType}:${correlationId}`,
+        estimatedCostEur,
+      });
+    } catch (error) {
+      if (error instanceof AiBudgetDeniedError) {
+        if (error.reason === 'idempotency_conflict') {
+          throw new AiGatewayError(
+            'AI_REQUEST_REJECTED',
+            false,
+            'The AI request reservation was already processed.',
+          );
+        }
+        throw new AiGatewayError(
+          'AI_BUDGET_EXCEEDED',
+          false,
+          'AI budget reservation was denied.',
+          undefined,
+          undefined,
+          error.reason,
+        );
+      }
+      console.error(
+        JSON.stringify({
+          event: 'ai_budget_check_failure',
+          errorName: error instanceof Error ? error.name : 'unknown',
+        }),
+      );
+      throw new AiGatewayError('AI_BUDGET_UNAVAILABLE', true, 'AI budget check is unavailable.');
+    }
     if (!reservation) {
-      throw new AiGatewayError('AI_BUDGET_EXCEEDED', false, 'Бюджет AI исчерпан.');
+      throw new AiGatewayError(
+        'AI_BUDGET_EXCEEDED',
+        false,
+        'AI budget reservation was denied.',
+        undefined,
+        undefined,
+        'unknown',
+      );
     }
     return reservation;
   }
@@ -713,15 +1092,26 @@ export class DefaultAiGateway implements AiGateway {
     reservation: AiBudgetReservation,
     usage: AiUsage,
     embeddingUnits: number,
+    status: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED',
   ) {
+    const estimatedCostEur =
+      this.configuration.limits.sessionBudgetLimitEur === undefined
+        ? usage.estimatedCostEur
+        : Math.max(reservation.estimatedCostEur, Number((usage.estimatedCostEur * 2).toFixed(6)));
     await this.costController.reconcile({
       reservation,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       embeddingUnits,
-      estimatedCostEur: usage.estimatedCostEur,
-      status: 'SUCCEEDED',
+      estimatedCostEur,
+      status,
     });
+  }
+
+  private estimateReservedCost(estimatedCostEur: number) {
+    return this.configuration.limits.sessionBudgetLimitEur === undefined
+      ? estimatedCostEur
+      : Number((estimatedCostEur * 2).toFixed(6));
   }
 }
 

@@ -83,6 +83,38 @@ lockfiles in a developer home directory.
 7. Verify queues, heartbeat, OCR, vector/RAG, budget and audit state.
 8. Record deployment evidence and release owner.
 
+## One-time PasswordResetToken reconciliation
+
+Migration `20260930130000_password_reset_tokens` creates `"PasswordResetToken"`. Databases
+created from the historical account baseline already contain that table, so
+`prisma migrate deploy` stops with `P3018` / `relation "PasswordResetToken" already exists`.
+Staging (`docker/run-staging-migrations.sh`), the migration rehearsal and the browser fixture
+perform the reconciliation below automatically; production requires it once, before step 2.
+
+Conditions — all must hold, otherwise do not reconcile:
+
+- a verified backup of the target database exists;
+- `_prisma_migrations` has no finished, non-rolled-back row for
+  `20260930130000_password_reset_tokens` (a failed attempt may be present);
+- the existing table matches the migration exactly. The check is
+  `packages/database/prisma/reconciliation/20260930130000_password_reset_tokens.sql`; it changes
+  nothing and reports `AVANTIME_RECONCILE_NOT_REQUIRED` (migration recorded or table absent) or
+  `AVANTIME_RECONCILE_MISMATCH` (columns, constraints or unique indexes differ).
+
+Procedure, run against the target database with the migration image:
+
+```bash
+prisma db execute --file packages/database/prisma/reconciliation/20260930130000_password_reset_tokens.sql --schema packages/database/prisma/schema.prisma
+# only when the check above succeeded:
+prisma migrate resolve --applied 20260930130000_password_reset_tokens --schema packages/database/prisma/schema.prisma
+prisma migrate deploy --schema packages/database/prisma/schema.prisma
+```
+
+Verification: `prisma migrate status` reports no pending or failed migrations, the reset-token
+row count is unchanged, and running the check again reports `AVANTIME_RECONCILE_NOT_REQUIRED`.
+On `AVANTIME_RECONCILE_MISMATCH`, stop and review the table manually; never edit the migration
+file or the checksums in `_prisma_migrations`.
+
 ## Rollback
 
 - Stop new workers from claiming jobs.

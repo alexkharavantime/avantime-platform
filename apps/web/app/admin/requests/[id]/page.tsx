@@ -7,19 +7,25 @@ import { AdminReplyForm } from '../../../../components/admin/admin-reply-form';
 import { getRequest } from '../../../../lib/requests-store';
 import { findRelatedArticles } from '../../../../lib/knowledge-store';
 import { getSession } from '../../../../lib/session';
+import { localePath, type Locale } from '../../../../lib/i18n';
+import { getLocale } from '../../../../lib/i18n-server';
 
-export const metadata: Metadata = { title: 'Обращение клиента — Avantime Admin' };
-const priorityLabel = {
-  LOW: 'Низкий',
-  NORMAL: 'Обычный',
-  HIGH: 'Высокий',
-  CRITICAL: 'Критический',
-} as const;
+const copy = {
+  lv: { metadataTitle: 'Klienta pieprasījums — Avantime Admin', back: '← Atpakaļ uz paneli', category: 'Kategorija', priority: 'Prioritāte', priorities: { LOW: 'Zema', NORMAL: 'Parasta', HIGH: 'Augsta', CRITICAL: 'Kritiska' }, jira: 'Jira', waiting: 'Gaida sinhronizāciju', company: 'Uzņēmums', contact: 'Kontaktpersona', email: 'E-pasts', demoCompany: 'Demo uzņēmums', demoClient: 'Demo klients', description: 'Apraksts', history: 'Saziņas vēsture', noMessages: 'Ziņojumu vēl nav.', breached: 'Termiņš pārsniegts', onTime: 'Termiņā', due: 'Kontroles termiņš:', hint: 'Atbildes ieteikums', related: 'Saistītie zināšanu bāzes materiāli', activity: 'Darbību žurnāls', noActivity: 'Darbību vēl nav.' },
+  ru: { metadataTitle: 'Обращение клиента — Avantime Admin', back: '← Назад в административную панель', category: 'Категория', priority: 'Приоритет', priorities: { LOW: 'Низкий', NORMAL: 'Обычный', HIGH: 'Высокий', CRITICAL: 'Критический' }, jira: 'Jira', waiting: 'Ожидает синхронизации', company: 'Компания', contact: 'Контакт', email: 'Электронная почта', demoCompany: 'Демо-компания', demoClient: 'Демо-клиент', description: 'Описание', history: 'История общения', noMessages: 'Сообщений пока нет.', breached: 'Срок нарушен', onTime: 'В пределах срока', due: 'Контрольный срок:', hint: 'Подсказка для ответа', related: 'Подходящие материалы базы знаний', activity: 'Журнал действий', noActivity: 'Действий пока нет.' },
+  en: { metadataTitle: 'Customer request — Avantime Admin', back: '← Back to dashboard', category: 'Category', priority: 'Priority', priorities: { LOW: 'Low', NORMAL: 'Normal', HIGH: 'High', CRITICAL: 'Critical' }, jira: 'Jira', waiting: 'Awaiting synchronization', company: 'Company', contact: 'Contact', email: 'Email', demoCompany: 'Demo company', demoClient: 'Demo client', description: 'Description', history: 'Conversation history', noMessages: 'There are no messages yet.', breached: 'Overdue', onTime: 'Within SLA', due: 'Due by:', hint: 'Reply suggestion', related: 'Related knowledge base materials', activity: 'Activity log', noActivity: 'There is no activity yet.' },
+} satisfies Record<Locale, { metadataTitle: string; back: string; category: string; priority: string; priorities: Record<'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL', string>; jira: string; waiting: string; company: string; contact: string; email: string; demoCompany: string; demoClient: string; description: string; history: string; noMessages: string; breached: string; onTime: string; due: string; hint: string; related: string; activity: string; noActivity: string }>;
+
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: copy[await getLocale()].metadataTitle };
+}
 
 export default async function AdminRequestPage({ params }: { params: Promise<{ id: string }> }) {
+  const locale = await getLocale();
+  const text = copy[locale];
   const session = await getSession();
-  if (!session) redirect('/portal/login');
-  if (session.role !== 'ADMIN') redirect('/portal');
+  if (!session) redirect(localePath(locale, '/portal/login'));
+  if (session.role !== 'ADMIN') redirect(localePath(locale, '/portal'));
 
   const { id } = await params;
   const item = await getRequest(id);
@@ -32,8 +38,8 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
     <PageShell>
       <section className="bg-slate-50 py-16">
         <div className="mx-auto max-w-5xl px-6">
-          <Link href="/admin" className="font-bold text-blue-600">
-            ← Назад в административную панель
+          <Link href={localePath(locale, '/admin')} className="font-bold text-blue-600">
+            {text.back}
           </Link>
           <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-8">
@@ -41,9 +47,9 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
               <h1 className="mt-2 text-4xl font-black tracking-tight">{item.title}</h1>
               <div className="mt-8 grid gap-4 sm:grid-cols-3">
                 {[
-                  ['Категория', item.category],
-                  ['Приоритет', priorityLabel[item.priority]],
-                  ['Jira', item.jiraKey ?? 'Ожидает синхронизации'],
+                  [text.category, item.category],
+                  [text.priority, text.priorities[item.priority]],
+                  [text.jira, item.jiraKey ?? text.waiting],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl bg-slate-50 p-4">
                     <p className="text-xs font-black uppercase tracking-widest text-slate-400">
@@ -55,9 +61,9 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
               </div>
               <div className="mt-8 grid gap-4 sm:grid-cols-3">
                 {[
-                  ['Компания', item.companyName ?? 'Demo Company'],
-                  ['Контакт', item.requesterName ?? 'Demo Client'],
-                  ['Email', item.requesterEmail ?? 'demo@avantime.lv'],
+                  [text.company, item.companyName ?? text.demoCompany],
+                  [text.contact, item.requesterName ?? text.demoClient],
+                  [text.email, item.requesterEmail ?? 'demo@avantime.lv'],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-slate-200 p-4">
                     <p className="text-xs font-black uppercase tracking-widest text-slate-400">
@@ -68,13 +74,13 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
                 ))}
               </div>
               <div className="mt-8">
-                <h2 className="text-xl font-black">Описание</h2>
+                <h2 className="text-xl font-black">{text.description}</h2>
                 <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-600">
                   {item.description}
                 </p>
               </div>
               <div className="mt-10 border-t border-slate-200 pt-8">
-                <h2 className="text-xl font-black">История общения</h2>
+                <h2 className="text-xl font-black">{text.history}</h2>
                 <div className="mt-5 space-y-4">
                   {item.messages.length ? (
                     item.messages.map((message) => (
@@ -82,7 +88,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
                         <div className="flex flex-wrap justify-between gap-2">
                           <p className="font-black text-slate-900">{message.authorName}</p>
                           <time className="text-sm text-slate-500">
-                            {new Date(message.createdAt).toLocaleString('ru-RU')}
+                            {new Date(message.createdAt).toLocaleString(locale === 'ru' ? 'ru-RU' : locale === 'lv' ? 'lv-LV' : 'en-GB')}
                           </time>
                         </div>
                         <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-600">
@@ -91,25 +97,25 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
                       </article>
                     ))
                   ) : (
-                    <p className="text-slate-500">Сообщений пока нет.</p>
+                    <p className="text-slate-500">{text.noMessages}</p>
                   )}
                 </div>
               </div>
             </div>
             <div className="space-y-5">
-              <StatusControl requestId={item.id} initialStatus={item.status} />
-              <AdminReplyForm requestId={item.id} />
+              <StatusControl requestId={item.id} initialStatus={item.status} locale={locale} />
+              <AdminReplyForm requestId={item.id} locale={locale} />
               <div
                 className={`rounded-3xl p-6 text-white ${item.status !== 'RESOLVED' && new Date(item.dueAt).getTime() < Date.now() ? 'bg-red-700' : 'bg-slate-950'}`}
               >
                 <p className="text-xs font-black uppercase tracking-widest text-cyan-200">SLA</p>
                 <p className="mt-3 text-2xl font-black">
                   {item.status !== 'RESOLVED' && new Date(item.dueAt).getTime() < Date.now()
-                    ? 'Срок нарушен'
-                    : 'В пределах срока'}
+                    ? text.breached
+                    : text.onTime}
                 </p>
                 <p className="mt-3 text-sm leading-6 text-slate-200">
-                  Контрольный срок: {new Date(item.dueAt).toLocaleString('ru-RU')}
+                  {text.due} {new Date(item.dueAt).toLocaleString(locale === 'ru' ? 'ru-RU' : locale === 'lv' ? 'lv-LV' : 'en-GB')}
                 </p>
               </div>
             </div>
@@ -118,14 +124,14 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
           {relatedArticles.length > 0 && (
             <div className="mt-8 rounded-3xl border border-blue-100 bg-blue-50 p-7">
               <p className="text-xs font-black uppercase tracking-widest text-blue-600">
-                Подсказка для ответа
+                {text.hint}
               </p>
-              <h2 className="mt-2 text-2xl font-black">Подходящие материалы базы знаний</h2>
+              <h2 className="mt-2 text-2xl font-black">{text.related}</h2>
               <div className="mt-5 grid gap-4 md:grid-cols-3">
                 {relatedArticles.map((article) => (
                   <Link
                     key={article.id}
-                    href={`/knowledge/${article.slug}`}
+                    href={localePath(locale, `/knowledge/${article.slug}`)}
                     className="rounded-2xl bg-white p-5 transition hover:shadow-md"
                   >
                     <p className="text-xs font-black text-blue-600">{article.category}</p>
@@ -138,19 +144,19 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
           )}
 
           <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-7">
-            <h2 className="text-2xl font-black">Журнал действий</h2>
+            <h2 className="text-2xl font-black">{text.activity}</h2>
             <div className="mt-5 space-y-4">
               {item.audit.length ? (
                 item.audit.map((event) => (
                   <div key={event.id} className="border-l-4 border-blue-500 pl-4">
                     <p className="font-bold">{event.action}</p>
                     <p className="text-sm text-slate-500">
-                      {event.actorName} · {new Date(event.createdAt).toLocaleString('ru-RU')}
+                      {event.actorName} · {new Date(event.createdAt).toLocaleString(locale === 'ru' ? 'ru-RU' : locale === 'lv' ? 'lv-LV' : 'en-GB')}
                     </p>
                   </div>
                 ))
               ) : (
-                <p className="text-slate-500">Действий пока нет.</p>
+                <p className="text-slate-500">{text.noActivity}</p>
               )}
             </div>
           </div>

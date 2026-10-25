@@ -1,6 +1,10 @@
 import { getPrisma } from '@avantime/database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
+import {
+  LOGIN_CHALLENGE_MAX_ATTEMPTS,
+  type InitialMfaEnrollmentContext,
+} from './identity-auth';
 import { evaluateMfaPolicy, requireAdminMfa } from './identity-policy';
 import {
   createTotpUri,
@@ -221,25 +225,43 @@ export async function getSecurityOverview(session: AppSession) {
   };
 }
 
-export async function beginTotpEnrollment(session: AppSession, now = new Date()) {
+async function beginTotpEnrollmentForUser(
+  userId: string,
+  email: string,
+  now: Date,
+  challengeId?: string,
+) {
   const prisma = requireDatabase((await getPrisma()) as PrismaClient | null);
-  const active = await prisma.mfaMethod.findFirst({
-    where: { userId: session.userId, kind: 'TOTP', status: 'ACTIVE' },
-    select: { id: true },
-  });
-  if (active) {
-    throw new IdentityOperationError('MFA_ALREADY_ENABLED', 'TOTP is already enabled.');
-  }
   const secret = generateTotpSecret();
   const secretEncrypted = encryptTotpSecret(secret);
   const method = await prisma.$transaction(async (database: Prisma.TransactionClient) => {
+    if (challengeId) {
+      const challenge = await database.loginChallenge.findFirst({
+        where: {
+          id: challengeId,
+          identityProviderId: null,
+          consumedAt: null,
+          expiresAt: { gt: now },
+          attempts: { lt: LOGIN_CHALLENGE_MAX_ATTEMPTS },
+        },
+        select: { id: true },
+      });
+      if (!challenge) {
+        throw new IdentityOperationError('MFA_REQUIRED_BY_POLICY', 'Enrollment authorization expired.');
+      }
+    }
+    const active = await database.mfaMethod.findFirst({
+      where: { userId, kind: 'TOTP', status: 'ACTIVE', disabledAt: null },
+      select: { id: true },
+    });
+    if (active) throw new IdentityOperationError('MFA_ALREADY_ENABLED', 'TOTP is already enabled.');
     await database.mfaMethod.updateMany({
-      where: { userId: session.userId, kind: 'TOTP', status: 'PENDING' },
+      where: { userId, kind: 'TOTP', status: 'PENDING' },
       data: { status: 'DISABLED', disabledAt: now, secretEncrypted: null },
     });
     return database.mfaMethod.create({
       data: {
-        userId: session.userId,
+        userId,
         kind: 'TOTP',
         status: 'PENDING',
         label: 'Authenticator app',
@@ -254,22 +276,40 @@ export async function beginTotpEnrollment(session: AppSession, now = new Date())
     secret,
     otpauthUri: createTotpUri({
       secret,
-      accountLabel: session.email,
+      accountLabel: email,
     }),
   };
 }
 
-export async function confirmTotpEnrollment(
-  session: AppSession,
+export async function beginTotpEnrollment(session: AppSession, now = new Date()) {
+  return beginTotpEnrollmentForUser(session.userId, session.email, now);
+}
+
+export async function beginTotpEnrollmentForChallenge(
+  context: InitialMfaEnrollmentContext,
+  now = new Date(),
+) {
+  const enrollment = await beginTotpEnrollmentForUser(
+    context.userId,
+    context.email,
+    now,
+    context.challengeId,
+  );
+  return { ...enrollment, userId: context.userId, companyId: context.companyId };
+}
+
+async function confirmTotpEnrollmentForUser(
+  userId: string,
   methodId: string,
   code: string,
   now = new Date(),
+  challengeId?: string,
 ) {
   const prisma = requireDatabase((await getPrisma()) as PrismaClient | null);
   const method = await prisma.mfaMethod.findFirst({
     where: {
       id: methodId,
-      userId: session.userId,
+      userId,
       kind: 'TOTP',
       status: 'PENDING',
     },
@@ -287,8 +327,23 @@ export async function confirmTotpEnrollment(
   const codes = generateRecoveryCodes();
   const batchId = crypto.randomUUID();
   await prisma.$transaction(async (database: Prisma.TransactionClient) => {
+    if (challengeId) {
+      const consumed = await database.loginChallenge.updateMany({
+        where: {
+          id: challengeId,
+          identityProviderId: null,
+          consumedAt: null,
+          expiresAt: { gt: now },
+          attempts: { lt: LOGIN_CHALLENGE_MAX_ATTEMPTS },
+        },
+        data: { consumedAt: now },
+      });
+      if (consumed.count !== 1) {
+        throw new IdentityOperationError('MFA_REQUIRED_BY_POLICY', 'Enrollment authorization expired.');
+      }
+    }
     const activated = await database.mfaMethod.updateMany({
-      where: { id: method.id, userId: session.userId, status: 'PENDING' },
+      where: { id: method.id, userId, status: 'PENDING' },
       data: {
         status: 'ACTIVE',
         confirmedAt: now,
@@ -296,12 +351,37 @@ export async function confirmTotpEnrollment(
       },
     });
     if (activated.count !== 1) throw new Error('MFA enrollment replayed.');
-    await database.recoveryCode.deleteMany({ where: { userId: session.userId } });
+    await database.recoveryCode.deleteMany({ where: { userId } });
     await database.recoveryCode.createMany({
-      data: recoveryRows(session.userId, codes, batchId),
+      data: recoveryRows(userId, codes, batchId),
     });
   });
   return codes;
+}
+
+export async function confirmTotpEnrollment(
+  session: AppSession,
+  methodId: string,
+  code: string,
+  now = new Date(),
+) {
+  return confirmTotpEnrollmentForUser(session.userId, methodId, code, now);
+}
+
+export async function confirmTotpEnrollmentForChallenge(
+  context: InitialMfaEnrollmentContext,
+  methodId: string,
+  code: string,
+  now = new Date(),
+) {
+  const recoveryCodes = await confirmTotpEnrollmentForUser(
+    context.userId,
+    methodId,
+    code,
+    now,
+    context.challengeId,
+  );
+  return { recoveryCodes, userId: context.userId, companyId: context.companyId };
 }
 
 async function verifyActiveMfaCode(

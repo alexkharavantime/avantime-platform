@@ -35,8 +35,11 @@ export default defineConfig({
       },
     ],
   ],
+  globalSetup: './tests/browser/global-setup.ts',
   use: {
     baseURL: BROWSER_BASE_URL,
+    // Assertions use Russian copy; unprefixed portal URLs follow the browser language.
+    locale: 'ru-RU',
     launchOptions: localChromiumExecutable
       ? { executablePath: localChromiumExecutable }
       : undefined,
@@ -49,7 +52,10 @@ export default defineConfig({
     url: `${BROWSER_BASE_URL}/portal/login`,
     reuseExistingServer: false,
     timeout: 120_000,
-    env: browserServerEnvironment,
+    env: {
+      ...browserServerEnvironment,
+      NEXT_DIST_DIR: '.next-browser-tests',
+    },
   },
   projects: [
     {

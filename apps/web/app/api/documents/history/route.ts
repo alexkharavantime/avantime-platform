@@ -5,6 +5,7 @@ import { getDocumentTenantContext } from '../../../../lib/document-model';
 import type { DocumentHistoryItem } from '../../../../lib/document-repositories';
 import { getDocumentServices } from '../../../../lib/document-services';
 import {
+  refreshHistorySourceExcerpts,
   resolveKnowledgeSources,
   type DocumentSourceReference,
 } from '../../../../lib/document-sources';
@@ -23,7 +24,12 @@ export async function GET() {
     if (authorization.response) return authorization.response;
 
     const tenant = getDocumentTenantContext(authorization.session);
-    const history = await getDocumentServices().history.list(tenant);
+    const services = getDocumentServices();
+    const history = await refreshHistorySourceExcerpts(
+      tenant,
+      await services.history.list(tenant),
+      services,
+    );
 
     return NextResponse.json({ history });
   } catch (error) {
@@ -72,6 +78,9 @@ export async function POST(request: Request) {
         chunkId: source.chunkId,
         score: 0,
         link: source.link,
+        pageStart: source.pageStart,
+        pageEnd: source.pageEnd,
+        excerpt: source.excerpt,
       })),
       createdAt: new Date().toISOString(),
     };

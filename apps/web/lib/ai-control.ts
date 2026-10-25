@@ -36,6 +36,23 @@ export type AiBudgetReservation = AiBudgetReservationRequest & {
   reservedCostEur: number;
 };
 
+export type AiBudgetBlockReason =
+  | 'not_configured'
+  | 'daily_limit_reached'
+  | 'monthly_limit_reached'
+  | 'provider_limit_reached'
+  | 'insufficient_reservation'
+  | 'session_limit_reached'
+  | 'idempotency_conflict'
+  | 'unknown';
+
+export class AiBudgetDeniedError extends Error {
+  constructor(readonly reason: AiBudgetBlockReason) {
+    super('AI budget reservation was denied.');
+    this.name = 'AiBudgetDeniedError';
+  }
+}
+
 export type AiUsageLedgerEvent = {
   reservation: AiBudgetReservation;
   inputTokens: number;
@@ -56,6 +73,27 @@ export interface AiCostController {
 
 function assertCost(value: number, name: string) {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be non-negative.`);
+}
+
+function getBudgetBlockReason(
+  current: number,
+  reserved: number,
+  requested: number,
+  limit: number,
+  reachedReason: Extract<
+    AiBudgetBlockReason,
+    'daily_limit_reached' | 'monthly_limit_reached' | 'provider_limit_reached'
+  >,
+  hardStopThreshold = 1,
+): AiBudgetBlockReason | undefined {
+  if (limit <= 0) return undefined;
+  const committed = current + reserved;
+  const effectiveLimit = limit * hardStopThreshold;
+  if (committed > effectiveLimit) return reachedReason;
+  if (committed + requested > effectiveLimit) {
+    return committed >= effectiveLimit ? reachedReason : 'insufficient_reservation';
+  }
+  return undefined;
 }
 
 function stableLimitKey(request: AiRateLimitRequest) {
@@ -156,17 +194,41 @@ export class MemoryAiCostController implements AiCostController {
   readonly kind = 'memory';
   private readonly reservations = new Map<string, AiBudgetReservation>();
   private readonly usage = new Map<string, number>();
+  private sessionProviderOperations = 0;
+  private sessionProviderSpendEur = 0;
 
   constructor(
     private readonly dailyLimitEur: number,
     private readonly monthlyLimitEur = dailyLimitEur > 0 ? dailyLimitEur * 31 : 0,
     private readonly now: () => Date = () => new Date(),
+    private readonly sessionProviderOperationLimit?: number,
+    private readonly sessionBudgetLimitEur?: number,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
     assertCost(request.estimatedCostEur, 'estimatedCostEur');
+    if (
+      this.sessionProviderOperationLimit !== undefined &&
+      this.sessionProviderOperations >= this.sessionProviderOperationLimit
+    ) {
+      throw new AiBudgetDeniedError('session_limit_reached');
+    }
+    const sessionReserved = [...this.reservations.values()]
+      .filter((item) => item.provider === 'openai' || item.provider === 'gemini')
+      .reduce((sum, item) => sum + item.reservedCostEur, 0);
+    if (
+      this.sessionBudgetLimitEur !== undefined &&
+      this.sessionProviderSpendEur + sessionReserved + request.estimatedCostEur >
+        this.sessionBudgetLimitEur
+    ) {
+      throw new AiBudgetDeniedError(
+        this.sessionProviderSpendEur + sessionReserved >= this.sessionBudgetLimitEur
+          ? 'session_limit_reached'
+          : 'insufficient_reservation',
+      );
+    }
     const existing = this.reservations.get(`${request.tenant.companyId}:${request.idempotencyKey}`);
-    if (existing) return null;
+    if (existing) throw new AiBudgetDeniedError('idempotency_conflict');
     const now = this.now().toISOString();
     const day = now.slice(0, 10);
     const month = now.slice(0, 7);
@@ -175,19 +237,28 @@ export class MemoryAiCostController implements AiCostController {
     const reserved = [...this.reservations.values()]
       .filter((item) => item.tenant.companyId === request.tenant.companyId)
       .reduce((sum, item) => sum + item.reservedCostEur, 0);
-    if (
-      (this.dailyLimitEur > 0 &&
-        daily + reserved + request.estimatedCostEur > this.dailyLimitEur) ||
-      (this.monthlyLimitEur > 0 &&
-        monthly + reserved + request.estimatedCostEur > this.monthlyLimitEur)
-    ) {
-      return null;
-    }
+    const blockReason =
+      getBudgetBlockReason(
+        daily,
+        reserved,
+        request.estimatedCostEur,
+        this.dailyLimitEur,
+        'daily_limit_reached',
+      ) ??
+      getBudgetBlockReason(
+        monthly,
+        reserved,
+        request.estimatedCostEur,
+        this.monthlyLimitEur,
+        'monthly_limit_reached',
+      );
+    if (blockReason) throw new AiBudgetDeniedError(blockReason);
     const reservation = {
       ...request,
       id: crypto.randomUUID(),
       reservedCostEur: request.estimatedCostEur,
     };
+    this.sessionProviderOperations += 1;
     this.reservations.set(`${request.tenant.companyId}:${request.idempotencyKey}`, reservation);
     return reservation;
   }
@@ -198,6 +269,9 @@ export class MemoryAiCostController implements AiCostController {
     if (!this.reservations.delete(key)) return;
     const date = this.now().toISOString();
     const cost = event.actualCostEur ?? event.estimatedCostEur;
+    if (event.reservation.provider === 'openai' || event.reservation.provider === 'gemini') {
+      this.sessionProviderSpendEur += Math.max(event.actualCostEur ?? 0, event.estimatedCostEur);
+    }
     this.usage.set(
       `${event.reservation.tenant.companyId}:${date.slice(0, 10)}`,
       (this.usage.get(`${event.reservation.tenant.companyId}:${date.slice(0, 10)}`) ?? 0) + cost,
@@ -229,6 +303,8 @@ export class PostgreSQLAiCostController implements AiCostController {
     private readonly defaultDailyLimitEur: number,
     private readonly defaultMonthlyLimitEur: number,
     private readonly reservationTtlMs = 300_000,
+    private readonly sessionProviderOperationLimit?: number,
+    private readonly sessionBudgetLimitEur?: number,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
@@ -240,8 +316,51 @@ export class PostgreSQLAiCostController implements AiCostController {
     return database.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        request.tenant.companyId,
+        this.sessionProviderOperationLimit === undefined
+          ? request.tenant.companyId
+          : 'real-ai-provider-operation-session',
       );
+      if (
+        this.sessionProviderOperationLimit !== undefined ||
+        this.sessionBudgetLimitEur !== undefined
+      ) {
+        const [session] = await transaction.$queryRawUnsafe<
+          Array<{ providerOperations: number; providerSpendEur: number }>
+        >(
+          `SELECT (
+             (SELECT COUNT(*) FROM "AiUsageLedger"
+              WHERE "provider" IN ('openai', 'gemini')) +
+             (SELECT COUNT(*) FROM "AiBudgetReservation"
+              WHERE "provider" IN ('openai', 'gemini')
+                AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED'))
+           )::int AS "providerOperations",
+           COALESCE((
+             SELECT SUM(GREATEST(COALESCE("actualCostEur", 0), "estimatedCostEur"))
+             FROM "AiUsageLedger" WHERE "provider" IN ('openai', 'gemini')
+           ), 0)::float8 + COALESCE((
+             SELECT SUM("estimatedCostEur") FROM "AiBudgetReservation"
+             WHERE "provider" IN ('openai', 'gemini')
+               AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+           ), 0)::float8 AS "providerSpendEur"`,
+        );
+        if (!session) throw new Error('AI session budget totals are unavailable.');
+        if (
+          this.sessionProviderOperationLimit !== undefined &&
+          session.providerOperations >= this.sessionProviderOperationLimit
+        ) {
+          throw new AiBudgetDeniedError('session_limit_reached');
+        }
+        if (
+          this.sessionBudgetLimitEur !== undefined &&
+          session.providerSpendEur + request.estimatedCostEur > this.sessionBudgetLimitEur
+        ) {
+          throw new AiBudgetDeniedError(
+            session.providerSpendEur >= this.sessionBudgetLimitEur
+              ? 'session_limit_reached'
+              : 'insufficient_reservation',
+          );
+        }
+      }
       const [totals] = await transaction.$queryRawUnsafe<
         Array<{
           dailyLimit: number;
@@ -280,7 +399,7 @@ export class PostgreSQLAiCostController implements AiCostController {
              SUM(CASE WHEN "provider" = $2
                THEN COALESCE("actualCostEur", "estimatedCostEur") ELSE 0 END) AS provider
            FROM "AiUsageLedger"
-           WHERE "companyId" = $1 AND "status" = 'SUCCEEDED'
+           WHERE "companyId" = $1 AND "status" IN ('SUCCEEDED', 'FAILED')
              AND "occurredAt" >= date_trunc('month', CURRENT_TIMESTAMP)
          ) usage ON true
          LEFT JOIN LATERAL (
@@ -288,8 +407,9 @@ export class PostgreSQLAiCostController implements AiCostController {
              SUM("estimatedCostEur") AS total,
              SUM(CASE WHEN "provider" = $2 THEN "estimatedCostEur" ELSE 0 END) AS provider
            FROM "AiBudgetReservation"
-           WHERE "companyId" = $1 AND "status" = 'RESERVED'
-             AND "expiresAt" > CURRENT_TIMESTAMP
+             WHERE "companyId" = $1
+               AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+               AND ("status" <> 'RESERVED' OR "expiresAt" > CURRENT_TIMESTAMP)
          ) reservations ON true`,
         request.tenant.companyId,
         request.provider,
@@ -297,27 +417,42 @@ export class PostgreSQLAiCostController implements AiCostController {
         this.defaultMonthlyLimitEur,
       );
       if (!totals) throw new Error('AI budget totals are unavailable.');
-      const hardStop = totals.hardStopThreshold;
-      const exceeds = (current: number, reserved: number, requested: number, limit: number) =>
-        limit > 0 && current + reserved + requested > limit * hardStop;
       if (
-        exceeds(totals.dailyUsage, totals.reserved, request.estimatedCostEur, totals.dailyLimit) ||
-        exceeds(
+        totals.dailyLimit <= 0 &&
+        totals.monthlyLimit <= 0 &&
+        (totals.providerLimit === null || totals.providerLimit <= 0)
+      ) {
+        throw new AiBudgetDeniedError('not_configured');
+      }
+      const hardStop = totals.hardStopThreshold;
+      const blockReason =
+        getBudgetBlockReason(
+          totals.dailyUsage,
+          totals.reserved,
+          request.estimatedCostEur,
+          totals.dailyLimit,
+          'daily_limit_reached',
+          hardStop,
+        ) ??
+        getBudgetBlockReason(
           totals.monthlyUsage,
           totals.reserved,
           request.estimatedCostEur,
           totals.monthlyLimit,
-        ) ||
-        (totals.providerLimit !== null &&
-          exceeds(
-            totals.providerUsage,
-            totals.providerReserved,
-            request.estimatedCostEur,
-            totals.providerLimit,
-          ))
-      ) {
-        return null;
-      }
+          'monthly_limit_reached',
+          hardStop,
+        ) ??
+        (totals.providerLimit === null
+          ? undefined
+          : getBudgetBlockReason(
+              totals.providerUsage,
+              totals.providerReserved,
+              request.estimatedCostEur,
+              totals.providerLimit,
+              'provider_limit_reached',
+              hardStop,
+            ));
+      if (blockReason) throw new AiBudgetDeniedError(blockReason);
       const rows = await transaction.$queryRawUnsafe<Array<{ id: string }>>(
         `INSERT INTO "AiBudgetReservation" (
            "id", "companyId", "userId", "provider", "correlationId", "idempotencyKey",
@@ -338,13 +473,13 @@ export class PostgreSQLAiCostController implements AiCostController {
         request.estimatedCostEur,
         this.reservationTtlMs,
       );
-      return rows[0]
-        ? {
-            ...request,
-            id: rows[0].id,
-            reservedCostEur: request.estimatedCostEur,
-          }
-        : null;
+      const reservation = rows[0];
+      if (!reservation) throw new AiBudgetDeniedError('idempotency_conflict');
+      return {
+        ...request,
+        id: reservation.id,
+        reservedCostEur: request.estimatedCostEur,
+      };
     });
   }
 

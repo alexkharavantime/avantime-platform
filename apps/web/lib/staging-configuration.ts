@@ -11,7 +11,7 @@ import { loadRagConfiguration } from './rag-configuration';
 
 export type StagingMode = 'local' | 'managed';
 export type NotificationProviderMode = 'test' | 'resend';
-export const CURRENT_STAGING_MIGRATION = '20260902120000_task_018_knowledge_delete_lifecycle';
+export const CURRENT_STAGING_MIGRATION = '20260930140000_local_owner_bootstrap';
 
 export type StagingConfiguration = {
   appEnvironment: 'staging';

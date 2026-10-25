@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { localePath, type Locale } from '../../lib/i18n';
 
 type DocumentItem = {
   id: string;
@@ -31,19 +32,26 @@ type DocumentItem = {
 
 type ViewMode = 'pdf' | 'text';
 
-function formatSize(bytes: number) {
+const copy = {
+  lv: { loading: 'Ielādē dokumentu…', back: '← Atgriezties zināšanu bāzē', notFound: 'Dokuments nav atrasts.', document: 'Dokuments', open: 'Atvērt oriģinālu', pdf: 'PDF', extracted: 'Izgūtais teksts', loadingText: 'Ielādē tekstu…', emptyText: 'Izgūtais teksts ir tukšs.', properties: 'Dokumenta rekvizīti', type: 'Tips', detectedType: 'Noteiktais tips', mime: 'Faktiskais MIME', extraction: 'Izgūšana / OCR', confidence: 'Pārliecība', review: 'Operatora pārbaude', required: 'Nepieciešama', notRequired: 'Nav nepieciešama', version: 'Apstrādes versija', size: 'Izmērs', status: 'Statuss', pages: 'Lappuses', characters: 'Rakstzīmes', uploaded: 'Augšupielādēts', processed: 'Apstrādāts', error: 'Apstrādes kļūda', reprocessing: 'Ievieto rindā…', reprocess: 'Apstrādāt vēlreiz', loadError: 'Neizdevās atvērt dokumentu.', textError: 'Neizdevās iegūt dokumenta tekstu.', reprocessError: 'Neizdevās sākt apstrādi.', statuses: { 'Обработан': 'Apstrādāts', 'Ошибка': 'Kļūda', 'Карантин': 'Karantīnā', 'В очереди': 'Rindā', 'Обрабатывается': 'Tiek apstrādāts' } },
+  ru: { loading: 'Загрузка документа…', back: '← Вернуться в базу знаний', notFound: 'Документ не найден.', document: 'Документ', open: 'Открыть оригинал', pdf: 'PDF', extracted: 'Извлечённый текст', loadingText: 'Загрузка текста…', emptyText: 'Извлечённый текст пуст.', properties: 'Свойства документа', type: 'Тип', detectedType: 'Определённый тип', mime: 'Фактический MIME', extraction: 'Извлечение / OCR', confidence: 'Уверенность', review: 'Проверка оператором', required: 'Требуется', notRequired: 'Не требуется', version: 'Версия обработки', size: 'Размер', status: 'Статус', pages: 'Страниц', characters: 'Символов', uploaded: 'Загружен', processed: 'Обработан', error: 'Ошибка обработки', reprocessing: 'Постановка в очередь…', reprocess: 'Обработать повторно', loadError: 'Не удалось открыть документ.', textError: 'Не удалось получить текст документа.', reprocessError: 'Не удалось запустить обработку.', statuses: { 'Обработан': 'Обработан', 'Ошибка': 'Ошибка', 'Карантин': 'Карантин', 'В очереди': 'В очереди', 'Обрабатывается': 'Обрабатывается' } },
+  en: { loading: 'Loading document…', back: '← Return to knowledge base', notFound: 'Document not found.', document: 'Document', open: 'Open original', pdf: 'PDF', extracted: 'Extracted text', loadingText: 'Loading text…', emptyText: 'Extracted text is empty.', properties: 'Document properties', type: 'Type', detectedType: 'Detected type', mime: 'Actual MIME', extraction: 'Extraction / OCR', confidence: 'Confidence', review: 'Operator review', required: 'Required', notRequired: 'Not required', version: 'Processing version', size: 'Size', status: 'Status', pages: 'Pages', characters: 'Characters', uploaded: 'Uploaded', processed: 'Processed', error: 'Processing error', reprocessing: 'Queuing…', reprocess: 'Process again', loadError: 'Could not open the document.', textError: 'Could not retrieve document text.', reprocessError: 'Could not start processing.', statuses: { 'Обработан': 'Processed', 'Ошибка': 'Error', 'Карантин': 'Quarantined', 'В очереди': 'Queued', 'Обрабатывается': 'Processing' } },
+} satisfies Record<Locale, { loading: string; back: string; notFound: string; document: string; open: string; pdf: string; extracted: string; loadingText: string; emptyText: string; properties: string; type: string; detectedType: string; mime: string; extraction: string; confidence: string; review: string; required: string; notRequired: string; version: string; size: string; status: string; pages: string; characters: string; uploaded: string; processed: string; error: string; reprocessing: string; reprocess: string; loadError: string; textError: string; reprocessError: string; statuses: Record<string, string> }>;
+
+function formatSize(bytes: number, locale: Locale) {
+  const units = locale === 'ru' ? ['Б', 'КБ', 'МБ'] : ['B', 'KB', 'MB'];
   if (bytes < 1024) {
-    return `${bytes} Б`;
+    return `${bytes} ${units[0]}`;
   }
 
   if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / 1024).toFixed(1)} ${units[1]}`;
   }
 
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} ${units[2]}`;
 }
 
-function formatDate(value?: string) {
+function formatDate(value: string | undefined, locale: Locale) {
   if (!value) {
     return '—';
   }
@@ -54,13 +62,14 @@ function formatDate(value?: string) {
     return '—';
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
+  return new Intl.DateTimeFormat(locale === 'ru' ? 'ru-RU' : locale === 'lv' ? 'lv-LV' : 'en-GB', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date);
 }
 
-export function AdminDocumentManagementDetail() {
+export function AdminDocumentManagementDetail({ locale }: { locale: Locale }) {
+  const text = copy[locale];
   const params = useParams();
   const id = String(params.id ?? '');
 
@@ -94,16 +103,16 @@ export function AdminDocumentManagementDetail() {
         try {
           result = JSON.parse(responseText);
         } catch {
-          throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
+          throw new Error(text.loadError);
         }
 
         if (!response.ok || !result.document) {
-          throw new Error(result.error || 'Не удалось открыть документ.');
+          throw new Error(text.loadError);
         }
 
         setDocument(result.document);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Не удалось открыть документ.');
+        setError(loadError instanceof Error ? loadError.message : text.loadError);
       } finally {
         setLoading(false);
       }
@@ -112,7 +121,7 @@ export function AdminDocumentManagementDetail() {
     if (id) {
       void loadDocument();
     }
-  }, [id]);
+  }, [id, text.loadError]);
 
   async function loadText() {
     if (!document || documentText || textLoading) {
@@ -137,17 +146,17 @@ export function AdminDocumentManagementDetail() {
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error(`Сервер вернул некорректный ответ. Код ${response.status}`);
+        throw new Error(text.textError);
       }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Не удалось получить текст документа.');
+        throw new Error(text.textError);
       }
 
       setDocumentText(typeof result.text === 'string' ? result.text : '');
     } catch (loadError) {
       setTextError(
-        loadError instanceof Error ? loadError.message : 'Не удалось получить текст документа.',
+        loadError instanceof Error ? loadError.message : text.textError,
       );
     } finally {
       setTextLoading(false);
@@ -169,14 +178,13 @@ export function AdminDocumentManagementDetail() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ documentId: document.id, dryRun: false }),
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Не удалось запустить обработку.');
+      if (!response.ok) throw new Error(text.reprocessError);
       setDocument({ ...document, status: 'В очереди' });
     } catch (reprocessError) {
       setError(
         reprocessError instanceof Error
           ? reprocessError.message
-          : 'Не удалось запустить обработку.',
+          : text.reprocessError,
       );
     } finally {
       setReprocessing(false);
@@ -186,7 +194,7 @@ export function AdminDocumentManagementDetail() {
   if (loading) {
     return (
       <main className="p-6 lg:p-8">
-        <p className="font-bold text-slate-700">Загрузка документа…</p>
+        <p className="font-bold text-slate-700">{text.loading}</p>
       </main>
     );
   }
@@ -194,11 +202,11 @@ export function AdminDocumentManagementDetail() {
   if (error || !document) {
     return (
       <main className="p-6 lg:p-8">
-        <Link href="/admin/documents" className="text-sm font-bold text-blue-700">
-          ← Вернуться в Knowledge Center
+        <Link href={localePath(locale, '/admin/documents')} className="text-sm font-bold text-blue-700">
+          {text.back}
         </Link>
 
-        <p className="mt-8 font-bold text-red-600">{error || 'Документ не найден.'}</p>
+        <p className="mt-8 font-bold text-red-600">{error || text.notFound}</p>
       </main>
     );
   }
@@ -209,13 +217,13 @@ export function AdminDocumentManagementDetail() {
 
   return (
     <main className="p-6 lg:p-8">
-      <Link href="/admin/documents" className="text-sm font-bold text-blue-700 hover:text-blue-800">
-        ← Вернуться в Knowledge Center
+      <Link href={localePath(locale, '/admin/documents')} className="text-sm font-bold text-blue-700 hover:text-blue-800">
+        {text.back}
       </Link>
 
       <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">Документ</p>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">{text.document}</p>
 
           <h2 className="mt-2 max-w-4xl text-3xl font-black text-slate-950">{document.name}</h2>
         </div>
@@ -226,7 +234,7 @@ export function AdminDocumentManagementDetail() {
           rel="noreferrer"
           className="rounded-xl bg-blue-600 px-5 py-3 text-center font-bold text-white hover:bg-blue-700"
         >
-          Открыть оригинал
+          {text.open}
         </a>
       </div>
 
@@ -242,7 +250,7 @@ export function AdminDocumentManagementDetail() {
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              PDF
+              {text.pdf}
             </button>
 
             <button
@@ -255,7 +263,7 @@ export function AdminDocumentManagementDetail() {
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               } disabled:cursor-not-allowed disabled:opacity-50`}
             >
-              Извлечённый текст
+              {text.extracted}
             </button>
           </div>
 
@@ -264,7 +272,7 @@ export function AdminDocumentManagementDetail() {
           ) : (
             <div className="h-[75vh] overflow-auto p-6">
               {textLoading ? (
-                <p className="font-semibold text-slate-600">Загрузка текста…</p>
+                <p className="font-semibold text-slate-600">{text.loadingText}</p>
               ) : textError ? (
                 <p className="font-semibold text-red-600">{textError}</p>
               ) : documentText ? (
@@ -272,31 +280,31 @@ export function AdminDocumentManagementDetail() {
                   {documentText}
                 </pre>
               ) : (
-                <p className="font-semibold text-slate-500">Извлечённый текст пуст.</p>
+                <p className="font-semibold text-slate-500">{text.emptyText}</p>
               )}
             </div>
           )}
         </section>
 
         <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-black text-slate-950">Свойства документа</h3>
+          <h3 className="font-black text-slate-950">{text.properties}</h3>
 
           <dl className="mt-5 space-y-5">
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Тип</dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{text.type}</dt>
               <dd className="mt-1 font-semibold text-slate-800">{document.type}</dd>
             </div>
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Определённый тип
+                {text.detectedType}
               </dt>
               <dd className="mt-1 font-semibold text-slate-800">{document.detectedDocumentType}</dd>
             </div>
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Фактический MIME
+                {text.mime}
               </dt>
               <dd className="mt-1 break-all font-semibold text-slate-800">
                 {document.detectedMimeType ?? '—'}
@@ -305,7 +313,7 @@ export function AdminDocumentManagementDetail() {
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Извлечение / OCR
+                {text.extraction}
               </dt>
               <dd className="mt-1 font-semibold text-slate-800">
                 {document.textExtractionMethod} / {document.ocrStatus}
@@ -315,7 +323,7 @@ export function AdminDocumentManagementDetail() {
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Уверенность
+                {text.confidence}
               </dt>
               <dd className="mt-1 font-semibold text-slate-800">
                 {document.detectionConfidence === undefined
@@ -326,27 +334,27 @@ export function AdminDocumentManagementDetail() {
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Проверка оператором
+                {text.review}
               </dt>
               <dd className="mt-1 font-semibold text-slate-800">
-                {document.requiresManualReview ? 'Требуется' : 'Не требуется'}
+                {document.requiresManualReview ? text.required : text.notRequired}
               </dd>
             </div>
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Версия обработки
+                {text.version}
               </dt>
               <dd className="mt-1 font-semibold text-slate-800">{document.intelligenceVersion}</dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Размер</dt>
-              <dd className="mt-1 font-semibold text-slate-800">{formatSize(document.size)}</dd>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{text.size}</dt>
+              <dd className="mt-1 font-semibold text-slate-800">{formatSize(document.size, locale)}</dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Статус</dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{text.status}</dt>
               <dd className="mt-1">
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -357,43 +365,43 @@ export function AdminDocumentManagementDetail() {
                         : 'bg-blue-50 text-blue-700'
                   }`}
                 >
-                  {document.status}
+                  {text.statuses[document.status as keyof typeof text.statuses] ?? document.status}
                 </span>
               </dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Страниц</dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{text.pages}</dt>
               <dd className="mt-1 font-semibold text-slate-800">{document.pages ?? '—'}</dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Символов</dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{text.characters}</dt>
               <dd className="mt-1 font-semibold text-slate-800">
-                {document.textLength?.toLocaleString('ru-RU') ?? '—'}
+                {document.textLength?.toLocaleString(locale === 'ru' ? 'ru-RU' : locale === 'lv' ? 'lv-LV' : 'en-GB') ?? '—'}
               </dd>
             </div>
 
             <div>
-              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">Загружен</dt>
+              <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{text.uploaded}</dt>
               <dd className="mt-1 font-semibold text-slate-800">
-                {formatDate(document.uploadedAt)}
+                {formatDate(document.uploadedAt, locale)}
               </dd>
             </div>
 
             <div>
               <dt className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Обработан
+                {text.processed}
               </dt>
               <dd className="mt-1 font-semibold text-slate-800">
-                {formatDate(document.processedAt)}
+                {formatDate(document.processedAt, locale)}
               </dd>
             </div>
 
             {document.errorMessage ? (
               <div>
                 <dt className="text-xs font-bold uppercase tracking-wide text-red-400">
-                  Ошибка обработки
+                  {text.error}
                 </dt>
                 <dd className="mt-1 text-sm font-semibold text-red-600">{document.errorMessage}</dd>
               </div>
@@ -406,7 +414,7 @@ export function AdminDocumentManagementDetail() {
             disabled={reprocessing || document.status === 'Обрабатывается'}
             className="mt-6 w-full rounded-xl border border-blue-200 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {reprocessing ? 'Постановка в очередь…' : 'Обработать повторно'}
+            {reprocessing ? text.reprocessing : text.reprocess}
           </button>
         </aside>
       </div>

@@ -1,82 +1,37 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { ContactForm } from '../components/contact-form';
 import { SiteHeader } from '../components/site-header';
+import { getLocale, getOriginalPath } from '../lib/i18n-server';
+import { homeCopy, localePath, stripLocale } from '../lib/i18n';
+import { getSectionImage } from '../lib/section-images';
+import { getSolutionCardImage, type SolutionCardImageId } from '@/lib/solution-card-images';
 
-const secondarySolutions = [
+const secondarySolutionLayout = [
   {
-    label: 'AI',
-    title: 'AI в контуре вашей компании',
-    text: 'Ассистенты для базы знаний, документов и поддержки — с контролируемыми источниками и понятной ролью человека.',
+    href: '/solutions/ut-1-3',
+    cardId: 'implementation' as SolutionCardImageId,
+    accent: 'from-amber-400 to-orange-500',
+    icon: '1С',
+  },
+  {
+    href: '/solutions/integrations',
+    cardId: 'integrations' as SolutionCardImageId,
+    accent: 'from-emerald-500 to-cyan-500',
+    icon: '↔',
+  },
+  {
+    href: '/solutions/portals',
+    cardId: 'portals' as SolutionCardImageId,
+    accent: 'from-blue-500 to-cyan-500',
+    icon: '✓',
+  },
+  {
     href: '/solutions/ai',
+    cardId: 'ai' as SolutionCardImageId,
     accent: 'from-violet-500 to-blue-500',
     icon: '✦',
   },
-  {
-    label: 'Cloud',
-    title: 'Надёжная облачная среда',
-    text: 'Размещение 1С и сервисов, резервное копирование, мониторинг, безопасный доступ и план восстановления.',
-    href: '/solutions/cloud',
-    accent: 'from-cyan-500 to-blue-500',
-    icon: '☁',
-  },
-  {
-    label: 'Integrations',
-    title: 'Системы работают вместе',
-    text: 'Связываем 1С с сайтами, Jira, маркетплейсами, банками, API и ЭДО без повторного ввода данных.',
-    href: '/solutions/integrations',
-    accent: 'from-emerald-500 to-cyan-500',
-    icon: '⌁',
-  },
-  {
-    label: 'Agent+',
-    title: 'Продажи всегда в движении',
-    text: 'Маршруты, заказы, цены, остатки и задачи торгового представителя с двусторонним обменом с 1С.',
-    href: '/solutions/agent-plus',
-    accent: 'from-orange-500 to-rose-500',
-    icon: '↗',
-  },
-];
-
-const capabilities = [
-  [
-    '01',
-    'Обследование',
-    'Разбираем процессы, роли, документы и данные. Формируем понятную карту изменений.',
-  ],
-  [
-    '02',
-    'Внедрение',
-    'Настраиваем типовые решения 1С и дорабатываем только там, где это даёт бизнес-эффект.',
-  ],
-  [
-    '03',
-    'Интеграции',
-    'Строим устойчивый обмен с внешними системами, контролем ошибок и журналированием.',
-  ],
-  [
-    '04',
-    'Развитие',
-    'Поддерживаем пользователей, управляем очередью задач и планомерно развиваем систему.',
-  ],
-];
-
-const outcomes = [
-  ['Единые данные', 'Продажи, склад, финансы и управление опираются на согласованную информацию.'],
-  [
-    'Меньше ручной работы',
-    'Повторяемые операции автоматизированы, а сотрудники занимаются задачами, где нужен опыт.',
-  ],
-  [
-    'Прозрачные процессы',
-    'Понятно, где находится документ, кто отвечает за следующий шаг и что требует внимания.',
-  ],
-];
-
-const industries = [
-  'Оптовая торговля',
-  'Дистрибуция и FMCG',
-  'Производство',
-  'Профессиональные услуги',
 ];
 
 function Arrow({ className = 'h-5 w-5' }: { className?: string }) {
@@ -109,168 +64,69 @@ function Check() {
   );
 }
 
-function OneCSystemVisual() {
-  return (
-    <div className="relative mx-auto w-full max-w-[590px]">
-      <div className="absolute -inset-8 rounded-full bg-blue-500/20 blur-3xl" />
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/90 p-4 shadow-2xl shadow-black/40 backdrop-blur sm:p-6">
-        <div className="flex items-center justify-between border-b border-white/10 pb-4">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-          </div>
-          <span className="rounded-full bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-blue-200">
-            Иллюстрация контура
-          </span>
-        </div>
-        <div className="grid gap-3 pt-4 sm:grid-cols-[0.72fr_1.28fr]">
-          <div className="rounded-2xl bg-white/[0.05] p-4">
-            <div className="mb-5 flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-amber-300 to-amber-500 font-black text-slate-950">
-                1С
-              </span>
-              <div>
-                <p className="text-sm font-bold text-white">Контур учёта</p>
-                <p className="text-xs text-slate-500">единое ядро</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {['Продажи', 'Склад', 'Финансы', 'Закупки'].map((item, index) => (
-                <div
-                  key={item}
-                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs ${index === 0 ? 'bg-blue-500 text-white' : 'text-slate-400'}`}
-                >
-                  <span>{item}</span>
-                  <span>›</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-white p-4 text-slate-950">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Заказы
-                </p>
-                <p className="mt-3 text-lg font-black">Единый поток</p>
-                <p className="mt-1 text-xs font-bold text-emerald-600">статусы под контролем</p>
-              </div>
-              <div className="rounded-2xl bg-blue-500 p-4 text-white">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-100">
-                  Операции
-                </p>
-                <p className="mt-3 text-lg font-black">Автоматизация</p>
-                <p className="mt-1 text-xs text-blue-100">меньше ручного ввода</p>
-              </div>
-            </div>
-            <div className="rounded-2xl bg-white/[0.06] p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-white">Обмен данными</p>
-                <p className="text-[10px] text-slate-500">мониторинг</p>
-              </div>
-              <div className="mt-4 flex items-end gap-1.5">
-                {[38, 55, 44, 72, 59, 84, 68, 96, 76, 88, 100, 84].map((height, index) => (
-                  <span
-                    key={index}
-                    className="flex-1 rounded-t bg-gradient-to-t from-blue-600 to-cyan-400"
-                    style={{ height: `${height * 0.42}px` }}
-                  />
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {['Сайт', 'Jira', 'Agent+', 'ЭДО'].map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-slate-300"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="absolute -bottom-5 -left-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-800 px-4 py-3 shadow-xl sm:-left-8">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-500/20 text-violet-300">
-          ✦
-        </span>
-        <div>
-          <p className="text-xs font-bold text-white">AI-помощник</p>
-          <p className="text-[10px] text-slate-400">помогает разбирать ошибки</p>
-        </div>
-      </div>
-    </div>
-  );
-}
+export default async function HomePage() {
+  const locale = await getLocale();
+  const copy = homeCopy[locale];
+  const currentPath = stripLocale(await getOriginalPath());
+  const homeImage = getSectionImage('homepage-hero', locale);
+  const approachImage = getSectionImage('approach', locale);
 
-export default function HomePage() {
   return (
     <main id="top" className="overflow-hidden bg-white text-slate-950">
-      <SiteHeader />
+      <SiteHeader locale={locale} currentPath={currentPath} />
 
-      <section className="relative isolate min-h-[760px] overflow-hidden bg-[#07101f] text-white">
-        <div className="landing-grid absolute inset-0 opacity-30" />
-        <div className="absolute left-1/2 top-0 h-[650px] w-[650px] -translate-x-1/2 rounded-full bg-blue-600/20 blur-[130px]" />
-        <div className="absolute -right-48 bottom-0 h-[480px] w-[480px] rounded-full bg-cyan-500/10 blur-[100px]" />
+      <section className="relative isolate overflow-hidden bg-slate-50 text-slate-950">
+        <div className="landing-grid absolute inset-0 opacity-20" />
+        <div className="absolute -right-48 top-0 h-[520px] w-[520px] rounded-full bg-blue-200/40 blur-[120px]" />
         <div className="relative mx-auto grid max-w-7xl gap-16 px-6 py-20 lg:grid-cols-[1.02fr_0.98fr] lg:items-center lg:py-28">
           <div>
-            <div className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-200">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_#34d399]" />
-              Автоматизация бизнеса на базе 1С
+            <div className="inline-flex items-center gap-3 rounded-full border border-blue-100 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-700 shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_14px_#34d399]" />
+              {copy.hero.badge}
             </div>
             <h1 className="mt-8 max-w-3xl text-5xl font-black leading-[0.96] tracking-[-0.05em] sm:text-6xl lg:text-[5.2rem]">
-              1С, которая
-              <span className="block bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300 bg-clip-text text-transparent">
-                двигает бизнес
+              {copy.hero.title[0]}
+              <span className="block bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 bg-clip-text text-transparent">
+                {copy.hero.title[1]}
               </span>
-              вперёд
+              {copy.hero.title[2]}
             </h1>
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
-              Внедряем и развиваем 1С, соединяем её с AI, облаком и внешними сервисами. Один
-              технологический партнёр — от диагностики до поддержки.
-            </p>
+            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">{copy.hero.description}</p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <a
                 href="#contact"
                 className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-blue-500 px-7 font-black text-white shadow-xl shadow-blue-600/30 transition hover:-translate-y-0.5 hover:bg-blue-400"
               >
-                Обсудить проект <Arrow />
+                {copy.hero.primaryCta} <Arrow />
               </a>
               <Link
-                href="/solutions/1c"
-                className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full border border-white/15 bg-white/[0.06] px-7 font-bold text-white transition hover:bg-white/10"
+                href={localePath(locale, '/solutions')}
+                className="inline-flex min-h-14 items-center justify-center gap-3 rounded-full border border-slate-300 bg-white px-7 font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:bg-blue-50"
               >
-                Как мы внедряем 1С
+                {copy.hero.solutionsCta}
               </Link>
             </div>
-            <div className="mt-10 flex flex-wrap gap-x-7 gap-y-3 text-sm text-slate-400">
-              {['Поэтапный запуск', 'Без остановки бизнеса', 'Поддержка после внедрения'].map(
-                (item) => (
+            <div className="mt-10 flex flex-wrap gap-x-7 gap-y-3 text-sm text-slate-600">
+              {copy.hero.proofs.map((item) => (
                   <span key={item} className="flex items-center gap-2">
-                    <span className="text-emerald-400">
+                    <span className="text-emerald-600">
                       <Check />
                     </span>
                     {item}
                   </span>
-                ),
-              )}
+                ))}
             </div>
           </div>
-          <OneCSystemVisual />
-        </div>
-      </section>
-
-      <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-7 lg:flex-row lg:items-center lg:justify-between">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-            Единый цифровой контур
-          </p>
-          <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-black text-slate-700 sm:gap-x-12">
-            {['1С:Предприятие', 'AI & RAG', 'Cloud', 'Agent+', 'API & ЭДО'].map((item) => (
-              <span key={item}>{item}</span>
-            ))}
+          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-3 shadow-2xl shadow-blue-950/10 sm:p-5">
+            <Image
+              src={homeImage.src}
+              alt={homeImage.alt}
+              width={1774}
+              height={887}
+              priority
+              sizes="(max-width: 1024px) 100vw, 52vw"
+              className="h-auto w-full rounded-[1.5rem] object-cover"
+            />
           </div>
         </div>
       </section>
@@ -279,22 +135,19 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
             <div>
-              <p className="eyebrow">1С — основа решений</p>
-              <h2 className="section-title mt-4">
-                Не просто настройка. Рабочая система управления.
-              </h2>
+              <p className="eyebrow">{copy.capabilitiesIntro.eyebrow}</p>
+              <h2 className="section-title mt-4">{copy.capabilitiesIntro.title}</h2>
             </div>
             <p className="max-w-2xl text-lg leading-8 text-slate-600 lg:justify-self-end">
-              Начинаем с реального процесса компании, а не с перечня функций. Сохраняем сильные
-              стороны типового решения и добавляем ровно те изменения, которые нужны бизнесу.
+              {copy.capabilitiesIntro.text}
             </p>
           </div>
 
           <div className="mt-14 grid overflow-hidden rounded-[2rem] border border-slate-200 bg-white lg:grid-cols-4">
-            {capabilities.map(([number, title, text], index) => (
+            {copy.capabilities.map(({ number, title, text }, index) => (
               <article
-                key={title}
-                className={`relative p-7 lg:min-h-[300px] ${index < capabilities.length - 1 ? 'border-b border-slate-200 lg:border-b-0 lg:border-r' : ''}`}
+                key={number}
+                className={`relative p-7 lg:min-h-[300px] ${index < copy.capabilities.length - 1 ? 'border-b border-slate-200 lg:border-b-0 lg:border-r' : ''}`}
               >
                 <span className="text-xs font-black tracking-[0.18em] text-blue-600">{number}</span>
                 <h3 className="mt-10 text-2xl font-black tracking-tight">{title}</h3>
@@ -304,10 +157,10 @@ export default function HomePage() {
           </div>
           <div className="mt-6 flex justify-end">
             <Link
-              href="/solutions/1c"
+              href={localePath(locale, '/solutions/1c/configurations')}
               className="inline-flex items-center gap-2 font-black text-blue-600 transition hover:gap-3"
             >
-              Подробнее о 1С <Arrow />
+              {copy.capabilitiesIntro.link} <Arrow />
             </Link>
           </div>
         </div>
@@ -317,23 +170,34 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="max-w-3xl">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">
-              Больше возможностей
+              {copy.secondaryIntro.eyebrow}
             </p>
             <h2 className="mt-4 text-4xl font-black leading-tight tracking-[-0.04em] sm:text-6xl">
-              Усиливаем 1С современными технологиями
+              {copy.secondaryIntro.title}
             </h2>
           </div>
           <div className="mt-14 grid gap-5 md:grid-cols-2">
-            {secondarySolutions.map((item) => (
+            {secondarySolutionLayout.map((item, index) => {
+              const card = copy.secondaryCards[index];
+              return (
               <Link
-                href={item.href}
-                key={item.label}
+                href={localePath(locale, item.href)}
+                key={card.label}
                 className="group relative min-h-[330px] overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.045] p-7 transition hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.07] sm:p-9"
               >
                 <div
                   className={`absolute -right-24 -top-24 h-64 w-64 rounded-full bg-gradient-to-br ${item.accent} opacity-15 blur-3xl transition group-hover:opacity-25`}
                 />
                 <div className="relative flex h-full flex-col">
+                  <div className="relative mb-6 aspect-[3/2] w-full overflow-hidden rounded-2xl bg-white/95">
+                    <Image
+                      src={getSolutionCardImage(item.cardId, locale).src}
+                      alt=""
+                      fill
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-contain opacity-90"
+                    />
+                  </div>
                   <div className="flex items-start justify-between">
                     <span
                       className={`grid h-13 w-13 place-items-center rounded-2xl bg-gradient-to-br ${item.accent} text-xl font-black shadow-lg`}
@@ -345,39 +209,36 @@ export default function HomePage() {
                     </span>
                   </div>
                   <p className="mt-10 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                    {item.label}
+                    {card.label}
                   </p>
-                  <h3 className="mt-3 text-3xl font-black tracking-tight">{item.title}</h3>
-                  <p className="mt-4 max-w-xl text-base leading-7 text-slate-400">{item.text}</p>
+                  <h3 className="mt-3 text-3xl font-black tracking-tight">{card.title}</h3>
+                  <p className="mt-4 max-w-xl text-base leading-7 text-slate-400">{card.text}</p>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
       <section id="approach" className="py-24 sm:py-28">
-        <div className="mx-auto grid max-w-7xl gap-14 px-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div className="mx-auto grid max-w-7xl gap-10 px-6 lg:grid-cols-2 lg:items-center lg:gap-14">
           <div>
-            <p className="eyebrow">Результат для бизнеса</p>
-            <h2 className="section-title mt-4">Технологии должны упрощать работу</h2>
-            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">
-              Оцениваем успех проекта не количеством доработок, а тем, насколько быстрее и точнее
-              работает компания.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-2">
-              {industries.map((industry) => (
-                <span
-                  key={industry}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-600"
-                >
-                  {industry}
-                </span>
-              ))}
+            <p className="eyebrow">{copy.approach.eyebrow}</p>
+            <h2 className="section-title mt-4">{copy.approach.title}</h2>
+            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">{copy.approach.text}</p>
+            <div className="relative mt-8 aspect-[3/2] w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <Image
+                src={approachImage.src}
+                alt={approachImage.alt}
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-contain"
+              />
             </div>
           </div>
           <div className="space-y-3">
-            {outcomes.map(([title, text], index) => (
+            {copy.approach.outcomes.map(({ title, text }, index) => (
               <article
                 key={title}
                 className="group grid gap-5 rounded-2xl border border-slate-200 p-6 transition hover:border-blue-200 hover:bg-blue-50/40 sm:grid-cols-[64px_1fr] sm:items-start"
@@ -399,18 +260,11 @@ export default function HomePage() {
         <div className="absolute left-0 top-0 h-96 w-96 rounded-full bg-blue-300/20 blur-3xl" />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
           <div className="lg:sticky lg:top-28">
-            <p className="eyebrow">Первый шаг</p>
-            <h2 className="section-title mt-4">Обсудим, где 1С может работать лучше</h2>
-            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">
-              Опишите текущую задачу. На первой встрече разберём контекст, определим приоритет и
-              предложим реалистичный следующий шаг.
-            </p>
+            <p className="eyebrow">{copy.contact.eyebrow}</p>
+            <h2 className="section-title mt-4">{copy.contact.title}</h2>
+            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">{copy.contact.text}</p>
             <div className="mt-9 space-y-4">
-              {[
-                'Разберём процесс и ограничения',
-                'Определим ожидаемый результат',
-                'Предложим формат первого этапа',
-              ].map((item) => (
+              {copy.contact.proofs.map((item) => (
                 <div key={item} className="flex items-center gap-3 font-bold text-slate-800">
                   <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-blue-600 shadow-sm">
                     <Check />
@@ -420,7 +274,7 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-          <ContactForm />
+          <ContactForm locale={locale} />
         </div>
       </section>
 
@@ -431,42 +285,49 @@ export default function HomePage() {
               Avantime<span className="text-blue-500">.</span>
             </p>
             <p className="mt-4 leading-7">
-              Внедрение 1С, AI, облачные решения и интеграции для устойчивой автоматизации бизнеса.
+              {copy.footer.description}
             </p>
           </div>
           <div>
-            <p className="font-black text-white">Решения</p>
+            <p className="font-black text-white">{copy.footer.solutions}</p>
             <div className="mt-4 space-y-3 text-sm">
-              <Link className="block hover:text-white" href="/solutions/1c">
-                Внедрение 1С
+              <Link className="block hover:text-white" href={localePath(locale, '/solutions/1c')}>
+                {copy.footer.implementation}
               </Link>
-              <Link className="block hover:text-white" href="/solutions/ai">
-                AI для бизнеса
+              <Link className="block hover:text-white" href={localePath(locale, '/solutions/ai')}>
+                {copy.footer.ai}
               </Link>
-              <Link className="block hover:text-white" href="/solutions/agent-plus">
+              <Link className="block hover:text-white" href={localePath(locale, '/solutions/agent-plus')}>
                 Agent+
+              </Link>
+              <Link className="block hover:text-white" href={localePath(locale, '/solutions/integrations')}>
+                {copy.footer.integrations}
               </Link>
             </div>
           </div>
           <div>
-            <p className="font-black text-white">Компания</p>
+            <p className="font-black text-white">{copy.footer.company}</p>
             <div className="mt-4 space-y-3 text-sm">
-              <Link className="block hover:text-white" href="/knowledge">
-                База знаний
+              <Link className="block hover:text-white" href={localePath(locale, '/knowledge')}>
+                {copy.footer.knowledge}
               </Link>
-              <Link className="block hover:text-white" href="/assistant">
-                AI-консультант
+              <Link className="block hover:text-white" href={localePath(locale, '/assistant')}>
+                {copy.footer.assistant}
               </Link>
               <Link className="block hover:text-white" href="/portal">
-                Кабинет клиента
+                {copy.footer.portal}
               </Link>
+              <a className="block hover:text-white" href="mailto:info@avantime.lv">
+                info@avantime.lv
+              </a>
+              <span className="block">{copy.footer.location}</span>
             </div>
           </div>
         </div>
         <div className="border-t border-white/10">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-6 text-xs sm:flex-row sm:justify-between">
             <span>© 2026 Avantime</span>
-            <span>1С · AI · Cloud · Integrations · Agent+</span>
+            <span>{copy.footer.stack}</span>
           </div>
         </div>
       </footer>

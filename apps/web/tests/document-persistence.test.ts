@@ -38,6 +38,10 @@ const companyA: DocumentTenantContext = {
   companyId: 'company-a',
   userId: 'user-a',
 };
+const companyAOtherUser: DocumentTenantContext = {
+  companyId: 'company-a',
+  userId: 'user-a-other',
+};
 const companyB: DocumentTenantContext = {
   companyId: 'company-b',
   userId: 'user-b',
@@ -481,6 +485,43 @@ test('production document configuration fails without required environment', () 
       }),
     /required for the selected document configuration/i,
   );
+});
+
+test('question history is isolated by both organization and user', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'avantime-history-'));
+  const services = await localServices(directory);
+  const history = [
+    {
+      id: 'history-a',
+      question: 'Question for user A',
+      answer: 'Answer for user A',
+      sources: [
+        {
+          number: 1,
+          chunkId: 'chunk-a',
+          score: 0,
+          pageStart: 1,
+          pageEnd: 1,
+          excerpt: 'Persisted citation excerpt.',
+          link: '/portal/documents/document-a?chunk=chunk-a',
+        },
+      ],
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  try {
+    await services.history.save(companyA, history);
+
+    assert.deepEqual(await services.history.list(companyA), history);
+    assert.deepEqual(await services.history.list(companyAOtherUser), []);
+    assert.deepEqual(await services.history.list(companyB), []);
+
+    await services.history.save(companyAOtherUser, []);
+    assert.deepEqual(await services.history.list(companyA), history);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test('development document configuration creates local adapters', () => {

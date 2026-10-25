@@ -48,7 +48,7 @@ export class DefaultDocumentTextQualityService implements DocumentTextQualitySer
     const printableRatio = count === 0 ? 0 : printable / count;
     const alphanumericRatio = count === 0 ? 0 : alphanumeric / count;
     const invalidUnicode = text.includes('\uFFFD') || text.includes('\0');
-    const repeatedGarbage = /([^\p{L}\p{N}\s])\1{12,}/u.test(text);
+    const repeatedGarbage = /([^\p{L}\p{N}\s.])\1{12,}/u.test(text);
     const pages = input.pageTexts?.map((page) => page.trim().length) ?? [];
     const poorDistribution =
       (input.pageCount ?? pages.length) > 1 &&

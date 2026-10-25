@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test as base, type Response, type TestInfo } from '@playwright/test';
 import path from 'node:path';
 
-import { browserIdentities } from './environment';
+import { BROWSER_BASE_URL, browserIdentities } from './environment';
 import { createBrowserTestClientIp, browserTestRun, browserTestShard } from './test-client-ip';
 
 type BrowserIdentity = keyof typeof browserIdentities;
@@ -129,7 +129,7 @@ export const test = base.extend<BrowserFixtures>({
       const url = new URL(response.url());
       if (
         response.status() >= 400 &&
-        url.origin === 'http://127.0.0.1:3410' &&
+        url.origin === BROWSER_BASE_URL &&
         url.pathname.startsWith('/api/') &&
         !allowApiFailure(response.request().method(), url.pathname, response.status(), true)
       ) {
@@ -168,22 +168,14 @@ export const test = base.extend<BrowserFixtures>({
       const targetPath =
         identity === 'admin' || identity === 'identityAdmin' ? '/admin' : '/portal';
       await page.goto('/portal/login');
-      await page.getByLabel('Email').fill(credentials.email);
-      await page.getByLabel('Пароль').fill(credentials.password);
+      await page.locator('input[type="email"]').fill(credentials.email);
+      await page.locator('input[type="password"]').fill(credentials.password);
       const loginResponse = page.waitForResponse(
         (response) =>
           new URL(response.url()).pathname === '/api/auth/login' &&
           response.request().method() === 'POST',
       );
-      const targetPage = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === targetPath &&
-          response.request().isNavigationRequest() &&
-          response.ok(),
-        { timeout: 50_000 },
-      );
-      void targetPage.catch(() => undefined);
-      await page.getByRole('button', { name: 'Войти' }).click();
+      await page.locator('form').getByRole('button').last().click();
       const response = await loginResponse;
       if (!response.ok()) {
         const failure = {
@@ -201,8 +193,7 @@ export const test = base.extend<BrowserFixtures>({
         });
         throw new Error(`Browser login failed: ${JSON.stringify(failure)}`);
       }
-      await targetPage;
-      await expect(page).toHaveURL(new RegExp(`${targetPath.replace('/', '\\/')}$`, 'u'));
+      await page.waitForURL((url) => url.pathname.endsWith(targetPath), { timeout: 50_000 });
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     });
   },

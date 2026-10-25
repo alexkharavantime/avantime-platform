@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { pbkdf2Sync } from 'node:crypto';
+import { createHash, pbkdf2Sync } from 'node:crypto';
 import test from 'node:test';
 
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -358,6 +358,16 @@ test('production identity persists opaque sessions, MFA, recovery, and reset lif
     assert.equal(reset.status, 'SUCCEEDED');
     assert.equal(await resolveSessionToken(firstSession.token), null);
     assert.equal((await resetPassword(resetToken.token, replacementPassword)).status, 'INVALID');
+    const expiredResetToken = await createPasswordReset(email);
+    const expiredTokenHash = createHash('sha256').update(expiredResetToken.token).digest('hex');
+    await prisma.passwordResetToken.update({
+      where: { tokenHash: expiredTokenHash },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    assert.equal(
+      (await resetPassword(expiredResetToken.token, replacementPassword)).status,
+      'INVALID',
+    );
     assert.equal(
       (
         await authenticatePrimaryCredential({

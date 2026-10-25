@@ -2,7 +2,11 @@ import { createHash, randomBytes } from 'node:crypto';
 import { getPrisma } from '@avantime/database';
 import { cookies } from 'next/headers';
 
-import { SESSION_COOKIE } from './session-constants';
+import {
+  MFA_ENROLLMENT_COOKIE_PATH,
+  MFA_ENROLLMENT_TTL_SECONDS,
+  SESSION_COOKIE,
+} from './session-constants';
 
 export { SESSION_COOKIE };
 export type PlatformRole = 'CLIENT' | 'ADMIN';
@@ -98,6 +102,20 @@ export function expiredSessionCookieOptions(environment = process.env) {
     ...sessionCookieOptions(environment),
     maxAge: 0,
   };
+}
+
+export function mfaEnrollmentCookieOptions(environment = process.env) {
+  return {
+    httpOnly: true,
+    sameSite: 'strict' as const,
+    secure: environment.NODE_ENV === 'production',
+    path: MFA_ENROLLMENT_COOKIE_PATH,
+    maxAge: MFA_ENROLLMENT_TTL_SECONDS,
+  };
+}
+
+export function expiredMfaEnrollmentCookieOptions(environment = process.env) {
+  return { ...mfaEnrollmentCookieOptions(environment), maxAge: 0 };
 }
 
 export function coarseDeviceLabel(userAgent: string | null | undefined) {
