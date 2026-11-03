@@ -38,6 +38,10 @@ COPY . .
 RUN mkdir -p apps/web/public \
     && npm run db:generate \
     && npm run build -w @avantime/web
+# pdfjs (pdf-parse) loads its DOMMatrix polyfill from @napi-rs/canvas at runtime; standalone tracing
+# misses this optional native package, so routes importing the PDF extractor failed in the web image.
+RUN mkdir -p /workspace/web-native/@napi-rs \
+    && cp -R node_modules/@napi-rs/canvas node_modules/@napi-rs/canvas-linux-*-musl /workspace/web-native/@napi-rs/
 
 # Keep the runtime dependency graph pinned to the application lockfile. Rebuild each
 # esbuild executable with the current patched Go toolchain so Trivy does not surface
@@ -94,6 +98,7 @@ RUN apk upgrade --no-cache libcrypto3 libssl3 \
 COPY --from=builder --chown=avantime:avantime /workspace/apps/web/.next/standalone ./
 COPY --from=builder --chown=avantime:avantime /workspace/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=avantime:avantime /workspace/apps/web/public ./apps/web/public
+COPY --from=builder --chown=avantime:avantime /workspace/web-native ./node_modules
 RUN rm -rf /app/node_modules/nanoid \
               /app/node_modules/postcss \
               /app/node_modules/next/node_modules/postcss \
