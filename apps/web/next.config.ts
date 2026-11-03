@@ -31,8 +31,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // Browser tests run against `next dev`, which disposes routes unused for 60 s and keeps only five
   // pages. Keeping every route compiled after the test warm-up stops navigations from waiting for a
-  // recompilation in the middle of a test.
-  ...(process.env.NEXT_KEEP_COMPILED_ROUTES === 'true'
+  // recompilation in the middle of a test. Never part of a production build or server.
+  ...(process.env.NEXT_KEEP_COMPILED_ROUTES === 'true' && process.env.NODE_ENV !== 'production'
     ? { onDemandEntries: { maxInactiveAge: 24 * 60 * 60 * 1000, pagesBufferLength: 1000 } }
     : {}),
   reactStrictMode: true,

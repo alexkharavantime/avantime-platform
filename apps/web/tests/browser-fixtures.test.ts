@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import {
@@ -6,6 +7,8 @@ import {
   type BrowserTestClientIdentity,
 } from './browser/test-client-ip';
 import { loginIdentifierRateLimitSubject, requestRateLimitSubject } from '../lib/identity-route';
+
+const webDirectory = process.cwd();
 
 const baseIdentity: BrowserTestClientIdentity = {
   project: 'chromium-tablet',
@@ -62,5 +65,34 @@ test('browser-only identifier isolation uses the forwarded test client IP withou
       NODE_ENV: 'test',
     }),
     'user@example.test',
+  );
+});
+
+test('route retention for browser tests never reaches a production build or server', () => {
+  const nextConfigOnDemandEntries = (environment: Record<string, string>) => {
+    const { stdout } = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        "const loaded = await import('./next.config.ts'); const config = loaded.default.default ?? loaded.default; process.stdout.write(JSON.stringify(config.onDemandEntries ?? null));",
+      ],
+      { cwd: webDirectory, env: { ...process.env, ...environment }, encoding: 'utf8' },
+    );
+    return JSON.parse(stdout) as unknown;
+  };
+  assert.deepEqual(
+    nextConfigOnDemandEntries({ NODE_ENV: 'test', NEXT_KEEP_COMPILED_ROUTES: 'true' }),
+    { maxInactiveAge: 24 * 60 * 60 * 1000, pagesBufferLength: 1000 },
+  );
+  assert.equal(
+    nextConfigOnDemandEntries({ NODE_ENV: 'production', NEXT_KEEP_COMPILED_ROUTES: 'true' }),
+    null,
+  );
+  assert.equal(
+    nextConfigOnDemandEntries({ NODE_ENV: 'test', NEXT_KEEP_COMPILED_ROUTES: '' }),
+    null,
   );
 });
