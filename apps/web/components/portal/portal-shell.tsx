@@ -249,6 +249,8 @@ export function PortalShell({
                   <Link
                     key={candidate}
                     href={localePath(candidate, rawPathname || '/portal')}
+                    // A prefetch would store this locale in the cookie that unprefixed pages follow.
+                    prefetch={false}
                     aria-current={candidate === locale ? 'page' : undefined}
                     className={`rounded-lg px-2 py-2 text-xs font-black ${candidate === locale ? 'bg-slate-950 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
                     title={localeNames[candidate]}

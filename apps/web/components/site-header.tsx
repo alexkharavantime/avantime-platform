@@ -56,6 +56,8 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
               <Link
                 key={candidate}
                 href={localePath(candidate, currentPath)}
+                // A prefetch would store this locale in the cookie that unprefixed pages follow.
+                prefetch={false}
                 aria-current={candidate === locale ? 'page' : undefined}
                 className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${candidate === locale ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-blue-600'}`}
               >
@@ -83,6 +85,7 @@ export function SiteHeader({ locale, currentPath }: SiteHeaderProps) {
               <Link
                 key={candidate}
                 href={localePath(candidate, currentPath)}
+                prefetch={false}
                 aria-current={candidate === locale ? 'page' : undefined}
                 className={`rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px] ${candidate === locale ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-blue-600'}`}
               >

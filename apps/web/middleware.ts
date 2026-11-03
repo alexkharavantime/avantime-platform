@@ -53,12 +53,7 @@ export function middleware(request: NextRequest) {
     } else {
       response = NextResponse.next({ request: { headers: requestHeaders } });
     }
-    // Only a visit stores the locale: production builds prefetch the LV/RU/EN switcher links in the
-    // background, and storing their locale flipped the language of unprefixed pages.
-    const prefetch =
-      request.headers.get('next-router-prefetch') === '1' ||
-      /prefetch/iu.test(request.headers.get('purpose') ?? request.headers.get('sec-purpose') ?? '');
-    if (pathLocale && !prefetch && request.cookies.get(localeCookieName)?.value !== locale) {
+    if (pathLocale && request.cookies.get(localeCookieName)?.value !== locale) {
       response.cookies.set(localeCookieName, locale, {
         httpOnly: true,
         sameSite: 'lax',
