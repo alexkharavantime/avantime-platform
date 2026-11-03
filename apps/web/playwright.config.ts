@@ -55,6 +55,7 @@ export default defineConfig({
     env: {
       ...browserServerEnvironment,
       NEXT_DIST_DIR: '.next-browser-tests',
+      NEXT_KEEP_COMPILED_ROUTES: 'true',
     },
   },
   projects: [
