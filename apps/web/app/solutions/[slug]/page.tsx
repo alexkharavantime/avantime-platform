@@ -8,9 +8,30 @@ import { getLocale } from '../../../lib/i18n-server';
 import { getLocalizedSolution } from '../../../lib/solution-localization';
 import { localePath } from '../../../lib/i18n';
 import { getSectionImage, type SectionImageId } from '../../../lib/section-images';
-import { getProductContent } from '../../../lib/product-content';
+import { getProductContent, type ProductContent } from '../../../lib/product-content';
+import { CmsPreviewBanner } from '../../../components/cms-preview-banner';
+import { cmsProductPageKeyForSlug } from '../../../lib/cms-product-page-routes';
+import { getCmsProductPage } from '../../../lib/cms-product-page-source';
+import type { CmsProductPage } from '../../../lib/cms-product-pages';
 
 type Props = { params: Promise<{ slug: string }> };
+type PreparedProduct = Pick<
+  ProductContent,
+  'name' | 'lead' | 'benefits' | 'approachTitle' | 'approachText' | 'ctaText' | 'ctaButton'
+>;
+const noIndex = { robots: { index: false, follow: false } } as const;
+
+function preparedFromCms(page: CmsProductPage): PreparedProduct {
+  return {
+    name: page.name,
+    lead: page.lead,
+    benefits: page.benefits.map((benefit, index) => ({ id: `benefit-${index + 1}`, ...benefit })),
+    approachTitle: page.approachTitle,
+    approachText: page.approachText,
+    ctaText: page.ctaText,
+    ctaButton: page.ctaButton,
+  };
+}
 const pageCopy = {
   lv: { result: 'Rezultāts', business: 'Ko iegūst uzņēmums', next: 'Nākamais solis', discuss: 'Pārrunāsim uzdevumu un pirmā posma robežas', contact: 'Sazināties ar Avantime' },
   ru: { result: 'Результат', business: 'Что получает бизнес', next: 'Следующий шаг', discuss: 'Обсудим задачу и границы первого этапа', contact: 'Связаться с Avantime' },
@@ -33,6 +54,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         : slug === 'platform-1c-predpriyatie'
           ? 'platform'
           : null;
+  const cmsKey = cmsProductPageKeyForSlug(slug);
+  const cms = localized && cmsKey ? await getCmsProductPage(cmsKey, locale) : null;
+  if (cms?.source === 'withdrawn' || cms?.source === 'unavailable') return noIndex;
+  if (cms?.source === 'cms') {
+    const { page } = cms;
+    return {
+      title: page.seo.title ?? `${page.name} — Avantime`,
+      description: page.seo.description ?? page.lead,
+      ...(cms.draft || page.seo.noIndex ? noIndex : {}),
+    };
+  }
   const prepared = productId ? getProductContent(locale, productId) : null;
   return localized ? { title: prepared?.seo.title ?? `${localized.title} — Avantime`, description: prepared?.seo.description ?? localized.summary } : {};
 }
@@ -50,7 +82,16 @@ export default async function SolutionPage({ params }: Props) {
     'adresny-sklad': 'addressed-warehouse',
     'platform-1c-predpriyatie': 'platform',
   }[localizedItem.slug];
-  const prepared = productId ? getProductContent(locale, productId) : null;
+  const cmsKey = cmsProductPageKeyForSlug(localizedItem.slug);
+  const cms = cmsKey ? await getCmsProductPage(cmsKey, locale) : null;
+  if (cms?.source === 'withdrawn') notFound();
+  if (cms?.source === 'unavailable') throw new Error(cms.code);
+  const cmsPage = cms?.source === 'cms' ? cms.page : null;
+  const prepared: PreparedProduct | null = cmsPage
+    ? preparedFromCms(cmsPage)
+    : productId
+      ? getProductContent(locale, productId)
+      : null;
   const displayTitle = prepared?.name ?? localizedItem.title;
   const imageId: SectionImageId = localizedItem.slug === '1c'
     ? 'onec'
@@ -63,9 +104,10 @@ export default async function SolutionPage({ params }: Props) {
           : localizedItem.slug === 'platform-1c-predpriyatie'
             ? 'platform'
           : localizedItem.slug as SectionImageId;
-  const image = getSectionImage(imageId, locale);
+  const image = cmsPage ? { src: cmsPage.image.url, alt: cmsPage.image.alt } : getSectionImage(imageId, locale);
   return (
     <PageShell>
+      {cms?.source === 'cms' && cms.draft && cmsKey ? <CmsPreviewBanner locale={locale} cmsKey={cmsKey} /> : null}
       <section className="border-b border-slate-200 bg-slate-950 text-white">
         <div className="mx-auto max-w-7xl px-6 py-20 sm:py-28">
           <p className="mt-10 text-sm font-black tracking-[0.2em] text-blue-300">
