@@ -3,6 +3,8 @@
 # for a closed DEV network or the local rehearsal.
 {
 	admin off
+	# Read-only container: the internal root is exported by edge-ca, never installed into a trust store.
+	skip_install_trust
 }
 
 (edge_headers) {

@@ -136,10 +136,17 @@ async function main() {
     );
     check(!/noindex/iu.test(robots), `${locale} published page is indexable`);
     const canonical = links.find((tag) => /rel="canonical"/iu.test(tag));
+    const canonicalHref = canonical ? attribute(canonical, 'href') : undefined;
     check(
-      canonical !== undefined && attribute(canonical, 'href') === pageUrl.toString(),
-      `${locale} canonical = ${canonical ? attribute(canonical, 'href') : 'missing'}`,
+      canonicalHref !== undefined && new URL(canonicalHref, options.site).href === pageUrl.href,
+      `${locale} canonical = ${canonicalHref ?? 'missing'}`,
     );
+    // The site has no metadataBase yet: canonical/hreflang are relative on every page.
+    if (canonicalHref && !/^https:\/\//u.test(canonicalHref)) {
+      console.info(
+        `     note: canonical and hreflang URLs are relative (site-wide, not CMS-specific)`,
+      );
+    }
     const alternates = links
       .filter((tag) => /rel="alternate"/iu.test(tag) && attribute(tag, 'hrefLang'))
       .map((tag) => attribute(tag, 'hrefLang')!)
