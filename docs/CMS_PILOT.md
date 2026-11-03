@@ -69,6 +69,23 @@ notification that still fails is lost. The site reconciles on its own:
   until the CMS is reachable again. This bounds how long an unpublished page can remain online in
   the worst case (lost notification and CMS outage at the same time).
 
+In short, for an unpublished or deleted locale:
+
+| What the site knows                                                     | Answer                                                                                             |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| The withdrawal (webhook delivered, or any later read of the CMS saw it) | `404` + `noindex`, also during a later CMS outage (the withdrawn snapshot never expires)           |
+| Nothing (notification lost) and the CMS is reachable                    | the previous version for at most `CMS_CACHE_SECONDS` + one request, then `404`                     |
+| Nothing (notification lost) and the CMS is unreachable                  | the previous version until `CMS_MAX_STALE_SECONDS` after the CMS last confirmed it                 |
+| Nothing, and that limit has passed                                      | temporary error (`500`, localized "temporarily unavailable" page, `noindex`) until the CMS answers |
+
+No cache can extend that limit: the age is checked on every request against `checkedAt` of the data
+cache entry and of the snapshot, whichever is newer, never against when an entry was cached. When the
+cached entry is past the limit (for example after a quiet period without visitors), the site asks the
+CMS directly before answering, so a reachable CMS never produces the temporary error. The page
+is rendered per request (`Cache-Control: private, no-cache, no-store`), so neither the Next.js
+route cache, the browser nor a proxy keeps a copy of the HTML. Edge caches (CDN) must not be put
+in front of the site with their own caching rules for these pages.
+
 ## Deployment notes
 
 - Snapshots: named volume at `/var/lib/avantime-cms-snapshots` (created owned by uid 10001 in the

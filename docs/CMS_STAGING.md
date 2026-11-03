@@ -77,6 +77,21 @@ down. The pilot page's own state is visible in the `cms.*` log events and in `cm
 - Recreating the CMS containers keeps the database and media (named volumes). Recreating web keeps
   the snapshots; the Next.js data cache (tmpfs) is rebuilt from the CMS on start.
 
+## Acceptance on the stand
+
+`cms:pilot-check` covers what an anonymous visitor sees. The editor and portal paths need a browser
+on the stand itself (they were rehearsed locally with the same images and compose files):
+
+1. CMS admin over HTTPS: log in, change a text in one locale, _Save_ — the public page is unchanged.
+2. _Open preview_ — draft with the yellow banner; _Выйти из предпросмотра_ returns to the published page.
+3. _Publish_ / _Unpublish_ of that locale — the page follows within seconds (webhook), the other
+   locales keep answering and drop/restore the locale in hreflang.
+4. Media library upload — the file is served from `https://<cms-host>/uploads/…`.
+5. Portal: sign-in of a test client, home, requests (create one), knowledge base, sign-out.
+
+Strapi limits admin sign-in attempts (HTTP 429 for a few minutes after repeated logins); the portal
+locks an account for 15 minutes after repeated wrong passwords regardless of the client address.
+
 ## Backups
 
 `scripts/backup.sh` in the CMS repository writes one restore point (database dump, media archive,
