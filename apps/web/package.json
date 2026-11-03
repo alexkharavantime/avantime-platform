@@ -76,6 +76,7 @@
     "governance:sign-off-create": "tsx scripts/governance-operations.ts sign-off create",
     "governance:sign-off-verify": "tsx scripts/governance-operations.ts sign-off verify",
     "staging:config-check": "node --import tsx scripts/check-staging-configuration.ts",
+    "cms:pilot-check": "node --import tsx scripts/check-cms-pilot.ts",
     "staging:migration-status": "node --import tsx scripts/check-staging-migrations.ts",
     "staging:worker-health": "node --import tsx scripts/check-staging-worker.ts",
     "staging:notification-worker": "node --import tsx scripts/run-notification-worker.ts",

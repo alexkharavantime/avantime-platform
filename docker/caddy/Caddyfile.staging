@@ -1,0 +1,36 @@
+# HTTPS edge for DEV/staging (docker-compose.staging.edge.yml): the public site and the Strapi CMS pilot.
+# STAGING_TLS is the ACME account e-mail for publicly resolvable hosts, or `internal` (Caddy's own CA)
+# for a closed DEV network or the local rehearsal.
+{
+	admin off
+}
+
+(edge_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
+
+{$STAGING_SITE_HOST} {
+	tls {$STAGING_TLS}
+	import edge_headers
+	# The CMS notifies the site over the internal network (http://web:3000); never from the internet.
+	@cms_revalidate path /api/cms/revalidate
+	respond @cms_revalidate 404
+	reverse_proxy web:3000
+}
+
+{$STAGING_CMS_HOST} {
+	tls {$STAGING_TLS}
+	import edge_headers
+	# Media stay public; the admin and the API can be limited to the office/VPN ranges.
+	@restricted {
+		not path /uploads/*
+		not remote_ip {$STAGING_CMS_ALLOWED_CLIENTS:0.0.0.0/0 ::/0}
+	}
+	respond @restricted 403
+	reverse_proxy cms:1337
+}

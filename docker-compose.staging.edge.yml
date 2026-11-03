@@ -1,0 +1,57 @@
+# HTTPS edge and the Strapi CMS pilot link for DEV/staging. Overlay of docker-compose.staging.yml:
+#   docker compose --env-file "$STAGING_ENV_FILE" -p avantime-staging \
+#     -f docker-compose.staging.yml -f docker-compose.staging.edge.yml up -d --wait
+# The CMS runs as its own project (avantime-site: docker-compose.staging.yml) on the external network
+# CMS_EDGE_NETWORK, created once with `docker network create --internal <name>`. See docs/CMS_STAGING.md.
+name: avantime-staging
+
+services:
+  web:
+    networks:
+      application: {}
+      egress: {}
+      cms-edge: {}
+
+  reverse-proxy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      STAGING_SITE_HOST: ${STAGING_SITE_HOST:?STAGING_SITE_HOST is required}
+      STAGING_CMS_HOST: ${STAGING_CMS_HOST:?STAGING_CMS_HOST is required}
+      STAGING_TLS: ${STAGING_TLS:?STAGING_TLS is required (ACME e-mail or internal)}
+      STAGING_CMS_ALLOWED_CLIENTS: ${STAGING_CMS_ALLOWED_CLIENTS:-0.0.0.0/0 ::/0}
+    volumes:
+      - ./docker/caddy/Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - staging-caddy-data:/data
+      - staging-caddy-config:/config
+    ports:
+      - '${STAGING_HTTP_PORT:-80}:80'
+      - '${STAGING_HTTPS_PORT:-443}:443'
+    networks:
+      egress: {}
+      application: {}
+      # The site resolves the public CMS host to the edge, so next/image fetches media over the same
+      # HTTPS origin the browser uses (no hairpin through the host's public address).
+      cms-edge:
+        aliases:
+          - ${STAGING_CMS_HOST}
+    labels:
+      com.avantime.environment: staging
+      com.avantime.version: ${APP_VERSION:?APP_VERSION is required}
+      com.avantime.commit: ${COMMIT_SHA:?COMMIT_SHA is required}
+
+networks:
+  cms-edge:
+    external: true
+    name: ${CMS_EDGE_NETWORK:-avantime-staging-cms-edge}
+
+volumes:
+  staging-caddy-data:
+  staging-caddy-config:

@@ -1,0 +1,55 @@
+# Only with STAGING_TLS=internal (closed DEV network or local rehearsal): Caddy issues certificates
+# from its own CA, so the site must trust that CA to fetch CMS media over HTTPS for next/image.
+# Add after docker-compose.staging.edge.yml. The CA private key never leaves the Caddy volume;
+# only the public root certificate is copied for the web container.
+name: avantime-staging
+
+services:
+  edge-ca:
+    image: alpine:3.22.1
+    command:
+      - sh
+      - -ec
+      - >
+        for attempt in $$(seq 1 60); do
+          if [ -s /data/caddy/pki/authorities/local/root.crt ]; then
+            cp /data/caddy/pki/authorities/local/root.crt /edge-ca/root.crt;
+            chmod 0444 /edge-ca/root.crt;
+            exit 0;
+          fi;
+          sleep 1;
+        done;
+        echo 'Caddy did not create its local CA' >&2;
+        exit 1
+    user: '0:0'
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    network_mode: none
+    restart: 'no'
+    depends_on:
+      reverse-proxy:
+        condition: service_started
+    volumes:
+      - staging-caddy-data:/data:ro
+      - staging-edge-ca:/edge-ca
+    labels:
+      com.avantime.environment: staging
+      com.avantime.version: ${APP_VERSION:?APP_VERSION is required}
+      com.avantime.commit: ${COMMIT_SHA:?COMMIT_SHA is required}
+
+  web:
+    environment:
+      NODE_EXTRA_CA_CERTS: /etc/avantime-edge-ca/root.crt
+    volumes:
+      - staging-edge-ca:/etc/avantime-edge-ca:ro
+    depends_on:
+      edge-ca:
+        condition: service_completed_successfully
+
+volumes:
+  staging-edge-ca:
