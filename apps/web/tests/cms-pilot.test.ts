@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server';
 
 import { loadCmsConfiguration, type CmsConfiguration } from '../lib/cms-configuration';
 import {
+  cmsProductPageAlternates,
   cmsProductPageKeyForSlug,
   cmsProductPagePath,
   cmsProductPageTag,
@@ -125,6 +126,28 @@ test('product page routes are a fixed allow-list', () => {
   assert.equal(cmsProductPageKeyForSlug('adresny-sklad'), null);
   assert.equal(cmsProductPagePath('accounting', 'ru'), '/ru/solutions/buhgalteriya-predpriyatiya');
   assert.equal(cmsProductPageTag('accounting', 'lv'), 'cms:product-page:accounting:lv');
+});
+
+test('hreflang alternates of a CMS page list only published locales', () => {
+  const pagePath = (locale: string) => `/${locale}/solutions/buhgalteriya-predpriyatiya`;
+  assert.deepEqual(cmsProductPageAlternates('accounting', 'ru', ['lv', 'ru', 'en']), {
+    canonical: pagePath('ru'),
+    languages: {
+      lv: pagePath('lv'),
+      ru: pagePath('ru'),
+      en: pagePath('en'),
+      'x-default': pagePath('lv'),
+    },
+  });
+  assert.deepEqual(cmsProductPageAlternates('accounting', 'lv', ['lv', 'ru']), {
+    canonical: pagePath('lv'),
+    languages: { lv: pagePath('lv'), ru: pagePath('ru'), 'x-default': pagePath('lv') },
+  });
+  // Without the default locale there is no x-default target.
+  assert.deepEqual(cmsProductPageAlternates('accounting', 'en', ['en']), {
+    canonical: pagePath('en'),
+    languages: { en: pagePath('en') },
+  });
 });
 
 test('preview links are accepted only with a valid, unexpired signature for an allow-listed page', () => {

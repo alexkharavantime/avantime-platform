@@ -11,7 +11,7 @@ import { getSectionImage, type SectionImageId } from '../../../lib/section-image
 import { getProductContent, type ProductContent } from '../../../lib/product-content';
 import { CmsPreviewBanner } from '../../../components/cms-preview-banner';
 import { cmsProductPageKeyForSlug } from '../../../lib/cms-product-page-routes';
-import { getCmsProductPage } from '../../../lib/cms-product-page-source';
+import { getCmsProductPage, getCmsProductPageAlternates } from '../../../lib/cms-product-page-source';
 import type { CmsProductPage } from '../../../lib/cms-product-pages';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -56,13 +56,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
           : null;
   const cmsKey = cmsProductPageKeyForSlug(slug);
   const cms = localized && cmsKey ? await getCmsProductPage(cmsKey, locale) : null;
-  if (cms?.source === 'withdrawn' || cms?.source === 'unavailable') return noIndex;
-  if (cms?.source === 'cms') {
+  if (cms?.source === 'withdrawn' || cms?.source === 'unavailable') return { ...noIndex, alternates: null };
+  if (cms?.source === 'cms' && cmsKey) {
     const { page } = cms;
     return {
       title: page.seo.title ?? `${page.name} — Avantime`,
       description: page.seo.description ?? page.lead,
       ...(cms.draft || page.seo.noIndex ? noIndex : {}),
+      ...(cms.draft ? {} : { alternates: await getCmsProductPageAlternates(cmsKey, locale) }),
     };
   }
   const prepared = productId ? getProductContent(locale, productId) : null;
