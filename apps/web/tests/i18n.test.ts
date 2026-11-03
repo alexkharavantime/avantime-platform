@@ -42,11 +42,12 @@ test('protected route redirects through the configured auth origin', () => {
 test('locale prefix is stored on a visit but not on a background prefetch', () => {
   const visit = middleware(new NextRequest('http://localhost:3000/en/solutions/1c'));
   assert.match(visit.headers.get('set-cookie') ?? '', /avantime_locale=en/u);
-  for (const headers of [
+  const prefetchHeaders: Record<string, string>[] = [
     { 'next-router-prefetch': '1', rsc: '1' },
     { purpose: 'prefetch' },
     { 'sec-purpose': 'prefetch;prerender' },
-  ]) {
+  ];
+  for (const headers of prefetchHeaders) {
     const prefetch = middleware(
       new NextRequest('http://localhost:3000/en/solutions/1c', {
         headers: { cookie: 'avantime_locale=ru', ...headers },
