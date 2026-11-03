@@ -38,6 +38,7 @@ export const getCmsProductPage = cache(
           ['cms-product-page', key, locale, processEpoch],
           { tags: [cmsProductPageTag(key, locale)], revalidate: configuration.cacheSeconds },
         ),
+        freshLookup: () => fetchAndRecordCmsProductPage(configuration, key, locale),
         draftLookup: () => lookupDraftCmsProductPage(configuration, key, locale),
         readSnapshot: () => readCmsSnapshot(configuration.snapshotDirectory, key, locale),
       },

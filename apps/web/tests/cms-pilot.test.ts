@@ -451,6 +451,32 @@ test('a published version unconfirmed for longer than CMS_MAX_STALE_SECONDS is n
       source: 'unavailable',
       code: 'CMS_STALE_LIMIT',
     });
+    // After a quiet period with the CMS reachable, the CMS is asked directly instead of failing...
+    assert.deepEqual(
+      await resolveCmsProductPage(input, {
+        ...base,
+        publishedLookup: oldCached,
+        freshLookup: async () => ({ state: 'published', page, checkedAt: at(0) }),
+      }),
+      { source: 'cms', page, draft: false, stale: false },
+    );
+    assert.deepEqual(
+      await resolveCmsProductPage(input, {
+        ...base,
+        publishedLookup: oldCached,
+        freshLookup: async () => ({ state: 'withdrawn', reason: 'unpublished', checkedAt: at(0) }),
+      }),
+      { source: 'withdrawn', reason: 'unpublished', stale: false },
+    );
+    // ...and when that direct read fails too, the limit still holds.
+    assert.deepEqual(
+      await resolveCmsProductPage(input, {
+        ...base,
+        publishedLookup: oldCached,
+        freshLookup: failing,
+      }),
+      { source: 'unavailable', code: 'CMS_STALE_LIMIT' },
+    );
     // ...and a newer snapshot (withdrawn recorded by the webhook) wins over it.
     assert.deepEqual(
       await resolveCmsProductPage(input, {

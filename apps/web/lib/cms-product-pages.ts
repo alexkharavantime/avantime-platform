@@ -251,6 +251,8 @@ export async function resolveCmsProductPage(
   dependencies: {
     configuration: CmsConfiguration;
     publishedLookup: () => Promise<CmsPublishedLookup>;
+    // Reads the CMS bypassing the data cache; used when the cached entry is past the stale limit.
+    freshLookup?: () => Promise<CmsPublishedLookup>;
     draftLookup: () => Promise<CmsProductPage | null>;
     readSnapshot: () => Promise<CmsSnapshot | null>;
     now?: () => number;
@@ -282,6 +284,16 @@ export async function resolveCmsProductPage(
     lookup = await dependencies.publishedLookup();
   } catch (error) {
     code = error instanceof CmsUnavailableError ? error.code : 'CMS_UNEXPECTED_ERROR';
+  }
+
+  // After a quiet period the data cache returns its old entry while refreshing in the background;
+  // confirm with the CMS now instead of failing a request the CMS could answer.
+  if (lookup && tooOld(lookup) && dependencies.freshLookup) {
+    try {
+      lookup = await dependencies.freshLookup();
+    } catch (error) {
+      code = error instanceof CmsUnavailableError ? error.code : 'CMS_UNEXPECTED_ERROR';
+    }
   }
 
   if (lookup && !tooOld(lookup)) {
