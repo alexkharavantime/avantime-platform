@@ -171,6 +171,18 @@ services:
       context: .
       dockerfile: docker/production.Dockerfile
       target: web
+      args:
+        CMS_MEDIA_URL: ${CMS_MEDIA_URL:-}
+    environment:
+      HOSTNAME: 0.0.0.0
+      COMMIT_SHA: ${COMMIT_SHA:?COMMIT_SHA is required}
+      CMS_SNAPSHOT_DIR: /var/lib/avantime-cms-snapshots
+    volumes:
+      - staging-cms-snapshots:/var/lib/avantime-cms-snapshots
+    # Next.js data and image cache; the root file system is read-only. Emptied on restart.
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /app/apps/web/.next/cache:size=256m,uid=10001,gid=10001,mode=0700
     depends_on:
       migration:
         condition: service_completed_successfully
@@ -239,3 +251,4 @@ networks:
 
 volumes:
   staging-backups:
+  staging-cms-snapshots:

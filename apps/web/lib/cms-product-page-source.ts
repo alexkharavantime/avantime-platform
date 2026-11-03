@@ -13,24 +13,30 @@ import {
 } from './cms-product-pages';
 import type { Locale } from './i18n';
 
+// Part of the data cache key: a persisted cache entry from a previous process is never reused, so
+// a restart re-checks the CMS instead of trusting state that may have missed a webhook meanwhile.
+const processEpoch = String(Math.trunc(performance.timeOrigin));
+
 // Published content goes through the tagged data cache (invalidated by /api/cms/revalidate);
 // drafts are read live and are never cached or written to snapshots.
-export const getCmsProductPage = cache(async (key: CmsProductPageKey, locale: Locale): Promise<CmsProductPageResolution> => {
-  const configuration = loadCmsConfiguration();
-  if (!configuration.enabled) return { source: 'repository', reason: 'disabled' };
+export const getCmsProductPage = cache(
+  async (key: CmsProductPageKey, locale: Locale): Promise<CmsProductPageResolution> => {
+    const configuration = loadCmsConfiguration();
+    if (!configuration.enabled) return { source: 'repository', reason: 'disabled' };
 
-  const draft = (await draftMode()).isEnabled;
-  return resolveCmsProductPage(
-    { key, locale, draft },
-    {
-      configuration,
-      publishedLookup: unstable_cache(
-        () => fetchAndRecordCmsProductPage(configuration, key, locale),
-        ['cms-product-page', key, locale],
-        { tags: [cmsProductPageTag(key, locale)], revalidate: configuration.cacheSeconds },
-      ),
-      draftLookup: () => lookupDraftCmsProductPage(configuration, key, locale),
-      readSnapshot: () => readCmsSnapshot(configuration.snapshotDirectory, key, locale),
-    },
-  );
-});
+    const draft = (await draftMode()).isEnabled;
+    return resolveCmsProductPage(
+      { key, locale, draft },
+      {
+        configuration,
+        publishedLookup: unstable_cache(
+          () => fetchAndRecordCmsProductPage(configuration, key, locale),
+          ['cms-product-page', key, locale, processEpoch],
+          { tags: [cmsProductPageTag(key, locale)], revalidate: configuration.cacheSeconds },
+        ),
+        draftLookup: () => lookupDraftCmsProductPage(configuration, key, locale),
+        readSnapshot: () => readCmsSnapshot(configuration.snapshotDirectory, key, locale),
+      },
+    );
+  },
+);

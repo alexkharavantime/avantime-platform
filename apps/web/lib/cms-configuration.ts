@@ -1,6 +1,9 @@
 import path from 'node:path';
 
-import { resolveDocumentDataDirectory, resolveDocumentWorkspaceRoot } from './document-data-directory';
+import {
+  resolveDocumentDataDirectory,
+  resolveDocumentWorkspaceRoot,
+} from './document-data-directory';
 
 export type CmsConfiguration =
   | { enabled: false }
@@ -13,6 +16,7 @@ export type CmsConfiguration =
       revalidateSecret: string;
       timeoutMs: number;
       cacheSeconds: number;
+      maxStaleSeconds: number;
       snapshotDirectory: string;
     };
 
@@ -34,7 +38,11 @@ function integer(
   return value;
 }
 
-function required(environment: Record<string, string | undefined>, name: string, minimumLength = 1) {
+function required(
+  environment: Record<string, string | undefined>,
+  name: string,
+  minimumLength = 1,
+) {
   const value = environment[name]?.trim();
   if (!value) throw new Error(`CMS_CONFIG_${name}_REQUIRED`);
   if (PLACEHOLDER.test(value)) throw new Error(`CMS_CONFIG_${name}_PLACEHOLDER`);
@@ -71,6 +79,9 @@ export function loadCmsConfiguration(
   if (mode !== 'on') throw new Error('CMS_CONFIG_CMS_PILOT_MODE_INVALID');
 
   const configuredSnapshots = environment.CMS_SNAPSHOT_DIR?.trim();
+  const cacheSeconds = integer(environment, 'CMS_CACHE_SECONDS', 300, 30, 86400);
+  const maxStaleSeconds = integer(environment, 'CMS_MAX_STALE_SECONDS', 86400, 300, 2592000);
+  if (maxStaleSeconds < cacheSeconds) throw new Error('CMS_CONFIG_CMS_MAX_STALE_SECONDS_INVALID');
   return {
     enabled: true,
     url: origin(environment, 'CMS_URL'),
@@ -79,7 +90,8 @@ export function loadCmsConfiguration(
     previewSecret: required(environment, 'CMS_PREVIEW_SECRET', 32),
     revalidateSecret: required(environment, 'CMS_REVALIDATE_SECRET', 32),
     timeoutMs: integer(environment, 'CMS_TIMEOUT_MS', 3000, 500, 10000),
-    cacheSeconds: integer(environment, 'CMS_CACHE_SECONDS', 300, 30, 86400),
+    cacheSeconds,
+    maxStaleSeconds,
     snapshotDirectory: configuredSnapshots
       ? path.resolve(resolveDocumentWorkspaceRoot(), configuredSnapshots)
       : path.join(resolveDocumentDataDirectory(environment), 'cms-snapshots'),

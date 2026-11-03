@@ -22,12 +22,13 @@ export type CmsProductPage = {
 export type CmsWithdrawnReason = 'unpublished' | 'missing';
 
 // Result of asking the CMS for the published version: "withdrawn" covers both an entry whose locale
-// was unpublished (a draft remains) and a locale that does not exist at all.
-export type CmsPublishedLookup =
-  | { state: 'published'; page: CmsProductPage }
-  | { state: 'withdrawn'; reason: CmsWithdrawnReason };
+// was unpublished (a draft remains) and a locale that does not exist at all. `checkedAt` is when the
+// CMS confirmed this state; it bounds how long the state may be served without a fresh confirmation.
+export type CmsPublishedLookup = (
+  { state: 'published'; page: CmsProductPage } | { state: 'withdrawn'; reason: CmsWithdrawnReason }
+) & { checkedAt: string };
 
-export type CmsSnapshot = CmsPublishedLookup & { savedAt: string };
+export type CmsSnapshot = CmsPublishedLookup;
 
 // Repository content is served only when the CMS is explicitly disabled. During an outage without a
 // recorded snapshot the state is unknown (the page may have been withdrawn), so it is not guessed.
@@ -83,10 +84,16 @@ export function parseCmsProductPage(
     locale: expected.locale,
     name: text(record.name, 'name') as string,
     lead: text(record.lead, 'lead') as string,
-    image: { url: mediaUrl(image.url, configuration), alt: text(record.imageAlt, 'imageAlt') as string },
+    image: {
+      url: mediaUrl(image.url, configuration),
+      alt: text(record.imageAlt, 'imageAlt') as string,
+    },
     benefits: record.benefits.map((benefit) => {
       const item = (benefit ?? {}) as Record<string, unknown>;
-      return { title: text(item.title, 'benefit_title') as string, text: text(item.text, 'benefit_text') as string };
+      return {
+        title: text(item.title, 'benefit_title') as string,
+        text: text(item.text, 'benefit_text') as string,
+      };
     }),
     approachTitle: text(record.approachTitle, 'approachTitle') as string,
     approachText: text(record.approachText, 'approachText') as string,
@@ -142,10 +149,23 @@ export async function lookupPublishedCmsProductPage(
   locale: Locale,
   fetchImplementation: FetchImplementation = fetch,
 ): Promise<CmsPublishedLookup> {
-  const [published] = await requestEntries(configuration, key, locale, 'published', fetchImplementation);
-  if (published) return { state: 'published', page: parseCmsProductPage(published, { key, locale }, configuration) };
+  const checkedAt = new Date().toISOString();
+  const [published] = await requestEntries(
+    configuration,
+    key,
+    locale,
+    'published',
+    fetchImplementation,
+  );
+  if (published) {
+    return {
+      state: 'published',
+      page: parseCmsProductPage(published, { key, locale }, configuration),
+      checkedAt,
+    };
+  }
   const drafts = await requestEntries(configuration, key, locale, 'draft', fetchImplementation);
-  return { state: 'withdrawn', reason: drafts.length ? 'unpublished' : 'missing' };
+  return { state: 'withdrawn', reason: drafts.length ? 'unpublished' : 'missing', checkedAt };
 }
 
 export async function lookupDraftCmsProductPage(
@@ -164,9 +184,24 @@ function snapshotPath(directory: string, key: CmsProductPageKey, locale: Locale)
 
 export async function readCmsSnapshot(directory: string, key: CmsProductPageKey, locale: Locale) {
   try {
-    const snapshot = JSON.parse(await readFile(snapshotPath(directory, key, locale), 'utf8')) as CmsSnapshot;
-    if (snapshot.state === 'published' && snapshot.page?.key === key && snapshot.page.locale === locale) return snapshot;
-    if (snapshot.state === 'withdrawn' && (snapshot.reason === 'unpublished' || snapshot.reason === 'missing')) {
+    const raw = JSON.parse(
+      await readFile(snapshotPath(directory, key, locale), 'utf8'),
+    ) as CmsSnapshot & {
+      savedAt?: string;
+    };
+    // Snapshots written by the first pilot version carry `savedAt` instead of `checkedAt`.
+    const snapshot = { ...raw, checkedAt: raw.checkedAt ?? raw.savedAt } as CmsSnapshot;
+    if (Number.isNaN(Date.parse(snapshot.checkedAt))) return null;
+    if (
+      snapshot.state === 'published' &&
+      snapshot.page?.key === key &&
+      snapshot.page.locale === locale
+    )
+      return snapshot;
+    if (
+      snapshot.state === 'withdrawn' &&
+      (snapshot.reason === 'unpublished' || snapshot.reason === 'missing')
+    ) {
       return snapshot;
     }
     return null;
@@ -184,8 +219,7 @@ export async function writeCmsSnapshot(
   const target = snapshotPath(directory, key, locale);
   await mkdir(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
-  const snapshot: CmsSnapshot = { ...lookup, savedAt: new Date().toISOString() };
-  await writeFile(temporary, `${JSON.stringify(snapshot)}\n`, 'utf8');
+  await writeFile(temporary, `${JSON.stringify(lookup)}\n`, 'utf8');
   await rename(temporary, target);
 }
 
@@ -196,7 +230,12 @@ export async function fetchAndRecordCmsProductPage(
   locale: Locale,
   fetchImplementation: FetchImplementation = fetch,
 ) {
-  const lookup = await lookupPublishedCmsProductPage(configuration, key, locale, fetchImplementation);
+  const lookup = await lookupPublishedCmsProductPage(
+    configuration,
+    key,
+    locale,
+    fetchImplementation,
+  );
   await writeCmsSnapshot(configuration.snapshotDirectory, key, locale, lookup).catch(() => {
     logCmsEvent('cms.snapshot.write_failed', { key, locale });
   });
@@ -214,9 +253,11 @@ export async function resolveCmsProductPage(
     publishedLookup: () => Promise<CmsPublishedLookup>;
     draftLookup: () => Promise<CmsProductPage | null>;
     readSnapshot: () => Promise<CmsSnapshot | null>;
+    now?: () => number;
   },
 ): Promise<CmsProductPageResolution> {
-  if (!dependencies.configuration.enabled) return { source: 'repository', reason: 'disabled' };
+  const { configuration } = dependencies;
+  if (!configuration.enabled) return { source: 'repository', reason: 'disabled' };
 
   if (input.draft) {
     const page = await dependencies.draftLookup();
@@ -225,36 +266,68 @@ export async function resolveCmsProductPage(
       : { source: 'withdrawn', reason: 'missing', stale: false };
   }
 
-  let lookup: CmsPublishedLookup;
+  const now = dependencies.now?.() ?? Date.now();
+  const ageSeconds = (state: CmsPublishedLookup) => {
+    const checkedAt = Date.parse(state.checkedAt);
+    return Number.isNaN(checkedAt) ? Number.POSITIVE_INFINITY : (now - checkedAt) / 1000;
+  };
+  // A published version is served without a fresh CMS confirmation for at most maxStaleSeconds,
+  // so a lost unpublish notification combined with a CMS outage cannot keep a page online forever.
+  const tooOld = (state: CmsPublishedLookup) =>
+    state.state === 'published' && ageSeconds(state) > configuration.maxStaleSeconds;
+
+  let lookup: CmsPublishedLookup | null = null;
+  let code = 'CMS_STALE_LIMIT';
   try {
     lookup = await dependencies.publishedLookup();
   } catch (error) {
-    const code = error instanceof CmsUnavailableError ? error.code : 'CMS_UNEXPECTED_ERROR';
-    const snapshot = await dependencies.readSnapshot();
-    logCmsEvent('cms.product_page.unavailable', {
-      code,
-      key: input.key,
-      locale: input.locale,
-      fallback: snapshot ? `snapshot-${snapshot.state}` : 'none',
-    });
-    if (snapshot?.state === 'published') return { source: 'cms', page: snapshot.page, draft: false, stale: true };
-    if (snapshot?.state === 'withdrawn') return { source: 'withdrawn', reason: snapshot.reason, stale: true };
-    return { source: 'unavailable', code };
+    code = error instanceof CmsUnavailableError ? error.code : 'CMS_UNEXPECTED_ERROR';
   }
 
-  if (lookup.state === 'published') return { source: 'cms', page: lookup.page, draft: false, stale: false };
-  if (lookup.reason === 'missing') {
-    logCmsEvent('cms.product_page.missing', { key: input.key, locale: input.locale });
+  if (lookup && !tooOld(lookup)) {
+    if (lookup.state === 'published')
+      return { source: 'cms', page: lookup.page, draft: false, stale: false };
+    if (lookup.reason === 'missing') {
+      logCmsEvent('cms.product_page.missing', { key: input.key, locale: input.locale });
+    }
+    return { source: 'withdrawn', reason: lookup.reason, stale: false };
   }
-  return { source: 'withdrawn', reason: lookup.reason, stale: false };
+
+  // The CMS could not confirm the state: use the newest last known state.
+  const snapshot = await dependencies.readSnapshot();
+  const lastKnown = [lookup, snapshot]
+    .filter((state): state is CmsPublishedLookup => state !== null)
+    .sort((left, right) => ageSeconds(left) - ageSeconds(right))[0];
+  const fallback = !lastKnown
+    ? 'none'
+    : tooOld(lastKnown)
+      ? 'expired'
+      : `last-known-${lastKnown.state}`;
+  logCmsEvent('cms.product_page.unavailable', {
+    code,
+    key: input.key,
+    locale: input.locale,
+    fallback,
+  });
+  if (lastKnown?.state === 'withdrawn')
+    return { source: 'withdrawn', reason: lastKnown.reason, stale: true };
+  if (lastKnown && !tooOld(lastKnown))
+    return { source: 'cms', page: lastKnown.page, draft: false, stale: true };
+  return { source: 'unavailable', code: lastKnown ? 'CMS_STALE_LIMIT' : code };
 }
 
 export function parseCmsRevalidateRequest(body: unknown) {
   if (!body || typeof body !== 'object') return null;
   const record = body as Record<string, unknown>;
   if (record.model !== 'product-page' || !isCmsProductPageKey(record.key)) return null;
-  if (record.action !== 'publish' && record.action !== 'unpublish' && record.action !== 'delete') return null;
-  if (!Array.isArray(record.locales) || record.locales.length === 0 || record.locales.length > 3) return null;
+  if (record.action !== 'publish' && record.action !== 'unpublish' && record.action !== 'delete')
+    return null;
+  if (!Array.isArray(record.locales) || record.locales.length === 0 || record.locales.length > 3)
+    return null;
   if (!record.locales.every((locale) => isLocale(locale))) return null;
-  return { key: record.key, locales: [...new Set(record.locales as Locale[])], action: record.action };
+  return {
+    key: record.key,
+    locales: [...new Set(record.locales as Locale[])],
+    action: record.action,
+  };
 }

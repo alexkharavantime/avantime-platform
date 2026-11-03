@@ -17,8 +17,18 @@ export type CmsPreviewRequest = {
 const MAXIMUM_LIFETIME_SECONDS = 60 * 60;
 
 // Must stay byte-for-byte compatible with cms/src/site-integration.ts in the CMS project.
-export function signCmsPreview(secret: string, input: Omit<CmsPreviewRequest, 'type'> & { type: string }) {
-  const payload = ['v1', input.type, input.key, input.locale, input.status, String(input.expiresAt)].join('|');
+export function signCmsPreview(
+  secret: string,
+  input: Omit<CmsPreviewRequest, 'type'> & { type: string },
+) {
+  const payload = [
+    'v1',
+    input.type,
+    input.key,
+    input.locale,
+    input.status,
+    String(input.expiresAt),
+  ].join('|');
   return createHmac('sha256', secret).update(payload).digest('base64url');
 }
 

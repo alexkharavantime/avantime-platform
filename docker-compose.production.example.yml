@@ -60,6 +60,14 @@ services:
         condition: service_started
       knowledge-index-worker:
         condition: service_started
+    environment:
+      CMS_SNAPSHOT_DIR: /var/lib/avantime-cms-snapshots
+    volumes:
+      - cms-snapshots:/var/lib/avantime-cms-snapshots
+    # Next.js data and image cache; the root file system is read-only. Emptied on restart.
+    tmpfs:
+      - /tmp:size=512m,mode=1770
+      - /app/apps/web/.next/cache:size=256m,uid=10001,gid=10001,mode=0700
     expose:
       - '3000'
     networks:
@@ -245,6 +253,7 @@ volumes:
   redis-data:
   object-data:
   backup-data:
+  cms-snapshots:
 
 secrets:
   postgres_password:

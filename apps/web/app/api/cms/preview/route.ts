@@ -13,8 +13,12 @@ const noStore = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' 
 export async function GET(request: Request) {
   const configuration = loadCmsConfiguration();
   if (!configuration.enabled) return new Response('Not found', { status: 404, headers: noStore });
-  const preview = verifyCmsPreviewRequest(configuration.previewSecret, new URL(request.url).searchParams);
-  if (!preview) return Response.json({ error: 'CMS_PREVIEW_INVALID' }, { status: 401, headers: noStore });
+  const preview = verifyCmsPreviewRequest(
+    configuration.previewSecret,
+    new URL(request.url).searchParams,
+  );
+  if (!preview)
+    return Response.json({ error: 'CMS_PREVIEW_INVALID' }, { status: 401, headers: noStore });
 
   const draft = await draftMode();
   if (preview.status === 'draft') draft.enable();
