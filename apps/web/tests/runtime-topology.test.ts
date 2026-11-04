@@ -43,6 +43,25 @@ test('staging and production reference manifests contain the canonical worker to
   assert.doesNotMatch(production, /task-00[1-9]|task-01[0-8]/u);
 });
 
+test('production manifest migration runs the image Prisma CLI, not npm/npx removed from the image', async () => {
+  const [production, dockerfile] = await Promise.all([
+    repositoryFile('docker-compose.production.example.yml'),
+    repositoryFile('docker/production.Dockerfile'),
+  ]);
+  const migrationStage = dockerfile.slice(
+    dockerfile.indexOf('AS migration'),
+    dockerfile.indexOf('FROM dependencies AS builder'),
+  );
+  assert.match(migrationStage, /rm -f \/usr\/local\/bin\/npm \/usr\/local\/bin\/npx/u);
+  const migration = production.replace(/\r\n/gu, '\n').match(/^  migration:\n((?: {4}.*\n|\n)+)/mu);
+  assert.ok(migration, 'migration service');
+  assert.doesNotMatch(migration[1], /'(npx|npm)'/u);
+  assert.match(
+    migration[1].replace(/\s+/gu, ' '),
+    /command: \[ 'node_modules\/\.bin\/prisma', 'migrate', 'deploy', '--schema', 'packages\/database\/prisma\/schema\.prisma', \]/u,
+  );
+});
+
 test('identity core baseline precedes migrations that extend User', async () => {
   const migrationDirectory = new URL(
     'packages/database/prisma/migrations/',

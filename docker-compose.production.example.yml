@@ -29,8 +29,15 @@ services:
   migration:
     <<: *runtime
     image: ${PRODUCTION_MIGRATION_IMAGE:-avantime-platform-migration}:${APP_VERSION}
+    # The runtime images have no npm/npx; use the Prisma CLI installed in the image.
     command:
-      ['npx', 'prisma', 'migrate', 'deploy', '--schema', 'packages/database/prisma/schema.prisma']
+      [
+        'node_modules/.bin/prisma',
+        'migrate',
+        'deploy',
+        '--schema',
+        'packages/database/prisma/schema.prisma',
+      ]
     restart: 'no'
     depends_on:
       postgres:
