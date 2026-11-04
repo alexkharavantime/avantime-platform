@@ -138,26 +138,27 @@ async function main() {
     const canonical = links.find((tag) => /rel="canonical"/iu.test(tag));
     const canonicalHref = canonical ? attribute(canonical, 'href') : undefined;
     check(
-      canonicalHref !== undefined && new URL(canonicalHref, options.site).href === pageUrl.href,
-      `${locale} canonical = ${canonicalHref ?? 'missing'}`,
+      canonicalHref === pageUrl.href,
+      `${locale} canonical = ${canonicalHref ?? 'missing'} (absolute, expected ${pageUrl.href})`,
     );
-    // The site has no metadataBase yet: canonical/hreflang are relative on every page.
-    if (canonicalHref && !/^https:\/\//u.test(canonicalHref)) {
-      console.info(
-        `     note: canonical and hreflang URLs are relative (site-wide, not CMS-specific)`,
-      );
-    }
     const alternates = links
       .filter((tag) => /rel="alternate"/iu.test(tag) && attribute(tag, 'hrefLang'))
-      .map((tag) => attribute(tag, 'hrefLang')!)
-      .sort();
+      .map((tag) => [attribute(tag, 'hrefLang')!, decode(attribute(tag, 'href') ?? '')] as const)
+      .sort(([left], [right]) => left.localeCompare(right));
     const expectedAlternates = [
-      ...published,
-      ...(published.includes('lv') ? ['x-default'] : []),
-    ].sort();
+      ...published.map((candidate) => [candidate, candidate] as const),
+      ...(published.includes('lv') ? [['x-default', 'lv'] as const] : []),
+    ]
+      .map(
+        ([hrefLang, target]) =>
+          [hrefLang, new URL(cmsProductPagePath('accounting', target), options.site).href] as const,
+      )
+      .sort(([left], [right]) => left.localeCompare(right));
+    const describe = (entries: readonly (readonly [string, string])[]) =>
+      entries.map(([hrefLang, href]) => `${hrefLang}=${href}`).join(', ');
     check(
-      alternates.join(',') === expectedAlternates.join(','),
-      `${locale} hreflang [${alternates.join(', ')}] (expected [${expectedAlternates.join(', ')}])`,
+      describe(alternates) === describe(expectedAlternates),
+      `${locale} hreflang [${describe(alternates)}] (expected [${describe(expectedAlternates)}])`,
     );
     const imagePath = /(\/_next\/image\?url=[^"\s]+)/u.exec(html)?.[1];
     const imageUrl = imagePath ? new URL(decode(imagePath), options.site) : null;

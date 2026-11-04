@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import { loadDocumentConfiguration } from './document-configuration';
 import { getMfaEncryptionKey } from './mfa';
 import { loadRagConfiguration } from './rag-configuration';
+import { checkSitePublicOrigin } from './site-public-origin';
 
 export type ProductionConfigurationSummary = {
   valid: true;
@@ -166,6 +167,10 @@ export function validateProductionConfiguration(
   }
   const authOrigin = parseUrl(environment, 'AUTH_PUBLIC_ORIGIN');
   assertPublicProviderUrl(authOrigin, 'AUTH_PUBLIC_ORIGIN');
+  const siteOrigin = checkSitePublicOrigin(environment);
+  if (siteOrigin.problem) {
+    throw new Error(`AUTH_PUBLIC_ORIGIN is not a production site origin (${siteOrigin.problem}).`);
+  }
   assertOidcHostAllowlist(environment);
   requireSecret(environment, 'BACKUP_ENCRYPTION_KEY');
   requireSecret(environment, 'AUDIT_INTEGRITY_KEY');

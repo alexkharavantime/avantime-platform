@@ -286,6 +286,13 @@ test('production config rejects local adapters, placeholders, missing TLS, and p
       ACCESS_REQUEST_NOTIFICATION_EMAIL: 'not-an-email',
     }),
   );
+  for (const origin of ['https://portal.staging.example.com', 'https://portal.example.com/ru']) {
+    assert.throws(
+      () =>
+        validateProductionConfiguration({ ...productionEnvironment(), AUTH_PUBLIC_ORIGIN: origin }),
+      /not a production site origin/u,
+    );
+  }
 });
 
 test('backup and restore guards restrict output and isolated target', () => {

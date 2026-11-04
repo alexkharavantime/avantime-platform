@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { defaultLocale, localePath, stripLocale } from '../lib/i18n';
 import { getLocale, getOriginalPath } from '../lib/i18n-server';
+import { sitePublicOrigin } from '../lib/site-public-origin';
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
@@ -18,6 +19,8 @@ export async function generateMetadata(): Promise<Metadata> {
   };
   const localized = (candidate: typeof defaultLocale) => localePath(candidate, path);
   return {
+    // Resolves the relative canonical/hreflang paths (here and in pages) to absolute URLs.
+    metadataBase: sitePublicOrigin(),
     title: titles[locale],
     description: descriptions[locale],
     alternates: {

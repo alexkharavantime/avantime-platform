@@ -98,6 +98,11 @@ in front of the site with their own caching rules for these pages.
   the optimizer cache are available.
 - hreflang of the pilot page lists only locales currently published in the CMS (x-default only while
   LV is published); a withdrawn or unavailable page has no alternates and is `noindex`.
+- canonical and hreflang URLs are absolute on every page, built from `AUTH_PUBLIC_ORIGIN`
+  (`lib/site-public-origin.ts`), never from the request's `Host` header. Production accepts only a
+  public HTTPS origin that is not a staging host (also enforced by `production:config-check`);
+  staging accepts its own HTTPS host. A missing or rejected value leaves the URLs relative and
+  logs `site.public_origin.rejected` instead of emitting a wrong host.
 
 ## Preview and publishing
 
