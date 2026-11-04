@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { localePath, type Locale } from '../../lib/i18n';
-import { LocalDateTime } from './local-date-time';
+import {
+  LocalDateTime,
+  fromDateTimeLocalInput,
+  toDateTimeLocalInput,
+  useHydrated,
+} from './local-date-time';
 
 type SecurityOverview = {
   mfa: {
@@ -149,9 +154,14 @@ export function SecuritySettings({
   const [pending, setPending] = useState(false);
   const [policyRequirement, setPolicyRequirement] = useState(initial.policy.requirement);
   const [policyGraceDays, setPolicyGraceDays] = useState(initial.policy.gracePeriodDays);
-  const [policyEnforcementAt, setPolicyEnforcementAt] = useState(
-    initial.policy.enforcementAt?.slice(0, 16) ?? '',
-  );
+  // The enforcement date is an instant (compared with the current time to the millisecond). The
+  // input shows it in the browser's time zone after hydration; until the administrator edits it,
+  // the stored instant is sent back unchanged.
+  const [policyEnforcementEdit, setPolicyEnforcementEdit] = useState<string | null>(null);
+  const hydrated = useHydrated();
+  const policyEnforcementInput =
+    policyEnforcementEdit ??
+    (hydrated ? toDateTimeLocalInput(overview.policy.enforcementAt) : '');
   const emailCopy = emailChangeCopy[locale];
   const text = securityCopy[locale];
   const policyLabel = {
@@ -278,12 +288,18 @@ export function SecuritySettings({
   function updatePolicy(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void run(async () => {
+      const enforcementAt =
+        policyEnforcementEdit === null
+          ? overview.policy.enforcementAt
+          : fromDateTimeLocalInput(policyEnforcementEdit);
+      if (enforcementAt === undefined) throw new Error(text.error);
       await putJson('/api/account/security/policy', {
         requirement: policyRequirement,
         gracePeriodDays: policyGraceDays,
-        enforcementAt: policyEnforcementAt ? new Date(policyEnforcementAt).toISOString() : null,
+        enforcementAt,
       }, text.error);
       await refresh();
+      setPolicyEnforcementEdit(null);
       setMessage(text.policyUpdated);
     });
   }
@@ -481,8 +497,8 @@ export function SecuritySettings({
               <span className="mb-2 block text-sm font-bold">{text.enforcement}</span>
               <input
                 type="datetime-local"
-                value={policyEnforcementAt}
-                onChange={(event) => setPolicyEnforcementAt(event.target.value)}
+                value={policyEnforcementInput}
+                onChange={(event) => setPolicyEnforcementEdit(event.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-4 py-3"
               />
             </label>
