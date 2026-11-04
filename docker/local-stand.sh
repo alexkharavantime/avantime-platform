@@ -17,7 +17,8 @@ secrets="$root/secrets"
 edge_network='avantime-staging-cms-edge'
 
 platform_compose() {
-  COMMIT_SHA="$(git -C "$platform" rev-parse --verify 'HEAD^{commit}')" docker compose \
+  COMMIT_SHA="$(git -C "$platform" rev-parse --verify 'HEAD^{commit}')" \
+    STAGING_ENV_FILE="$secrets/platform.staging.env" docker compose \
     --project-directory "$platform" \
     --env-file "$secrets/platform.staging.env" \
     -p avantime-staging \
