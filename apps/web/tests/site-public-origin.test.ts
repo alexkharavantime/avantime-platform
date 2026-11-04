@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { checkSitePublicOrigin, sitePublicOrigin } from '../lib/site-public-origin';
+import {
+  checkSitePublicOrigin,
+  enforceProductionStartupOrigin,
+  sitePublicOrigin,
+} from '../lib/site-public-origin';
 
 const production = { NODE_ENV: 'production' };
 const staging = { NODE_ENV: 'production', APP_ENV: 'staging' };
@@ -72,4 +76,48 @@ test('a rejected origin yields relative URLs instead of a guessed host', () => {
       { event: 'site.public_origin.rejected', reason: 'missing' },
     ],
   );
+});
+
+function startup(environment: Record<string, string | undefined>) {
+  const error = console.error;
+  const logged: string[] = [];
+  const exits: number[] = [];
+  console.error = (message: string) => logged.push(message);
+  try {
+    enforceProductionStartupOrigin(environment, (code) => exits.push(code));
+  } finally {
+    console.error = error;
+  }
+  return { exits, events: logged.map((line) => JSON.parse(line) as Record<string, string>) };
+}
+
+test('the production web process refuses to start with a wrong AUTH_PUBLIC_ORIGIN', () => {
+  for (const [origin, reason] of [
+    [undefined, 'missing'],
+    ['https://www.avantime.lv/ru', 'not_origin'],
+    ['http://www.avantime.lv', 'not_https'],
+    ['https://site.avantime.localhost', 'local_host'],
+    ['https://staging.avantime.lv', 'staging_host'],
+  ] as const) {
+    assert.deepEqual(
+      startup({ ...production, AUTH_PUBLIC_ORIGIN: origin }),
+      { exits: [1], events: [{ event: 'site.public_origin.invalid_at_start', reason }] },
+      String(origin),
+    );
+  }
+  assert.deepEqual(startup({ ...production, AUTH_PUBLIC_ORIGIN: 'https://www.avantime.lv' }), {
+    exits: [],
+    events: [],
+  });
+});
+
+test('staging, the local HTTPS stand, development and the build are not stopped', () => {
+  for (const environment of [
+    { ...staging, STAGING_MODE: 'local', AUTH_PUBLIC_ORIGIN: 'https://site.avantime.localhost' },
+    { ...staging, STAGING_MODE: 'local', AUTH_PUBLIC_ORIGIN: 'http://web:3000' },
+    { NODE_ENV: 'development', AUTH_PUBLIC_ORIGIN: 'http://127.0.0.1:3000' },
+    { ...production, NEXT_PHASE: 'phase-production-build' },
+  ]) {
+    assert.deepEqual(startup(environment), { exits: [], events: [] }, JSON.stringify(environment));
+  }
 });

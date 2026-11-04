@@ -58,6 +58,23 @@ export function checkSitePublicOrigin(
   return { origin: new URL(url.origin) };
 }
 
+/**
+ * Start-up gate of the production web process (NODE_ENV=production without APP_ENV=staging): a
+ * wrong origin stops the start instead of serving a site with relative canonical URLs and failing
+ * logins. Staging, development and the build phase are not gated here.
+ */
+export function enforceProductionStartupOrigin(
+  environment: Environment = process.env,
+  exit: (code: number) => void = (code) => process.exit(code),
+) {
+  if (environment.NODE_ENV !== 'production' || environment.APP_ENV === 'staging') return;
+  if (environment.NEXT_PHASE === 'phase-production-build') return;
+  const { problem } = checkSitePublicOrigin(environment);
+  if (!problem) return;
+  console.error(JSON.stringify({ event: 'site.public_origin.invalid_at_start', reason: problem }));
+  exit(1);
+}
+
 let reportedProblem: SitePublicOriginProblem | undefined;
 
 /** The checked origin, or null (relative URLs) when the configuration is missing or rejected. */

@@ -78,10 +78,22 @@ lockfiles in a developer home directory.
 3. Deploy Redis-compatible queue schema/application code.
 4. Start document, embedding, knowledge, notification and both Jira workers with unique
    `workerId`, version and generation.
-5. Roll web nodes behind the load balancer.
+5. Roll web nodes behind the load balancer. A web process with a wrong `AUTH_PUBLIC_ORIGIN`
+   refuses to start (see below), never becomes healthy and stops the rollout on the first node.
 6. Stop claims on old workers and let current jobs finish or leases expire.
 7. Verify queues, heartbeat, OCR, vector/RAG, budget and audit state.
 8. Record deployment evidence and release owner.
+
+## Start-up check of the public origin
+
+`AUTH_PUBLIC_ORIGIN` is the origin of login checks, OIDC callbacks and the absolute canonical and
+hreflang URLs. In production (`NODE_ENV=production` without `APP_ENV=staging`) the web process
+checks it before serving any request (`instrumentation.ts`, `lib/site-public-origin.ts`) and exits
+with code 1 after logging `{"event":"site.public_origin.invalid_at_start","reason":…}` when it is
+missing, not a bare origin, not HTTPS, a local/internal host or a staging host. The same rule is
+part of `npm run production:config-check`, so the gate also fails before the rollout. Staging is not
+affected: it keeps its own checks (`APP_ENV=staging`, including the local HTTPS stand and the local
+CI staging stack).
 
 ## One-time PasswordResetToken reconciliation
 
