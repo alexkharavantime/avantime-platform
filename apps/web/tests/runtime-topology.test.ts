@@ -101,7 +101,7 @@ test('tracked staging templates use the current migration and no stale task rele
     repositoryFile('.env.staging.local.example'),
   ]);
   for (const source of [managed, local]) {
-    assert.match(source, /20260930140000_local_owner_bootstrap/u);
+    assert.match(source, /20261104120000_portal_settings_email_system_events/u);
     assert.doesNotMatch(source, /20260803180000_jira_status_comment_sync|task-016-local/u);
   }
 });

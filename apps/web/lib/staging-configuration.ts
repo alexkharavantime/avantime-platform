@@ -11,7 +11,7 @@ import { loadRagConfiguration } from './rag-configuration';
 
 export type StagingMode = 'local' | 'managed';
 export type NotificationProviderMode = 'test' | 'resend';
-export const CURRENT_STAGING_MIGRATION = '20260930140000_local_owner_bootstrap';
+export const CURRENT_STAGING_MIGRATION = '20261104120000_portal_settings_email_system_events';
 
 export type StagingConfiguration = {
   appEnvironment: 'staging';

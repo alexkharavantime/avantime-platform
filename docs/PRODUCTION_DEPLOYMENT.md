@@ -115,6 +115,42 @@ row count is unchanged, and running the check again reports `AVANTIME_RECONCILE_
 On `AVANTIME_RECONCILE_MISMATCH`, stop and review the table manually; never edit the migration
 file or the checksums in `_prisma_migrations`.
 
+## One-time portal settings, e-mail and system event reconciliation
+
+Migration `20261104120000_portal_settings_email_system_events` creates `"NotificationPreference"`,
+`"SystemEvent"`, `"EmailMessage"` and the `"EmailStatus"` enum. These models were in the Prisma
+schema before the first migration and were only created by `prisma db push`, so a database built
+by migrations lacked them (`/portal/settings` failed). A database that was ever pushed already has
+them and `prisma migrate deploy` stops with `P3018` / `type "EmailStatus" already exists`.
+
+The reconciliation follows the PasswordResetToken procedure above, with the check
+`packages/database/prisma/reconciliation/20261104120000_portal_settings_email_system_events.sql`:
+
+- it succeeds only when the migration is not recorded and all four objects exist with exactly the
+  migration's columns, defaults, constraints, indexes and enum values;
+- `AVANTIME_RECONCILE_NOT_REQUIRED`: the migration is recorded, or none of the objects exists (the
+  migration then creates them);
+- `AVANTIME_RECONCILE_MISMATCH`: only some objects exist or one differs — stop, keep the data,
+  review manually. Never drop the existing tables to let the migration run.
+
+```bash
+prisma db execute --file packages/database/prisma/reconciliation/20261104120000_portal_settings_email_system_events.sql --schema packages/database/prisma/schema.prisma
+# only when the check above succeeded:
+prisma migrate resolve --applied 20261104120000_portal_settings_email_system_events --schema packages/database/prisma/schema.prisma
+prisma migrate deploy --schema packages/database/prisma/schema.prisma
+```
+
+Staging (`docker/run-staging-migrations.sh`) runs both reconciliations automatically. Verification
+as above: `prisma migrate status` is clean, the row counts of the three tables are unchanged, and the
+check then reports `AVANTIME_RECONCILE_NOT_REQUIRED`.
+
+Remaining, intentional differences between the migrated database and `prisma migrate diff`: the
+retired `IdentityProvider.clientSecretRef` column (kept for rollback, see the OIDC migration),
+`updatedAt` database defaults, `VARCHAR` lengths on `IdentityProvider`, the extra
+`SupportRequest_companyId_updatedAt_idx` index, historical constraint/index names, and
+`RequestMessage_authorId_fkey` being `ON DELETE RESTRICT` (Prisma's default for the optional relation
+would be `SET NULL`). None of them is a missing object; do not "fix" them with `db push`.
+
 ## Rollback
 
 - Stop new workers from claiming jobs.
