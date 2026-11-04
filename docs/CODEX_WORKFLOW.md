@@ -62,6 +62,34 @@
 
 Если проверка не запускалась, необходимо указать причину. Если ошибка не относится к текущим изменениям, это должно быть отмечено отдельно.
 
+## Сборка рядом с работающим dev-сервером
+
+`next dev` и `next build` используют один каталог `apps/web/.next`. Build в каталоге, который
+обслуживает запущенный dev-сервер (например, `npm run dev` или `npm run dev:fake` на :3000),
+перезаписывает его файлы: dev-сервер начинает отвечать 500, а сам build падает с `EPERM` на
+`.next/trace`. Поэтому:
+
+- перед `npm run build` проверить, что порт 3000 (и другие dev-порты) не обслуживается процессом из
+  этого каталога;
+- если dev-сервер работает, не запускать build в этом каталоге — использовать изолированную сборку:
+  - Docker-сборку из чистой рабочей копии нужного коммита (собирает и проверяет типы, не трогает
+    `apps/web/.next`):
+
+    ```bash
+    git worktree add ../avantime-platform-check <commit>
+    docker build -f ../avantime-platform-check/docker/production.Dockerfile --target web \
+      -t avantime-platform-web:check ../avantime-platform-check
+    git worktree remove ../avantime-platform-check
+    ```
+
+  - или отдельную рабочую копию (`git worktree add`, затем `npm ci`, `npm run db:generate`,
+    `npm run build` внутри неё);
+
+- `NEXT_DIST_DIR` не изолирует сборку полностью (`.next/types`, `tsconfig.json` и `next-env.d.ts`
+  остаются общими) и для этого не используется;
+- если dev-сервер всё же повреждён: остановить именно его процесс, удалить `apps/web/.next` и
+  запустить прежней командой.
+
 Для задач только по документации обязательны:
 
 - проверка структуры Markdown;

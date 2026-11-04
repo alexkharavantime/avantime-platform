@@ -35,9 +35,13 @@ npm run dev:fake -w @avantime/web   # fake AI providers + in-memory vectors (UI/
 npm run typecheck          # CI uses: npm run typecheck -- --force
 npm run lint
 npm run test               # unit/security/contract tests, no Docker/browser/network
-npm run build
+npm run build              # never while a dev server runs from this checkout (shared .next)
 npm run format             # prettier --write . (avoid; format only touched files)
 ```
+
+`next dev` and `next build` share `apps/web/.next`: a build in the checkout that serves a running
+dev server breaks that server (500) and fails with `EPERM`. Build in an isolated worktree or with the
+Docker image build instead (see "Сборка рядом с работающим dev-сервером" in `docs/CODEX_WORKFLOW.md`).
 
 Single unit test file (tests use the built-in `node:test` runner via `tsx`, not Jest/Vitest):
 
