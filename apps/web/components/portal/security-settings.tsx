@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { localePath, type Locale } from '../../lib/i18n';
+import { LocalDateTime } from './local-date-time';
 
 type SecurityOverview = {
   mfa: {
@@ -531,7 +532,7 @@ export function SecuritySettings({
                   {item.deviceLabel} {item.current ? text.current : ''}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {text.activity} {new Date(item.lastActivityAt).toLocaleString(text.locale)}
+                  {text.activity} <LocalDateTime value={item.lastActivityAt} locale={text.locale} />
                 </p>
               </div>
               <button
