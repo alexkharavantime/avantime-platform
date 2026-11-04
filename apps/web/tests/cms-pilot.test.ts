@@ -11,7 +11,9 @@ import {
   cmsProductPageAlternates,
   cmsProductPageKeyForSlug,
   cmsProductPagePath,
+  cmsProductPageRoutes,
   cmsProductPageTag,
+  type CmsProductPageKey,
 } from '../lib/cms-product-page-routes';
 import { signCmsPreview, verifyCmsBearer, verifyCmsPreviewRequest } from '../lib/cms-preview-token';
 import {
@@ -27,6 +29,8 @@ import {
   type CmsPublishedLookup,
 } from '../lib/cms-product-pages';
 import { warmCmsProductPages } from '../lib/cms-warmup';
+import { solutions } from '../lib/content';
+import { getProductContent } from '../lib/product-content';
 import { middleware } from '../middleware';
 
 const secret = 'p'.repeat(48);
@@ -121,11 +125,42 @@ test('CMS pilot is off unless explicitly enabled and validates its configuration
   assert.ok(path.isAbsolute(configuration.snapshotDirectory));
 });
 
-test('product page routes are a fixed allow-list', () => {
-  assert.equal(cmsProductPageKeyForSlug('buhgalteriya-predpriyatiya'), 'accounting');
-  assert.equal(cmsProductPageKeyForSlug('adresny-sklad'), null);
-  assert.equal(cmsProductPagePath('accounting', 'ru'), '/ru/solutions/buhgalteriya-predpriyatiya');
+const cmsKeys = Object.keys(cmsProductPageRoutes) as CmsProductPageKey[];
+const cmsSlugs: Record<CmsProductPageKey, string> = {
+  accounting: 'buhgalteriya-predpriyatiya',
+  manufacturing: 'upravlenie-proizvodstvennym-predpriyatiem',
+  'addressed-warehouse': 'adresny-sklad',
+  platform: 'platform-1c-predpriyatie',
+};
+
+test('product page routes are a fixed allow-list of the four 1C product pages', () => {
+  assert.deepEqual(cmsKeys, ['accounting', 'manufacturing', 'addressed-warehouse', 'platform']);
+  for (const key of cmsKeys) {
+    assert.equal(cmsProductPageKeyForSlug(cmsSlugs[key]), key);
+    assert.equal(cmsProductPagePath(key, 'ru'), `/ru/solutions/${cmsSlugs[key]}`);
+    assert.equal(cmsProductPagePath(key, 'lv'), `/lv/solutions/${cmsSlugs[key]}`);
+  }
+  assert.equal(cmsProductPageKeyForSlug('ut-1-3'), null);
+  assert.equal(cmsProductPageKeyForSlug('1c'), null);
   assert.equal(cmsProductPageTag('accounting', 'lv'), 'cms:product-page:accounting:lv');
+  // One tag per page and locale: publishing one page never invalidates another.
+  const tags = cmsKeys.flatMap((key) =>
+    (['lv', 'ru', 'en'] as const).map((locale) => cmsProductPageTag(key, locale)),
+  );
+  assert.equal(new Set(tags).size, 12);
+});
+
+test('every CMS page has an existing route and repository content in every locale', () => {
+  for (const key of cmsKeys) {
+    assert.ok(
+      solutions.some((solution) => solution.slug === cmsSlugs[key]),
+      `no /solutions/${cmsSlugs[key]} route`,
+    );
+    for (const locale of ['lv', 'ru', 'en'] as const) {
+      const product = getProductContent(locale, key);
+      assert.ok(product?.name && product.benefits.length > 0, `no ${locale} content for ${key}`);
+    }
+  }
 });
 
 test('hreflang alternates of a CMS page list only published locales', () => {
@@ -178,6 +213,17 @@ test('preview links are accepted only with a valid, unexpired signature for an a
   assert.equal(sig, independent);
 
   assert.deepEqual(verifyCmsPreviewRequest(secret, params(), now), request);
+  const warehouse = { ...request, key: 'addressed-warehouse' } as const;
+  assert.deepEqual(
+    verifyCmsPreviewRequest(
+      secret,
+      params({ key: warehouse.key, sig: signCmsPreview(secret, warehouse) }),
+      now,
+    ),
+    warehouse,
+  );
+  // A signature for one page does not open the preview of another.
+  assert.equal(verifyCmsPreviewRequest(secret, params({ key: 'platform' }), now), null);
   assert.equal(verifyCmsPreviewRequest('x'.repeat(48), params(), now), null);
   assert.equal(verifyCmsPreviewRequest(secret, params({ locale: 'ru' }), now), null);
   assert.equal(verifyCmsPreviewRequest(secret, params({ status: 'published' }), now), null);
@@ -209,8 +255,20 @@ test('revalidation requires the exact bearer secret and an allow-listed payload'
     }),
     { key: 'accounting', locales: ['lv', 'ru'], action: 'publish' },
   );
+  for (const key of cmsKeys) {
+    assert.deepEqual(
+      parseCmsRevalidateRequest({
+        model: 'product-page',
+        key,
+        locales: ['en'],
+        action: 'unpublish',
+      }),
+      { key, locales: ['en'], action: 'unpublish' },
+    );
+  }
   for (const invalid of [
     { model: 'page', key: 'accounting', locales: ['lv'], action: 'publish' },
+    { model: 'product-page', key: 'ut-1-3', locales: ['lv'], action: 'publish' },
     { model: 'product-page', key: 'knowledge', locales: ['lv'], action: 'publish' },
     { model: 'product-page', key: 'accounting', locales: ['de'], action: 'publish' },
     { model: 'product-page', key: 'accounting', locales: [], action: 'publish' },
@@ -583,13 +641,14 @@ test('start-up warm-up reconciles every locale with bounded retries, then reques
         return new Response('ok');
       }
       cmsCalls += 1;
-      // The CMS is down for the first two rounds (one call per locale), then answers.
-      if (cmsCalls <= 6) throw new TypeError('fetch failed');
+      // The CMS is down for the first two rounds (one call per page and locale), then answers.
+      if (cmsCalls <= 24) throw new TypeError('fetch failed');
       const locale = url.searchParams.get('locale');
       const status = url.searchParams.get('status');
+      const key = url.searchParams.get('filters[key][$eq]');
       if (locale === 'en')
-        return Response.json({ data: status === 'draft' ? [entry({ locale })] : [] });
-      return Response.json({ data: status === 'published' ? [entry({ locale })] : [] });
+        return Response.json({ data: status === 'draft' ? [entry({ key, locale })] : [] });
+      return Response.json({ data: status === 'published' ? [entry({ key, locale })] : [] });
     }) as typeof fetch;
 
     const result = await warmCmsProductPages({
@@ -605,9 +664,12 @@ test('start-up warm-up reconciles every locale with bounded retries, then reques
     assert.equal((await readCmsSnapshot(directory, 'accounting', 'lv'))?.state, 'published');
     const en = await readCmsSnapshot(directory, 'accounting', 'en');
     assert.equal(en?.state === 'withdrawn' && en.reason, 'unpublished');
+    assert.equal((await readCmsSnapshot(directory, 'platform', 'ru'))?.state, 'published');
     assert.deepEqual(
       requestedPages,
-      ['lv', 'ru', 'en'].map((locale) => `/${locale}/solutions/buhgalteriya-predpriyatiya`),
+      cmsKeys.flatMap((key) =>
+        ['lv', 'ru', 'en'].map((locale) => `/${locale}/solutions/${cmsSlugs[key]}`),
+      ),
     );
     assert.ok(events.some((event) => event.includes('cms.warmup.reconciled')));
 
@@ -624,7 +686,10 @@ test('start-up warm-up reconciles every locale with bounded retries, then reques
         failedSleeps.push(milliseconds);
       },
     });
-    assert.deepEqual(down.unreconciled, ['accounting.lv', 'accounting.ru', 'accounting.en']);
+    assert.deepEqual(
+      down.unreconciled,
+      cmsKeys.flatMap((key) => ['lv', 'ru', 'en'].map((locale) => `${key}.${locale}`)),
+    );
     assert.deepEqual(failedSleeps, [1000, 2000, 4000]);
     assert.equal((await readCmsSnapshot(directory, 'accounting', 'lv'))?.state, 'published');
     assert.ok(events.some((event) => event.includes('cms.warmup.cms_unavailable')));

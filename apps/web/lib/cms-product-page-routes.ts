@@ -1,9 +1,13 @@
 import { defaultLocale, localePath, locales, type Locale } from './i18n';
 
 // Product pages whose content may come from the CMS. Keys are the CMS `key` enumeration values;
-// paths are fixed here so preview links and webhooks can never point anywhere else.
+// paths are fixed here so preview links and webhooks can never point anywhere else. Keys match the
+// product ids of content/{lv,ru,en}.json and the CMS seed files.
 export const cmsProductPageRoutes = {
   accounting: { slug: 'buhgalteriya-predpriyatiya' },
+  manufacturing: { slug: 'upravlenie-proizvodstvennym-predpriyatiem' },
+  'addressed-warehouse': { slug: 'adresny-sklad' },
+  platform: { slug: 'platform-1c-predpriyatie' },
 } as const;
 
 export type CmsProductPageKey = keyof typeof cmsProductPageRoutes;

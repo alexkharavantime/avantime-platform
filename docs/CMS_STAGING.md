@@ -62,7 +62,12 @@ npm run cms:pilot-check -w @avantime/web -- --site https://<site-host> --cms htt
 
 With `STAGING_TLS=internal` add `-f docker-compose.staging.edge-internal-ca.yml` to every platform
 command and pass `--ca <root.crt>` to `cms:pilot-check` (copy the public root from the
-`staging-edge-ca` volume).
+`staging-edge-ca` volume). `cms:pilot-check` covers every CMS product page; `--pages
+manufacturing,platform` limits it to some pages, and `--expect en=404` then states the expected answer
+per locale for those pages (for example after unpublishing one translation of one page).
+
+After adding product pages to the CMS, run `docker compose ... exec cms node scripts/seed-pilot.js`
+again: it creates and publishes only keys that do not exist yet and never touches existing pages.
 
 The site's `/ready` does not depend on the CMS on purpose: a CMS outage must not take the portal
 down. The pilot page's own state is visible in the `cms.*` log events and in `cms:pilot-check`.

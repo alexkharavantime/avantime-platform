@@ -1,7 +1,9 @@
 // Black-box check of the Strapi CMS pilot through the public HTTPS edge (DEV/staging, after deploy).
 // Reads no secrets. Usage:
 //   npm run cms:pilot-check -w @avantime/web -- --site https://<site-host> --cms https://<cms-host>
-//     [--expect lv=200,ru=200,en=404] [--ca <root.crt>] [--resolve <ip>]
+//     [--pages accounting,platform] [--expect lv=200,ru=200,en=404] [--ca <root.crt>] [--resolve <ip>]
+// --pages limits the check to these CMS keys (default: every CMS product page); --expect applies to
+// each selected page.
 // --resolve sends every request to that address (e.g. 127.0.0.1 before DNS exists); TLS still
 // verifies the host name. --ca adds a trusted root (Caddy `tls internal`).
 import { readFileSync } from 'node:fs';
@@ -9,12 +11,18 @@ import http from 'node:http';
 import https from 'node:https';
 import type { LookupFunction } from 'node:net';
 
-import { cmsProductPagePath } from '../lib/cms-product-page-routes';
+import {
+  cmsProductPagePath,
+  cmsProductPageRoutes,
+  isCmsProductPageKey,
+  type CmsProductPageKey,
+} from '../lib/cms-product-page-routes';
 import { locales, type Locale } from '../lib/i18n';
 
 type Options = {
   site: URL;
   cms: URL;
+  pages: CmsProductPageKey[];
   expect: Record<Locale, 200 | 404>;
   ca?: Buffer;
   resolve?: string;
@@ -41,10 +49,17 @@ function parseOptions(argv: string[]): Options {
     }
     expect[locale as Locale] = Number(status) as 200 | 404;
   }
+  const pages = (value('pages') ?? Object.keys(cmsProductPageRoutes).join(','))
+    .split(',')
+    .filter(Boolean);
+  for (const page of pages) {
+    if (!isCmsProductPageKey(page)) throw new Error(`invalid --pages entry: ${page}`);
+  }
   const ca = value('ca');
   return {
     site: new URL(site),
     cms: new URL(cms),
+    pages: pages as CmsProductPageKey[],
     expect,
     ca: ca ? readFileSync(ca) : undefined,
     resolve: value('resolve'),
@@ -107,28 +122,30 @@ async function main() {
   };
   const published = locales.filter((locale) => options.expect[locale] === 200);
 
-  for (const locale of locales) {
-    const pageUrl = new URL(cmsProductPagePath('accounting', locale), options.site);
+  for (const [key, locale] of options.pages.flatMap((page) =>
+    locales.map((candidate) => [page, candidate] as const),
+  )) {
+    const pageUrl = new URL(cmsProductPagePath(key, locale), options.site);
     const page = await request(options, pageUrl);
     const html = page.body.toString('utf8');
     const expected = options.expect[locale];
     check(
       page.status === expected,
-      `${locale} page ${pageUrl.pathname} → ${page.status} (expected ${expected})`,
+      `${key}.${locale} page ${pageUrl.pathname} → ${page.status} (expected ${expected})`,
     );
     console.info(`     cache-control: ${String(page.headers['cache-control'] ?? '-')}`);
     const links = html.match(/<link [^>]*>/giu) ?? [];
     const robots = /<meta name="robots" content="([^"]*)"/iu.exec(html)?.[1] ?? '';
 
     if (expected === 404) {
-      check(/noindex/iu.test(robots), `${locale} withdrawn page is noindex`);
+      check(/noindex/iu.test(robots), `${key}.${locale} withdrawn page is noindex`);
       check(
         !links.some((tag) => /rel="alternate"/iu.test(tag) && attribute(tag, 'hrefLang')),
-        `${locale} withdrawn page has no hreflang`,
+        `${key}.${locale} withdrawn page has no hreflang`,
       );
       check(
         !links.some((tag) => /rel="canonical"/iu.test(tag)),
-        `${locale} withdrawn page has no canonical`,
+        `${key}.${locale} withdrawn page has no canonical`,
       );
       continue;
     }
@@ -136,14 +153,14 @@ async function main() {
     const description = /<meta name="description" content="([^"]*)"/iu.exec(html)?.[1] ?? '';
     check(
       title.trim().length > 0 && description.trim().length > 0,
-      `${locale} title and description present ("${title}")`,
+      `${key}.${locale} title and description present ("${title}")`,
     );
-    check(!/noindex/iu.test(robots), `${locale} published page is indexable`);
+    check(!/noindex/iu.test(robots), `${key}.${locale} published page is indexable`);
     const canonical = links.find((tag) => /rel="canonical"/iu.test(tag));
     const canonicalHref = canonical ? attribute(canonical, 'href') : undefined;
     check(
       canonicalHref === pageUrl.href,
-      `${locale} canonical = ${canonicalHref ?? 'missing'} (absolute, expected ${pageUrl.href})`,
+      `${key}.${locale} canonical = ${canonicalHref ?? 'missing'} (absolute, expected ${pageUrl.href})`,
     );
     const alternates = links
       .filter((tag) => /rel="alternate"/iu.test(tag) && attribute(tag, 'hrefLang'))
@@ -155,21 +172,21 @@ async function main() {
     ]
       .map(
         ([hrefLang, target]) =>
-          [hrefLang, new URL(cmsProductPagePath('accounting', target), options.site).href] as const,
+          [hrefLang, new URL(cmsProductPagePath(key, target), options.site).href] as const,
       )
       .sort(([left], [right]) => left.localeCompare(right));
     const describe = (entries: readonly (readonly [string, string])[]) =>
       entries.map(([hrefLang, href]) => `${hrefLang}=${href}`).join(', ');
     check(
       describe(alternates) === describe(expectedAlternates),
-      `${locale} hreflang [${describe(alternates)}] (expected [${describe(expectedAlternates)}])`,
+      `${key}.${locale} hreflang [${describe(alternates)}] (expected [${describe(expectedAlternates)}])`,
     );
     const imagePath = /(\/_next\/image\?url=[^"\s]+)/u.exec(html)?.[1];
     const imageUrl = imagePath ? new URL(decode(imagePath), options.site) : null;
     const source = imageUrl?.searchParams.get('url') ?? '';
     check(
       source.startsWith(`${options.cms.origin}/uploads/`),
-      `${locale} image source is CMS media (${source || 'missing'})`,
+      `${key}.${locale} image source is CMS media (${source || 'missing'})`,
     );
     if (imageUrl) {
       const image = await request(options, imageUrl);
@@ -177,7 +194,7 @@ async function main() {
         image.status === 200 &&
           String(image.headers['content-type']).startsWith('image/') &&
           image.body.length > 0,
-        `${locale} optimized image → ${image.status} ${String(image.headers['content-type'])} ${image.body.length} B`,
+        `${key}.${locale} optimized image → ${image.status} ${String(image.headers['content-type'])} ${image.body.length} B`,
       );
     }
   }

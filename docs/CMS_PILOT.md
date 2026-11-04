@@ -1,9 +1,26 @@
-# Strapi CMS pilot: Accounting page
+# Strapi CMS pilot: 1C product pages
 
-The public page `/{lv|ru|en}/solutions/buhgalteriya-predpriyatiya` can take its content from a
-separate Strapi 5.60.0 service (repository `D:\avantime-site`). Design, URL and the page component
-are unchanged; only the data source differs. Every other page, the portal, authorization, access
-requests and the AI knowledge base are not connected to the CMS.
+The four public 1C product pages can take their content from a separate Strapi 5.60.0 service
+(repository `D:\avantime-site`):
+
+| CMS key (`key`)       | Page                                           | URL                                                               |
+| --------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| `accounting`          | Бухгалтерия предприятия                        | `/{lv,ru,en}/solutions/buhgalteriya-predpriyatiya`                |
+| `manufacturing`       | Управление производственным предприятием (УПП) | `/{lv,ru,en}/solutions/upravlenie-proizvodstvennym-predpriyatiem` |
+| `addressed-warehouse` | Адресный склад                                 | `/{lv,ru,en}/solutions/adresny-sklad`                             |
+| `platform`            | Платформа 1С:Предприятие                       | `/{lv,ru,en}/solutions/platform-1c-predpriyatie`                  |
+
+The allow-list is `lib/cms-product-page-routes.ts`; keys equal the product ids of
+`content/{lv,ru,en}.json` and the CMS enumeration and seed files. All four pages share one content
+type, one client (`lib/cms-product-pages.ts`) and the same page component; design and URLs are
+unchanged, only the data source differs. Every page and locale is cached, invalidated, snapshotted
+and withdrawn independently. Every other page, the portal, authorization, access requests and the
+AI knowledge base are not connected to the CMS.
+
+Initial content is `cms/seed/<key>.json` in the CMS repository, generated from the repository content
+(`content/*.json` + `lib/section-images.ts`). `node scripts/seed-pilot.js` creates and publishes only
+pages whose key does not exist in the CMS yet, so re-running it neither duplicates pages nor
+overwrites editor changes. The WordPress-era archive is not imported.
 
 ## Configuration
 
@@ -28,16 +45,16 @@ fail-fast policy as other `*-configuration.ts` loaders).
 
 ## Content states
 
-| State                                                                            | Behaviour                                                                       |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| CMS disabled (`off`)                                                             | repository content, no CMS calls                                                |
-| Published in this locale                                                         | CMS content from the tagged data cache (`cms:product-page:accounting:<locale>`) |
-| Unpublished in this locale (draft remains)                                       | 404, `noindex`                                                                  |
-| No entry for this locale                                                         | 404, `noindex`, log event `cms.product_page.missing`                            |
-| CMS unavailable, last known "published", confirmed ≤ `CMS_MAX_STALE_SECONDS` ago | last published version (stale), log `cms.product_page.unavailable`              |
-| CMS unavailable, last known "published", older than that                         | 5xx "temporarily unavailable", log `fallback: expired`                          |
-| CMS unavailable, last known "withdrawn"                                          | 404 — withdrawn content is never shown again (does not expire)                  |
-| CMS unavailable, no snapshot                                                     | 5xx with the localized "temporarily unavailable" page                           |
+| State                                                                            | Behaviour                                                                  |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| CMS disabled (`off`)                                                             | repository content, no CMS calls                                           |
+| Published in this locale                                                         | CMS content from the tagged data cache (`cms:product-page:<key>:<locale>`) |
+| Unpublished in this locale (draft remains)                                       | 404, `noindex`                                                             |
+| No entry for this locale                                                         | 404, `noindex`, log event `cms.product_page.missing`                       |
+| CMS unavailable, last known "published", confirmed ≤ `CMS_MAX_STALE_SECONDS` ago | last published version (stale), log `cms.product_page.unavailable`         |
+| CMS unavailable, last known "published", older than that                         | 5xx "temporarily unavailable", log `fallback: expired`                     |
+| CMS unavailable, last known "withdrawn"                                          | 404 — withdrawn content is never shown again (does not expire)             |
+| CMS unavailable, no snapshot                                                     | 5xx with the localized "temporarily unavailable" page                      |
 
 "Last known" is the newest of the data-cache entry and the snapshot, by the time the CMS confirmed it
 (`checkedAt`).
@@ -96,7 +113,7 @@ in front of the site with their own caching rules for these pages.
   every restart by design.
 - Images are served by the CMS through `/_next/image`; during a CMS outage only images already in
   the optimizer cache are available.
-- hreflang of the pilot page lists only locales currently published in the CMS (x-default only while
+- hreflang of a CMS page lists only locales currently published in the CMS (x-default only while
   LV is published); a withdrawn or unavailable page has no alternates and is `noindex`.
 - canonical and hreflang URLs are absolute on every page, built from `AUTH_PUBLIC_ORIGIN`
   (`lib/site-public-origin.ts`), never from the request's `Host` header. Production accepts only a
@@ -128,7 +145,9 @@ text and markup.
 
 ## Editor guide (Strapi admin)
 
-1. Open the CMS admin, _Content Manager → Страницы продуктов → Бухгалтерия предприятия_.
+1. Open the CMS admin, _Content Manager → Страницы продуктов_ and choose the page in the list
+   (field _Страница сайта_: `accounting` — Бухгалтерия предприятия, `manufacturing` — УПП,
+   `addressed-warehouse` — Адресный склад, `platform` — Платформа 1С:Предприятие).
 2. Choose the language in the locale switch (top right): Latvian, Russian or English.
 3. Edit the fields. Labels and help texts in the form are grouped as _Текст · …_, _Изображение · …_
    and _SEO · …_; card titles also form the "Результат" list.
@@ -136,8 +155,8 @@ text and markup.
    _Изображение · Описание (alt)_ for this language. Wait until the upload has finished.
 5. _Save_ stores a draft. Visitors still see the published version.
 6. _Open preview_ shows the draft in the site design with a yellow banner.
-7. _Publish_ publishes **only the current language**. Other languages keep their published version
-   and their own drafts. The site updates within a few seconds.
+7. _Publish_ publishes **only the current language of this page**. Other languages and other pages
+   keep their published version and their own drafts. The site updates within a few seconds.
 8. _⋯ → Unpublish_ removes this language from the site (404). _⋯ → Discard changes_ drops the draft.
 
 Important for editors:
