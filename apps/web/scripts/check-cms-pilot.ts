@@ -126,6 +126,10 @@ async function main() {
         !links.some((tag) => /rel="alternate"/iu.test(tag) && attribute(tag, 'hrefLang')),
         `${locale} withdrawn page has no hreflang`,
       );
+      check(
+        !links.some((tag) => /rel="canonical"/iu.test(tag)),
+        `${locale} withdrawn page has no canonical`,
+      );
       continue;
     }
     const title = /<title>([^<]*)<\/title>/iu.exec(html)?.[1] ?? '';
