@@ -92,6 +92,41 @@ on the stand itself (they were rehearsed locally with the same images and compos
 Strapi limits admin sign-in attempts (HTTP 429 for a few minutes after repeated logins); the portal
 locks an account for 15 minutes after repeated wrong passwords regardless of the client address.
 
+## Local stand (workstation rehearsal)
+
+Without a DEV host the same stacks run on one workstation with `STAGING_TLS=internal` and hosts
+under `*.localhost` (browsers resolve them to the loopback address). `docker/local-stand.sh` keeps
+everything the running stand needs under one persistent root, outside both repositories and any
+temporary directory:
+
+| Path under `AVANTIME_STAND_ROOT` | Content                                                                        | In git              |
+| -------------------------------- | ------------------------------------------------------------------------------ | ------------------- |
+| `platform/`                      | clean worktree of this repository: build context, compose files, Caddyfile     | worktree (detached) |
+| `cms/`                           | clean worktree of the CMS repository                                           | worktree (detached) |
+| `secrets/platform.staging.env`   | platform staging environment incl. `CMS_*` (`STAGING_MODE=local`)              | no                  |
+| `secrets/cms.staging.env`        | CMS secrets from `scripts/init-staging-env.sh`                                 | no                  |
+| `ca/edge-root.crt`               | public root of Caddy's internal CA (the private key stays in the Caddy volume) | no                  |
+| `backups/cms/`                   | `CMS_BACKUP_DIR` for `scripts/backup.sh`                                       | no                  |
+
+Data stays in the named volumes of the projects `avantime-staging` (PostgreSQL, MinIO, Redis,
+snapshots, Caddy CA and certificates) and `avantime-cms-staging` (CMS database, media); `down`,
+`up` and checkouts keep them.
+
+```bash
+export AVANTIME_STAND_ROOT=D:/avantime-stand          # any persistent path
+bash docker/local-stand.sh init "$PWD" ../avantime-site <platform-commit> <cms-commit>
+# put platform.staging.env and cms.staging.env into $AVANTIME_STAND_ROOT/secrets, then
+bash "$AVANTIME_STAND_ROOT/platform/docker/local-stand.sh" up        # builds, starts, exports the CA root
+npm run cms:pilot-check -w @avantime/web -- --site https://site.avantime.localhost \
+  --cms https://cms.avantime.localhost --ca "$AVANTIME_STAND_ROOT/ca/edge-root.crt" --resolve 127.0.0.1
+# a new version: check out both commits, then `up` again (refuses modified worktrees)
+bash "$AVANTIME_STAND_ROOT/platform/docker/local-stand.sh" checkout <platform-commit> <cms-commit>
+```
+
+`MIGRATION_VERSION` in `platform.staging.env` must name the newest migration of the checked-out
+commit (the staging configuration refuses to start otherwise); `COMMIT_SHA` is taken from the
+platform worktree. Trust `ca/edge-root.crt` in the browser to avoid certificate warnings.
+
 ## Backups
 
 `scripts/backup.sh` in the CMS repository writes one restore point (database dump, media archive,
