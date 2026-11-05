@@ -12,6 +12,7 @@ import { getPrisma } from '@avantime/database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { decryptIdentitySecret, encryptIdentitySecret } from './identity-encryption';
+import { sitePublicOrigin } from './site-public-origin';
 
 const OIDC_TRANSACTION_TTL_MS = 5 * 60_000;
 const OIDC_CLOCK_SKEW_SECONDS = 60;
@@ -55,6 +56,17 @@ export class OidcValidationError extends Error {
   constructor(readonly code: string) {
     super('OIDC validation failed.');
   }
+}
+
+/**
+ * The platform callback registered at the providers, on the checked public origin of the site. It
+ * is never derived from the request (listen address, Host or X-Forwarded-Host); without a valid
+ * AUTH_PUBLIC_ORIGIN there is no callback and OIDC sign-in is unavailable.
+ */
+export function oidcCallbackUri(environment: Record<string, string | undefined> = process.env) {
+  const origin = sitePublicOrigin(environment);
+  if (!origin) throw new OidcValidationError('PUBLIC_ORIGIN_UNAVAILABLE');
+  return new URL('/api/auth/oidc/callback', origin).toString();
 }
 
 export function hashOidcValue(value: string) {

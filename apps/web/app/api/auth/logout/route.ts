@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { defaultLocale, isLocale, localePath } from '../../../../lib/i18n';
 import { isSameOriginMutation } from '../../../../lib/identity-auth';
 import { recordIdentitySecurityEvent } from '../../../../lib/identity-security-events';
+import { sitePublicRedirect } from '../../../../lib/site-public-redirect';
 import {
   expiredSessionCookieOptions,
   resolveSessionToken,
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       );
     }
   }
-  const response = NextResponse.redirect(new URL(localePath(locale, '/portal/login'), request.url), 303);
+  const response = sitePublicRedirect(localePath(locale, '/portal/login'));
   response.cookies.set(SESSION_COOKIE, '', expiredSessionCookieOptions());
   return response;
 }

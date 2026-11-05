@@ -1,9 +1,8 @@
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
 
 import { defaultLocale, isLocale, localePath } from '../../../../../lib/i18n';
 import { recordIdentitySecurityEvent } from '../../../../../lib/identity-security-events';
-import { consumeOidcAuthorization } from '../../../../../lib/oidc';
+import { consumeOidcAuthorization, oidcCallbackUri } from '../../../../../lib/oidc';
 import { completeOidcCallback, OIDC_MFA_COOKIE } from '../../../../../lib/oidc-flow';
 import { safeReturnTo } from '../../../../../lib/safe-return-to';
 import {
@@ -12,19 +11,12 @@ import {
   SESSION_COOKIE,
   sessionCookieOptions,
 } from '../../../../../lib/session';
-
-function callbackUri(request: Request) {
-  const origin = process.env.AUTH_PUBLIC_ORIGIN?.trim() || new URL(request.url).origin;
-  return new URL('/api/auth/oidc/callback', origin).toString();
-}
+import { sitePublicRedirect } from '../../../../../lib/site-public-redirect';
 
 function loginError(request: Request, code: string) {
   const localeHeader = request.headers.get('x-avantime-locale');
   const locale = isLocale(localeHeader) ? localeHeader : defaultLocale;
-  const response = NextResponse.redirect(
-    new URL(localePath(locale, `/portal/login?oidcError=${code}`), request.url),
-    303,
-  );
+  const response = sitePublicRedirect(localePath(locale, `/portal/login?oidcError=${code}`));
   response.headers.set('Cache-Control', 'no-store');
   response.headers.set('Referrer-Policy', 'no-referrer');
   return response;
@@ -44,7 +36,7 @@ export async function GET(request: Request) {
     try {
       await consumeOidcAuthorization({
         state,
-        redirectUri: callbackUri(request),
+        redirectUri: oidcCallbackUri(),
       });
     } catch {
       // The public response remains generic for invalid and already consumed state.
@@ -58,19 +50,18 @@ export async function GET(request: Request) {
     const result = await completeOidcCallback({
       state,
       code,
-      redirectUri: callbackUri(request),
+      redirectUri: oidcCallbackUri(),
       currentSession,
       correlationId,
     });
     if (result.status === 'LINKED' || result.status === 'PROVIDER_VALIDATED') {
-      return NextResponse.redirect(new URL(localePath(locale, result.returnTo), request.url), 303);
+      return sitePublicRedirect(localePath(locale, result.returnTo));
     }
     if (result.status === 'MFA_REQUIRED') {
-      const target = new URL(localePath(locale, '/portal/login'), request.url);
-      target.searchParams.set('oidcMfa', '1');
-      if (result.enrollmentRequired) target.searchParams.set('enrollmentRequired', '1');
-      if (result.returnTo) target.searchParams.set('returnTo', result.returnTo);
-      const response = NextResponse.redirect(target, 303);
+      const query = new URLSearchParams({ oidcMfa: '1' });
+      if (result.enrollmentRequired) query.set('enrollmentRequired', '1');
+      if (result.returnTo) query.set('returnTo', result.returnTo);
+      const response = sitePublicRedirect(`${localePath(locale, '/portal/login')}?${query}`);
       response.cookies.set(OIDC_MFA_COOKIE, result.challengeToken, {
         httpOnly: true,
         sameSite: 'lax',
@@ -88,7 +79,7 @@ export async function GET(request: Request) {
     });
     const target =
       safeReturnTo(result.returnTo) ?? (result.identity.role === 'ADMIN' ? '/admin' : '/portal');
-    const response = NextResponse.redirect(new URL(localePath(locale, target), request.url), 303);
+    const response = sitePublicRedirect(localePath(locale, target));
     response.cookies.set(SESSION_COOKIE, created.token, sessionCookieOptions());
     response.headers.set('Cache-Control', 'no-store');
     await recordIdentitySecurityEvent({

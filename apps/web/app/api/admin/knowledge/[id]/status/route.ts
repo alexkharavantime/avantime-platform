@@ -7,6 +7,7 @@ import {
 import { governanceMutationOriginAllowed } from '../../../../../../lib/governance-request-security';
 import { authorizeOrganizationSession } from '../../../../../../lib/organization-authorization';
 import { authorizePlatformApi } from '../../../../../../lib/platform-authorization';
+import { sitePublicRedirect } from '../../../../../../lib/site-public-redirect';
 import { getSession } from '../../../../../../lib/session';
 import { getPrisma } from '@avantime/database';
 
@@ -58,5 +59,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     updated = await setKnowledgeArticleStatus(id, status, expectedVersion);
   }
   if (!updated) return NextResponse.json({ error: 'Версия материала изменилась' }, { status: 409 });
-  return NextResponse.redirect(new URL('/admin/knowledge', request.url), 303);
+  return sitePublicRedirect('/admin/knowledge');
 }

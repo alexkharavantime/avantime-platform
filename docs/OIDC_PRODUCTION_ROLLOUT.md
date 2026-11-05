@@ -15,7 +15,11 @@ Required before validation:
 
 - production-like staging is healthy over HTTPS;
 - `AUTH_PUBLIC_ORIGIN` is the exact deployed origin;
-- callback is exactly `<AUTH_PUBLIC_ORIGIN>/api/auth/oidc/callback`;
+- callback is exactly `<AUTH_PUBLIC_ORIGIN>/api/auth/oidc/callback`; the platform builds it, the
+  logout redirect and every OIDC return/error redirect only from the checked `AUTH_PUBLIC_ORIGIN`
+  (`lib/site-public-origin.ts`), never from the request URL, which behind the reverse proxy is the
+  container's listen address (`0.0.0.0:3000`), or from Host/X-Forwarded-Host. Without an accepted
+  origin OIDC sign-in is unavailable and site redirects stay relative paths;
 - `OIDC_ALLOWED_HOSTS` contains only the required discovery/token/JWKS hosts;
 - the client-secret value is stored outside the database and Git; the database stores only an
   encrypted reference such as `env:OIDC_<PROVIDER>_CLIENT_SECRET`;

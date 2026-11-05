@@ -90,3 +90,20 @@ export function sitePublicOrigin(environment: Environment = process.env) {
   }
   return result.origin ?? null;
 }
+
+/** A path on this site: `/…`, never a scheme-relative `//…` or `/\…` that browsers treat as a host. */
+export function isSitePath(path: string) {
+  return /^\/(?![/\\])/u.test(path) && !/[\s\\]/u.test(path);
+}
+
+/**
+ * The address of a site path for server-built redirects: the checked public origin, or the bare
+ * path when no origin is configured, which the browser resolves against the address it used.
+ * Never derived from the request URL: behind the reverse proxy that is the container's listen
+ * address (`0.0.0.0:3000`), and it must not follow the Host or X-Forwarded-Host headers either.
+ */
+export function sitePublicUrl(path: string, environment: Environment = process.env) {
+  if (!isSitePath(path)) throw new Error('SITE_PATH_INVALID');
+  const origin = sitePublicOrigin(environment);
+  return origin ? new URL(path, origin).toString() : path;
+}

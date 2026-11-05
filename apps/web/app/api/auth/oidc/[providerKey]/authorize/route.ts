@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 
 import { defaultLocale, isLocale, localePath } from '../../../../../../lib/i18n';
-import { beginOidcAuthorization, OidcValidationError } from '../../../../../../lib/oidc';
+import {
+  beginOidcAuthorization,
+  oidcCallbackUri,
+  OidcValidationError,
+} from '../../../../../../lib/oidc';
 import { safeReturnTo } from '../../../../../../lib/safe-return-to';
 import { getSession } from '../../../../../../lib/session';
+import { sitePublicRedirect } from '../../../../../../lib/site-public-redirect';
 import { hasOrganizationPermission } from '../../../../../../lib/organization-permissions';
-
-function callbackUri(request: Request) {
-  const origin = process.env.AUTH_PUBLIC_ORIGIN?.trim() || new URL(request.url).origin;
-  return new URL('/api/auth/oidc/callback', origin).toString();
-}
 
 export async function GET(request: Request, context: { params: Promise<{ providerKey: string }> }) {
   const localeHeader = request.headers.get('x-avantime-locale');
@@ -24,15 +24,12 @@ export async function GET(request: Request, context: { params: Promise<{ provide
     (linkRequested && !session) ||
     (validationRequested && !hasOrganizationPermission(session, 'identity.providers.manage'))
   ) {
-    return NextResponse.redirect(
-      new URL(localePath(locale, '/portal/login?oidcError=link_session_required'), request.url),
-      303,
-    );
+    return sitePublicRedirect(localePath(locale, '/portal/login?oidcError=link_session_required'));
   }
   try {
     const authorization = await beginOidcAuthorization({
       providerKey,
-      redirectUri: callbackUri(request),
+      redirectUri: oidcCallbackUri(),
       userId: linkRequested || validationRequested ? session?.userId : undefined,
       companyId: linkRequested || validationRequested ? session?.companyId : undefined,
       purpose: validationRequested ? 'PROVIDER_VALIDATION' : linkRequested ? 'LINK' : 'LOGIN',
@@ -47,9 +44,6 @@ export async function GET(request: Request, context: { params: Promise<{ provide
       error instanceof OidcValidationError && error.code === 'PROVIDER_UNAVAILABLE'
         ? 'provider_unavailable'
         : 'authorization_unavailable';
-    return NextResponse.redirect(
-      new URL(localePath(locale, `/portal/login?oidcError=${code}`), request.url),
-      303,
-    );
+    return sitePublicRedirect(localePath(locale, `/portal/login?oidcError=${code}`));
   }
 }

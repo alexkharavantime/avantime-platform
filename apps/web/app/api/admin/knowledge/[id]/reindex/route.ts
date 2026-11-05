@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { governanceMutationOriginAllowed } from '../../../../../../lib/governance-request-security';
 import { requestPlatformKnowledgeReindex } from '../../../../../../lib/knowledge-indexing';
 import { authorizePlatformApi } from '../../../../../../lib/platform-authorization';
+import { sitePublicRedirect } from '../../../../../../lib/site-public-redirect';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!governanceMutationOriginAllowed(request)) {
@@ -29,5 +30,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       { status: 409 },
     );
   }
-  return NextResponse.redirect(new URL('/admin/knowledge', request.url), 303);
+  return sitePublicRedirect('/admin/knowledge');
 }
