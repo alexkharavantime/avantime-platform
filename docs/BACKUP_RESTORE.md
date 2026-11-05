@@ -36,6 +36,37 @@ That volume is only a reference staging target: an approved deployment must copy
 the archive and manifest to isolated backup storage, verify the copied checksum,
 apply immutable retention and only then report the backup as durable.
 
+### Reference Compose job
+
+The `backup` service of `docker-compose.production.example.yml` runs the same script as
+`npm run backup:create -- --execute`, but directly
+(`node --import tsx apps/web/scripts/backup-production.ts --execute`): the runtime images contain no
+npm/npx. It depends on `backup-volume-init`, which hands the named volume to the runtime user 10001,
+and has its own `/tmp` tmpfs owned by that user (tsx keeps its compile cache there). The operations
+image installs `postgresql16-client`: `pg_dump`/`pg_restore` must match the server major version
+(`pgvector/pgvector:pg16`), because an archive of a newer `pg_dump` contains settings
+(`SET transaction_timeout`) that PostgreSQL 16 rejects on restore. Change both together.
+
+The deployment injects `DATABASE_URL`, `BACKUP_ENVIRONMENT`, `BACKUP_ENCRYPTION_REQUIRED=true`,
+`BACKUP_ENCRYPTION_KEY`, `BACKUP_CONFIRMATION=BACKUP:<environment>`, `APP_VERSION`, `COMMIT_SHA` and
+`MIGRATION_VERSION`.
+
+The job is one-shot (`restart: 'no'`) and has no scheduler: in the reference manifest it runs once
+per `docker compose up` of the stack. Regular backups need an external scheduler of the deployment
+platform (for example a CronJob or a systemd timer running `docker compose run --rm backup`), with
+alerting on a non-zero exit; none is configured in this repository.
+
+An archive of this job is restored with the same image into an isolated database:
+
+```bash
+docker compose run --rm --no-deps \
+  -e RESTORE_DATABASE_URL=postgresql://…/avantime_restore_rehearsal \
+  -e RESTORE_REHEARSAL_ALLOWED=true \
+  -e RESTORE_CONFIRMATION=RESTORE:avantime_restore_rehearsal \
+  backup node --import tsx apps/web/scripts/restore-rehearsal.ts --execute \
+  --archive=/var/lib/avantime-backups/<archive>.dump.enc
+```
+
 ## Object storage backup
 
 ```bash

@@ -62,6 +62,49 @@ test('production manifest migration runs the image Prisma CLI, not npm/npx remov
   );
 });
 
+test('production backup runs the backup script with node and tsx, not npm removed from the image', async () => {
+  const [production, dockerfile, webPackage] = await Promise.all([
+    repositoryFile('docker-compose.production.example.yml'),
+    repositoryFile('docker/production.Dockerfile'),
+    repositoryFile('apps/web/package.json'),
+  ]);
+  const workerBase = dockerfile.slice(
+    dockerfile.indexOf('AS worker-base'),
+    dockerfile.indexOf('FROM worker-base AS document-worker'),
+  );
+  assert.match(workerBase, /rm -f \/usr\/local\/bin\/npm \/usr\/local\/bin\/npx/u);
+  assert.match(workerBase, /^WORKDIR \/workspace$/mu);
+  assert.match(
+    dockerfile.replace(/\r\n/gu, '\n'),
+    /^FROM worker-base AS operations\nUSER root\n[\s\S]*?USER 10001:10001$/mu,
+  );
+  const normalized = production.replace(/\r\n/gu, '\n');
+  const service = (name: string) =>
+    normalized.match(new RegExp(`^  ${name}:\\n((?: {4}.*\\n|\\n)+)`, 'mu'))?.[1];
+  const backup = service('backup');
+  assert.ok(backup, 'backup service');
+  assert.match(backup, /PRODUCTION_OPERATIONS_IMAGE/u);
+  assert.match(backup, /- backup-data:\/var\/lib\/avantime-backups/u);
+  // The runtime user 10001 writes the tsx cache to /tmp and the archives to the volume.
+  assert.match(backup, /- \/tmp:size=\d+m,uid=10001,gid=10001,mode=0700/u);
+  assert.match(backup, /backup-volume-init:\n\s+condition: service_completed_successfully/u);
+  const init = service('backup-volume-init');
+  assert.ok(init, 'backup volume init service');
+  assert.match(init, /command: \['chown', '10001:10001', '\/var\/lib\/avantime-backups'\]/u);
+  assert.match(init, /- backup-data:\/var\/lib\/avantime-backups/u);
+  assert.match(init, /network_mode: none/u);
+  assert.doesNotMatch(backup, /'(npx|npm)'/u);
+  // The command must run the same script as the npm entry point.
+  const script = (JSON.parse(webPackage) as { scripts: Record<string, string> }).scripts[
+    'backup:create'
+  ];
+  assert.equal(script, 'tsx scripts/backup-production.ts');
+  assert.match(
+    backup,
+    /command: \['node', '--import', 'tsx', 'apps\/web\/scripts\/backup-production\.ts', '--execute'\]/u,
+  );
+});
+
 test('identity core baseline precedes migrations that extend User', async () => {
   const migrationDirectory = new URL(
     'packages/database/prisma/migrations/',

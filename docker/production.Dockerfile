@@ -156,6 +156,8 @@ CMD ["node", "--import", "tsx", "apps/web/scripts/run-knowledge-index-worker.ts"
 
 FROM worker-base AS operations
 USER root
-RUN apk add --no-cache postgresql-client
+# pg_dump/pg_restore must match the server major version (pgvector/pgvector:pg16): archives of a
+# newer pg_dump contain settings PostgreSQL 16 rejects on restore.
+RUN apk add --no-cache postgresql16-client
 USER 10001:10001
 CMD ["node", "--import", "tsx", "apps/web/scripts/check-production-readiness.ts"]
