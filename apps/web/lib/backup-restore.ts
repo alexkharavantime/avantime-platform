@@ -256,6 +256,21 @@ export function validateRestoreRehearsalEnvironment(
   return { source, target };
 }
 
+// pg_restore writes into a database only with --dbname (PGDATABASE is not a restore target);
+// host, port, user and password come from the PG* environment of the isolated target.
+export function pgRestoreArguments(targetDatabase: string, archive: string) {
+  return [
+    '--dbname',
+    targetDatabase,
+    '--clean',
+    '--if-exists',
+    '--no-owner',
+    '--no-acl',
+    '--exit-on-error',
+    archive,
+  ];
+}
+
 export async function restorePostgreSQLRehearsal(
   environment: Record<string, string | undefined>,
   archivePath: string,
@@ -283,7 +298,7 @@ export async function restorePostgreSQLRehearsal(
     await writeFile(plaintextArchive, plaintext, { flag: 'wx', mode: 0o600 });
     await runCommand(
       environment.PG_RESTORE_BIN?.trim() || 'pg_restore',
-      ['--clean', '--if-exists', '--no-owner', '--no-acl', '--exit-on-error', plaintextArchive],
+      pgRestoreArguments(target.databaseName, plaintextArchive),
       postgresProcessEnvironment(target),
     );
     return {
