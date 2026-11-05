@@ -105,6 +105,31 @@ test('production backup runs the backup script with node and tsx, not npm remove
   );
 });
 
+test('production workers get a private /tmp owned by the worker image user', async () => {
+  const [production, dockerfile] = await Promise.all([
+    repositoryFile('docker-compose.production.example.yml'),
+    repositoryFile('docker/production.Dockerfile'),
+  ]);
+  const image = dockerfile.replace(/\r\n/gu, '\n');
+  const workerBase = image.slice(
+    image.indexOf('AS worker-base'),
+    image.indexOf('FROM worker-base AS document-worker'),
+  );
+  assert.match(workerBase, /^USER 10001:10001$/mu);
+  const normalized = production.replace(/\r\n/gu, '\n');
+  const anchor = normalized.match(/^x-worker-runtime: &worker-runtime\n((?: {2}.*\n)+)/mu)?.[1];
+  assert.ok(anchor, 'worker runtime anchor');
+  assert.match(anchor, /^ {2}<<: \*runtime$/mu);
+  // tsx writes its compile cache to /tmp at start; a root-owned 1770 tmpfs fails with EACCES.
+  assert.match(anchor, /- \/tmp:size=\d+m,uid=10001,gid=10001,mode=0700/u);
+  for (const worker of workers) {
+    const block = normalized.match(new RegExp(`^  ${worker}:\\n((?: {4}.*\\n|\\n)+)`, 'mu'))?.[1];
+    assert.ok(block, worker);
+    assert.match(block, /^ {4}<<: \*worker-runtime$/mu, worker);
+    assert.doesNotMatch(block, /tmpfs:/u, worker);
+  }
+});
+
 test('identity core baseline precedes migrations that extend User', async () => {
   const migrationDirectory = new URL(
     'packages/database/prisma/migrations/',

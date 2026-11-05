@@ -175,7 +175,10 @@ would be `SET NULL`). None of them is a missing object; do not "fix" them with `
 ## Runtime hardening
 
 - read-only root filesystem where supported;
-- writable `tmpfs` only for OCR temporary files;
+- writable `tmpfs` only for OCR temporary files and the tsx compile cache; the six workers and the
+  backup job run as `10001:10001` and each get a private `/tmp` owned by that user (`mode=0700`),
+  because the shared root-owned `mode=1770` tmpfs denies them write access and tsx exits with
+  `EACCES` at start;
 - no privileged mode, host network, Docker socket or extra capabilities;
 - CPU/memory/PID limits and graceful termination period longer than active lease;
 - internal health probes; detailed diagnostics restricted to administrators;

@@ -25,6 +25,13 @@ x-runtime: &runtime
         cpus: '0.25'
         memory: 256M
 
+# The worker images run as 10001:10001 and tsx keeps its compile cache in /tmp (document OCR also
+# creates its temporary files there): give that user its own private /tmp instead of the shared one.
+x-worker-runtime: &worker-runtime
+  <<: *runtime
+  tmpfs:
+    - /tmp:size=512m,uid=10001,gid=10001,mode=0700
+
 services:
   migration:
     <<: *runtime
@@ -96,7 +103,7 @@ services:
       retries: 3
 
   document-worker:
-    <<: *runtime
+    <<: *worker-runtime
     image: ${PRODUCTION_DOCUMENT_WORKER_IMAGE:-avantime-platform-document-worker}:${APP_VERSION}
     depends_on:
       migration:
@@ -110,7 +117,7 @@ services:
       - internal
 
   embedding-worker:
-    <<: *runtime
+    <<: *worker-runtime
     image: ${PRODUCTION_EMBEDDING_WORKER_IMAGE:-avantime-platform-embedding-worker}:${APP_VERSION}
     depends_on:
       migration:
@@ -123,7 +130,7 @@ services:
       - egress
 
   notification-worker:
-    <<: *runtime
+    <<: *worker-runtime
     image: ${PRODUCTION_NOTIFICATION_WORKER_IMAGE:-avantime-platform-notification-worker}:${APP_VERSION}
     depends_on:
       migration:
@@ -134,7 +141,7 @@ services:
       - egress
 
   jira-worker:
-    <<: *runtime
+    <<: *worker-runtime
     image: ${PRODUCTION_JIRA_WORKER_IMAGE:-avantime-platform-jira-worker}:${APP_VERSION}
     depends_on:
       migration:
@@ -145,7 +152,7 @@ services:
       - egress
 
   jira-inbound-worker:
-    <<: *runtime
+    <<: *worker-runtime
     image: ${PRODUCTION_JIRA_INBOUND_WORKER_IMAGE:-avantime-platform-jira-inbound-worker}:${APP_VERSION}
     depends_on:
       migration:
@@ -156,7 +163,7 @@ services:
       - egress
 
   knowledge-index-worker:
-    <<: *runtime
+    <<: *worker-runtime
     image: ${PRODUCTION_KNOWLEDGE_WORKER_IMAGE:-avantime-platform-knowledge-worker}:${APP_VERSION}
     depends_on:
       migration:
