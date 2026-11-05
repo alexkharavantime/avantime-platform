@@ -1,7 +1,7 @@
 'use client';
 /** @jsxRuntime automatic */
 
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore, type ChangeEvent } from 'react';
 
 const subscribe = () => () => undefined;
 
@@ -40,6 +40,21 @@ export function fromDateTimeLocalInput(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/u.test(value)) return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+// State of a datetime-local input bound to a stored instant (ISO string or null). The input shows
+// the instant in the browser's time zone once hydration is over (no server/client markup
+// difference). `instant()` is the stored value unchanged (seconds and milliseconds included) until
+// the input is edited, then the edit read as the browser's local time; undefined for an invalid edit.
+export function useDateTimeLocalInput(stored: string | null) {
+  const hydrated = useHydrated();
+  const [edit, setEdit] = useState<string | null>(null);
+  return {
+    value: edit ?? (hydrated ? toDateTimeLocalInput(stored) : ''),
+    onChange: (event: ChangeEvent<HTMLInputElement>) => setEdit(event.target.value),
+    instant: () => (edit === null ? stored : fromDateTimeLocalInput(edit)),
+    reset: () => setEdit(null),
+  };
 }
 
 // A timestamp shown in the visitor's time zone. During hydration React uses the server snapshot

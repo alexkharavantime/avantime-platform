@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useDateTimeLocalInput } from './local-date-time';
 
 type ProviderOption = {
   id: string;
@@ -37,7 +38,8 @@ export function OrganizationSsoPolicyForm({
   const router = useRouter();
   const [requirement, setRequirement] = useState(initial.requirement);
   const [providerId, setProviderId] = useState(initial.providerId ?? '');
-  const [enforcementAt, setEnforcementAt] = useState(initial.enforcementAt?.slice(0, 16) ?? '');
+  // An instant (compared with the current time to the millisecond), edited as browser-local time.
+  const enforcement = useDateTimeLocalInput(initial.enforcementAt);
   const [gracePeriodDays, setGracePeriodDays] = useState(initial.gracePeriodDays);
   const [localLoginAllowed, setLocalLoginAllowed] = useState(initial.localLoginAllowed);
   const [message, setMessage] = useState('');
@@ -54,6 +56,11 @@ export function OrganizationSsoPolicyForm({
       setMessage(text.cancelled);
       return;
     }
+    const enforcementAt = enforcement.instant();
+    if (enforcementAt === undefined) {
+      setMessage(text.error);
+      return;
+    }
     setPending(true);
     setMessage('');
     try {
@@ -63,7 +70,7 @@ export function OrganizationSsoPolicyForm({
         body: JSON.stringify({
           requirement,
           providerId: requirement === 'DISABLED' ? null : providerId || null,
-          enforcementAt: enforcementAt ? new Date(enforcementAt).toISOString() : null,
+          enforcementAt,
           gracePeriodDays,
           localLoginAllowed: requirement === 'REQUIRED' ? false : localLoginAllowed,
           expectedVersion: initial.configurationVersion,
@@ -124,8 +131,8 @@ export function OrganizationSsoPolicyForm({
           <span className="mb-2 block text-sm font-bold">{text.enforcement}</span>
           <input
             type="datetime-local"
-            value={enforcementAt}
-            onChange={(event) => setEnforcementAt(event.target.value)}
+            value={enforcement.value}
+            onChange={enforcement.onChange}
             className="w-full rounded-xl border border-slate-300 px-4 py-3"
           />
         </label>
