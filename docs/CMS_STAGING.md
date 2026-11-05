@@ -154,6 +154,186 @@ Until the DEV backup owner adds `backup.sh` to the schedule (cron/systemd timer)
 `CMS_BACKUP_DIR` under the host backup, CMS backups are manual. The CMS secrets (`.env.staging`) are
 required for a usable restore and are backed up by the secret store, not by `backup.sh`.
 
+## Acceptance of the local stage (2026-11-05)
+
+Status: **accepted on the local workstation stand only.** No real DEV host exists yet; the stand is
+a rehearsal with `STAGING_MODE=local`, test/fake providers and Caddy's internal CA. It is neither
+DEV nor PROD and is not evidence for managed staging.
+
+| Component | Version                                                                     |
+| --------- | --------------------------------------------------------------------------- |
+| Platform  | `feature/cms-strapi-pilot` at `4f000cf` (stand worktree and images)         |
+| CMS       | `D:\avantime-site` `main` at `5b2b3cc`, image `avantime-cms:5.60.0-staging` |
+| Runtime   | Strapi 5.60.0, Next.js 15.5.28, Node.js 22.23.2, Caddy 2.10.0               |
+| Databases | platform PostgreSQL 16.15 (pgvector), CMS PostgreSQL 17.6                   |
+
+Accepted scope:
+
+- the four 1C product pages (`accounting`, `manufacturing`, `addressed-warehouse`, `platform`) are
+  served from Strapi in `lv`/`ru`/`en`, with signed preview, publish/unpublish notifications,
+  snapshots and the bounded staleness of [CMS_PILOT.md](./CMS_PILOT.md);
+- production workers get a private `/tmp` owned by their user (`dcca4a9`);
+- the reference backup job runs in the operations image and the restore rehearsal passes the target
+  database to `pg_restore` (`f0011f3`, `38f8acb`);
+- the MFA and SSO enforcement dates keep their instant in every browser time zone (`d06b411`,
+  `043949b`);
+- logout, OIDC and admin redirects use the checked `AUTH_PUBLIC_ORIGIN` instead of the container
+  listen address behind Caddy (`4f000cf`).
+
+Verified on the stand (`https://site.avantime.localhost`, `https://cms.avantime.localhost`):
+
+- all 12 product URLs answer 200 without `noindex`; data, CMS media, snapshots and certificates are
+  unchanged across rebuilds (fingerprints compared before and after);
+- password sign-in (wrong password 401), sign-out through the portal button to
+  `/<locale>/portal/login` on the public host, a revoked session cookie no longer authenticates;
+- OIDC error redirects (unknown provider, forged state, provider error) stay on the public host with
+  the locale; spoofed `X-Forwarded-Host`/`Host` do not change the target; a foreign `Origin` gets 403;
+- CMS preview: signed entry sets and exit removes the draft cookie on the public host; a forged or
+  expired signature gets 401;
+- the six workers are healthy with fresh heartbeats; MFA/SSO pages render read-only (the stand has
+  one client user and no OIDC provider);
+- `CMS_TIMEOUT_MS=3000`, `CMS_CACHE_SECONDS=60` (a stand test value; the pilot default is 300),
+  `CMS_MAX_STALE_SECONDS=86400`.
+
+Verified only in isolated environments (separate Compose projects, worktrees or databases):
+
+- the production manifest's worker hardening with the staging smoke (18 checks over all six
+  workers) and the reference backup/restore with content comparison;
+- a complete OIDC login through the HTTP routes with a mock provider behind its own Caddy edge:
+  `redirect_uri`, state, nonce, PKCE S256, callback, external `returnTo` denial;
+- unit tests on a clean worktree of `4f000cf`: 310/310, `typecheck --force` passes;
+- browser tests on `next dev`: MFA/SSO date suites 19/19 earlier; the redirect-related subset 16/17
+  on the first run — `access-requests.spec.ts` "access request is persisted, verified once and
+  decided only by platform admin" timed out waiting for the decision response and **passed only on
+  the rerun**; treat it as a known flaky timing until it passes repeatedly.
+
+Known limitations:
+
+- no backup scheduler, no off-host copy, no alerting; platform and CMS backups are manual;
+- the platform staging backup covers the database only; documents in object storage are not part of
+  a scheduled backup (`backup:objects` exists but has no Compose job);
+- the CMS restore is verified into the isolated project `avantime-cms-restore` only; an in-place
+  CMS restore procedure does not exist;
+- the stand tags images with a fixed `APP_VERSION`/`CMS_VERSION`, so a rebuild overwrites the previous
+  images; a real environment needs a version per release for rollback;
+- the staging manifest still uses the shared `/tmp` (`mode=1777`); only the production reference
+  manifest has the per-user tmpfs;
+- under host load the CMS can exceed 3 s; the site then serves snapshots (and dev servers log
+  `CMS_TIMEOUT`), which is intended;
+- the platform branch is not pushed and the CMS repository has no remote.
+
+Still required before DEV: the owner inputs and the steps in [DEV deployment plan](#dev-deployment-plan),
+the editor acceptance (_Acceptance on the stand_ above) on the DEV hosts, a scheduled backup with an
+off-host copy and alerting, and one restore rehearsal from that copy.
+
+Still required before PROD (out of scope of the pilot): managed mode (managed PostgreSQL/Redis with
+TLS, S3 backups, real notification provider, Jira Cloud, approved AI provider), a production CMS
+topology, PITR, monitoring and the open items of
+[PRODUCTION_READINESS_CHECKLIST.md](./PRODUCTION_READINESS_CHECKLIST.md).
+
+## DEV deployment plan
+
+The DEV host runs exactly the stacks of this document and [STAGING_DEPLOYMENT.md](./STAGING_DEPLOYMENT.md);
+no other deployment path is introduced. Values in angle brackets are owner inputs; nothing below is
+configured yet.
+
+### Owner inputs
+
+1. DEV server: address, Linux distribution, operator SSH access.
+2. Two DNS names for the site and the CMS, and who manages the DNS zone.
+3. TLS: public ACME (contact e-mail; ports 80/443 reachable from the internet) or `internal`
+   (closed network; clients trust Caddy's root).
+4. CIDRs allowed to the CMS admin/API (`STAGING_CMS_ALLOWED_CLIENTS`).
+5. Mode: `STAGING_MODE=local` (bundled PostgreSQL/Redis/MinIO and test providers, as on the stand) or
+   `managed` (managed PostgreSQL/Redis with TLS, S3 backup, real notification provider, Jira Cloud,
+   AI provider). The first DEV can only be `local` unless those services are provided.
+6. Git remote for the CMS repository and push approval for both repositories; read access for the
+   DEV host (deploy key).
+7. Secret store (where the env files and backup keys live, who has access).
+8. Off-host backup destination, its access and retention.
+9. Alert channel for failed backups.
+10. Strapi editor accounts and portal test users; operator, reviewer and maintenance window.
+
+### Host
+
+- Linux x86_64 with Docker Engine and Compose v2, `git`, `bash`, `openssl` (used by the CMS
+  `backup.sh`), Node.js 20+ only if `cms:pilot-check`/`staging:restore-rehearsal` run on the host
+  (they can run from an operator workstation instead).
+- Measured on the stand: about 1.3 GiB RAM for all 13 containers when idle; each service is limited
+  to 2 CPU/2 GiB in Compose; the images take about 6 GB (worker images share layers); the image
+  build is the heaviest step. Sizing (an estimate, to be confirmed): 4 vCPU, 8 GiB RAM, 60 GB disk
+  plus backup space.
+- Inbound only 80/443 (and SSH); `STAGING_WEB_PORT` stays bound to `127.0.0.1`. Outbound: ACME,
+  container registries and npm during the build, the Git remote.
+
+### Layout and secrets
+
+One persistent root (for example `/srv/avantime`, owner-only) with the same layout as the local
+stand: `platform/` and `cms/` as clean checkouts of the approved commits, `secrets/` (mode `0600`,
+source of truth in the secret store), `backups/cms/`. Platform env from `.env.staging.example` (or the
+`local` values of `.env.staging.local.example` with **new** secrets); CMS env from
+`scripts/init-staging-env.sh https://<site-host> https://<cms-host>`, then merge
+`.local/platform-cms.staging.env` into the platform env. Set `APP_VERSION` and `CMS_VERSION` to a
+per-release value (for example the short commit) so previous images stay available for rollback;
+`MIGRATION_VERSION` must name the newest migration of the commit.
+
+### Build, migrate, start, check
+
+For `local` mode with `STAGING_TLS=internal`, `docker/local-stand.sh` (with
+`AVANTIME_STAND_ROOT=/srv/avantime`) performs the whole sequence unchanged; it always adds the local
+overlay and the internal-CA overlay. With ACME, use the commands of _First deployment_ above without
+`docker-compose.staging.edge-internal-ca.yml`, adding `-f docker-compose.staging.local.yml` in `local`
+mode:
+
+1. CMS stack: network, `up -d --build --wait`, admin user, platform token, `seed-pilot.js`.
+2. Platform: `build` (bakes `CMS_MEDIA_URL`), `--profile operations run --rm backup` (skipped on an
+   empty first install), `run --rm migration`, then `up -d --wait` workers and web.
+3. Readiness: container health (`/ready`), `cms.warmup.*` log events, `npm run cms:pilot-check -w
+@avantime/web -- --site https://<site-host> --cms https://<cms-host>`, all six workers `healthy`
+   (their health checks run `check-staging-worker.ts`), then the editor/portal acceptance of
+   _Acceptance on the stand_.
+
+### Persistent volumes
+
+`avantime-staging_staging-postgres-data`, `_staging-redis-data`, `_staging-minio-data` (local mode),
+`_staging-cms-snapshots`, `_staging-caddy-data` (certificates, internal CA key), `_staging-caddy-config`,
+`_staging-backups`, `_staging-edge-ca` (internal TLS only); `avantime-cms-staging_cms_postgres_data`
+and `avantime-cms-staging_cms_uploads`. Never use `down --volumes` on the DEV projects.
+
+### Backups
+
+- Schedule (owner approves the times): a systemd timer or cron on the host runs
+  `docker compose ... --profile operations run --rm backup` for the platform database and
+  `CMS_ENV_FILE=… CMS_COMPOSE_FILE=docker-compose.staging.yml CMS_BACKUP_DIR=/srv/avantime/backups/cms
+CMS_BACKUP_RETENTION_DAYS=<n> bash scripts/backup.sh avantime-cms-staging` for the CMS, for example
+  daily, plus once before every deployment.
+- Off-host copy: after each run copy the platform archive and manifest out of the
+  `staging-backups` volume and the CMS restore point to `<backup-destination>`, verify the SHA-256
+  values there (`*.manifest.json`, `SHA256SUMS`) and apply the retention there.
+- Keys: `BACKUP_ENCRYPTION_KEY`, `CMS_BACKUP_ENCRYPTION_KEY` and both env files live only in the
+  secret store, never next to the copies; without them the archives cannot be restored.
+- Alerting: the timer unit's failure hook (`OnFailure=`) or the cron wrapper reports a non-zero exit
+  of either job, and of the copy/checksum step, to `<alert-channel>`.
+- Restore check: after the first scheduled backup and then regularly (owner sets the interval),
+  restore from the off-host copy — `npm run staging:restore-rehearsal` for the platform
+  ([BACKUP_RESTORE.md](./BACKUP_RESTORE.md)) and `scripts/restore.sh` for the CMS (isolated project
+  `avantime-cms-restore`, fails on any content or media mismatch). Never restore in place.
+
+### Rollback
+
+- Application: set `APP_VERSION`/`COMMIT_SHA` (and `CMS_VERSION`) back to the previous release and
+  `up -d --wait` without running the migration job, following
+  [runbooks/staging-rollback.md](./runbooks/staging-rollback.md).
+- Platform migrations are forward-only: no down migrations, no `reset`; roll the application back
+  only while the new schema is backward-compatible, otherwise pause the affected workers and
+  forward-fix.
+- CMS: Strapi aligns its database schema to the content types of the running image on start, so
+  rolling back across a content-type change can drop the new fields. Take a CMS backup before every
+  CMS deployment; roll back across such a change only with that restore point and an approved
+  procedure (an in-place CMS restore is not provided).
+- Content-only incidents: unpublish or fix the entry in Strapi; `CMS_PILOT_MODE=off` returns the
+  pages to repository content (restart of web required, see [CMS_PILOT.md](./CMS_PILOT.md)).
+
 ## Related documents
 
 - [CMS pilot](./CMS_PILOT.md)

@@ -42,6 +42,15 @@ Local/Docker Release Gate; managed-staging preflight и rollout остаются
 3. Validate TASK-010 providers и TASK-011 role governance в production-like staging, назначив
    реальных OWNER и Security Owner.
 
+### 🧩 CMS-пилот Strapi (2026-11-05)
+
+Локальный этап принят только на локальном HTTPS-стенде рабочей станции (платформа `4f000cf`, CMS
+`5b2b3cc`, Strapi 5.60.0): четыре продуктовые страницы 1С на LV/RU/EN обслуживаются из Strapi.
+Стенд не является DEV или PROD; реального DEV-развёртывания нет, расписания бэкапов и копий вне
+сервера нет, один браузерный тест прошёл только при повторном запуске. Приёмка, ограничения и план
+переноса на DEV с перечнем нужных от владельца данных — в
+[CMS_STAGING.md](./CMS_STAGING.md#acceptance-of-the-local-stage-2026-11-05).
+
 ---
 
 # Общая информация
