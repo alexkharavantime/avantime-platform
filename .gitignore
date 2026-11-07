@@ -29,3 +29,6 @@ coverage
 .tmp/
 
 incoming/
+
+# graphify knowledge graph output
+graphify-out/
