@@ -18,7 +18,8 @@
 проверка прав. На одной странице портала такой проверки нет, но там видны только счётчики
 документов.
 
-**Статус на 2026-11-07:** находки 1 и 2 исправлены в `fc4dc14`, находка 4 в части скриптов — в `4bcb2c6`.
+**Статус на 2026-11-07:** находки 1 и 2 исправлены в `fc4dc14`, находка 4 — в `4bcb2c6` (скрипты) и в коммите
+`fix(documents): require a worker tenant outside development and test` (воркер).
 Находка 3 остаётся открытой: это намеренная совместимость локального драйвера. После
 исправления находки 1 сессия без компании до неё не доходит.
 
@@ -70,13 +71,20 @@ const companyId = session.companyId?.trim() || AVANTIME_DOCUMENT_COMPANY_ID;
 содержат компанию (`documents/${companyId}/...`, `document-storage.ts:132`). Вместе с находкой 1
 это значит, что сессия без компании на локальном стенде видит наследованные данные.
 
-### 4. Скрипты обслуживания по умолчанию работают с арендатором `avantime` — Низкая (эксплуатационный риск) — частично исправлено
+### 4. Скрипты обслуживания по умолчанию работают с арендатором `avantime` — Низкая (эксплуатационный риск) — исправлено
 
 **Исправлено в `4bcb2c6`:** `documents:cleanup` и `documents:migrate` падают без
 `--tenant=<companyId>`. Переменные `CLEANUP_TENANT_ID` и `MIGRATION_TENANT_ID` больше не
 читаются. Команды в `docs/tasks/TASK-002.md` обновлены. Тест:
-`apps/web/tests/document-script-tenant.test.ts`. Значение по умолчанию для воркера
-(`DOCUMENT_WORKER_TENANT_ID` вне production) не менялось.
+`apps/web/tests/document-script-tenant.test.ts`.
+
+**Воркер исправлен в коммите `fix(documents): require a worker tenant outside development and
+test`:** `DOCUMENT_WORKER_TENANT_ID` теперь обязателен везде, кроме `NODE_ENV=development` и
+`test`, в том числе на локальном staging и при пустом `NODE_ENV`. Переменную уже задают
+`.env.staging.example`, `.env.staging.local.example`, стенд (`secrets/platform.staging.env`) и
+скрипты `*:local` (`lib/local-rag-profile.ts:45`). Тест:
+`apps/web/tests/document-processing.test.ts`, «document worker tenant falls back only in
+development and test».
 
 - `apps/web/scripts/cleanup-deleted-documents.ts:11-12`: `--tenant` → `CLEANUP_TENANT_ID` → `avantime`.
 - `apps/web/scripts/migrate-documents.ts:37`: `--tenant` → `MIGRATION_TENANT_ID` → `avantime`.

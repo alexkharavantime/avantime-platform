@@ -679,6 +679,30 @@ test('production queue configuration fails fast without a complete external adap
   );
 });
 
+test('document worker tenant falls back only in development and test', () => {
+  for (const NODE_ENV of ['development', 'test']) {
+    assert.equal(loadDocumentWorkerConfiguration({ NODE_ENV }).tenantId, 'avantime');
+  }
+  for (const environment of [
+    {},
+    { NODE_ENV: 'production', APP_ENV: 'staging', STAGING_MODE: 'local' },
+  ]) {
+    assert.throws(
+      () => loadDocumentWorkerConfiguration(environment),
+      /DOCUMENT_WORKER_TENANT_ID is required/,
+    );
+  }
+  assert.equal(
+    loadDocumentWorkerConfiguration({
+      NODE_ENV: 'production',
+      APP_ENV: 'staging',
+      STAGING_MODE: 'local',
+      DOCUMENT_WORKER_TENANT_ID: 'staging-system',
+    }).tenantId,
+    'staging-system',
+  );
+});
+
 test('future external queue adapter can be injected through the stable contract', () => {
   const configuration = loadDocumentConfiguration({
     NODE_ENV: 'production',

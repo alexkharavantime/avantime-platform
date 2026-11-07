@@ -279,9 +279,13 @@ export function loadDocumentWorkerConfiguration(
   const production =
     environment.NODE_ENV === 'production' &&
     !(environment.APP_ENV === 'staging' && environment.STAGING_MODE === 'local');
+  // Only development and test may fall back to the avantime tenant; local staging must name one.
+  const tenantRequired = environment.NODE_ENV !== 'development' && environment.NODE_ENV !== 'test';
   const tenantId =
     environment.DOCUMENT_WORKER_TENANT_ID?.trim() ||
-    (production ? requireEnvironmentValue(environment, 'DOCUMENT_WORKER_TENANT_ID') : 'avantime');
+    (tenantRequired
+      ? requireEnvironmentValue(environment, 'DOCUMENT_WORKER_TENANT_ID')
+      : 'avantime');
   const workerId =
     environment.DOCUMENT_WORKER_ID?.trim() ||
     (production
