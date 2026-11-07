@@ -162,7 +162,8 @@ const API_STATUS_LABELS: Record<DocumentProcessingStatus, DocumentApiStatus> = {
 };
 
 export function getDocumentTenantContext(session: AppSession): DocumentTenantContext {
-  const companyId = session.companyId?.trim() || AVANTIME_DOCUMENT_COMPANY_ID;
+  const companyId = session.companyId?.trim();
+  if (!companyId) throw new Error('Document access requires an organization context.');
 
   return {
     companyId,

@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { listKnowledgeArticles } from '../../lib/knowledge-store';
 import { getDocumentTenantContext } from '../../lib/document-model';
 import { getDocumentServices } from '../../lib/document-services';
+import { hasOrganizationPermission } from '../../lib/organization-permissions';
 import { listPortalNotifications } from '../../lib/portal-notifications';
 import { getValidatedPortalSession } from '../../lib/portal-session';
 import { listRequests } from '../../lib/requests-store';
@@ -42,21 +43,25 @@ export default async function PortalPage() {
     attention: 0,
     indexed: 0,
   };
-  try {
-    const documents = await getDocumentServices().metadata.list(getDocumentTenantContext(session));
-    documentSummary = {
-      total: documents.length,
-      processing: documents.filter((item) =>
-        ['UPLOADED', 'QUEUED', 'PROCESSING'].includes(item.status),
-      ).length,
-      attention: documents.filter(
-        (item) =>
-          item.status === 'FAILED' || item.status === 'QUARANTINED' || item.requiresManualReview,
-      ).length,
-      indexed: documents.filter((item) => item.embeddingStatus === 'COMPLETED').length,
-    };
-  } catch {
-    // The dashboard remains usable when document status is temporarily unavailable.
+  if (hasOrganizationPermission(session, 'documents.view')) {
+    try {
+      const documents = await getDocumentServices().metadata.list(
+        getDocumentTenantContext(session),
+      );
+      documentSummary = {
+        total: documents.length,
+        processing: documents.filter((item) =>
+          ['UPLOADED', 'QUEUED', 'PROCESSING'].includes(item.status),
+        ).length,
+        attention: documents.filter(
+          (item) =>
+            item.status === 'FAILED' || item.status === 'QUARANTINED' || item.requiresManualReview,
+        ).length,
+        indexed: documents.filter((item) => item.embeddingStatus === 'COMPLETED').length,
+      };
+    } catch {
+      // The dashboard remains usable when document status is temporarily unavailable.
+    }
   }
 
   const openRequests = requests.filter((item) => item.status !== 'RESOLVED');
