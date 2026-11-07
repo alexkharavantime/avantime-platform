@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 
 import {
   authorizeCriticalOrganizationAction,
@@ -38,6 +39,9 @@ function governanceError(error: unknown) {
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizeOrganizationApi('members.role.manage', {
     correlationId: correlationId(request),
   });

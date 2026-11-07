@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { addRequestMessage } from '../../../../../lib/requests-store';
 import { validatePortalComment } from '../../../../../lib/jira-sync-policy';
@@ -6,6 +7,9 @@ import { validatePortalComment } from '../../../../../lib/jira-sync-policy';
 const IDEMPOTENCY_KEY = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,199}$/u;
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizeOrganizationApi('requests.comment', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });

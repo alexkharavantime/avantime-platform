@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../lib/governance-request-security';
 
 function buildAnswer(message: string) {
   const text = message.toLowerCase();
@@ -20,6 +21,9 @@ function buildAnswer(message: string) {
 }
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const body = (await request.json().catch(() => null)) as { message?: unknown } | null;
   const message = typeof body?.message === 'string' ? body.message.trim() : '';
 

@@ -1,3 +1,4 @@
+import { BROWSER_BASE_URL } from './environment';
 import { expect, test } from './fixtures';
 
 test.describe('browser tenant isolation', () => {
@@ -52,6 +53,7 @@ test.describe('browser tenant isolation', () => {
 
   test('client companyId in notification action cannot switch tenant', async ({ page }) => {
     const response = await page.request.post('/api/portal/notifications', {
+      headers: { origin: BROWSER_BASE_URL },
       data: {
         id: 'browser-notification-b',
         companyId: 'browser-tenant-b',

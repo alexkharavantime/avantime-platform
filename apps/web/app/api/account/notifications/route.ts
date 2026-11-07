@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../lib/governance-request-security';
 
 import {
   getNotificationPreferences,
@@ -19,6 +20,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizeOrganizationApi('notifications.manage', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });

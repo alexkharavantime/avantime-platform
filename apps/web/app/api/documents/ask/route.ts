@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../lib/governance-request-security';
 
 import { AiGatewayError } from '../../../../lib/ai-gateway';
 import { assertApiRateLimit, ApiRateLimitError } from '../../../../lib/api-rate-limit';
@@ -14,6 +15,9 @@ type AskRequest = {
 };
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const correlationId = crypto.randomUUID();
   try {
     const authorization = await authorizeDocumentReadApi();

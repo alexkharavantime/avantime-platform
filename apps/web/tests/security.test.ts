@@ -543,3 +543,27 @@ test('returnTo rejects the login page itself, including locale-prefixed and nest
     '/portal/accept-invitation?token=single-use-token',
   );
 });
+
+test('every cookie-authenticated mutating API route checks the request origin', async () => {
+  const { readdir, readFile } = await import('node:fs/promises');
+  // Inbound webhooks authenticate with HMAC / bearer token, not the session cookie.
+  const exempt = new Set([
+    'app/api/integrations/jira/webhook/route.ts',
+    'app/api/cms/revalidate/route.ts',
+  ]);
+  const routes = (await readdir(path.join(process.cwd(), 'app/api'), { recursive: true }))
+    .map((file) => `app/api/${file.split(path.sep).join('/')}`)
+    .filter((file) => file.endsWith('/route.ts') && !exempt.has(file));
+  const unguarded: string[] = [];
+  for (const file of routes) {
+    const source = await readFile(path.join(process.cwd(), file), 'utf8');
+    if (!/export async function (POST|PUT|PATCH|DELETE)\b/u.test(source)) continue;
+    if (
+      !/governanceMutationOriginAllowed|isSameOriginMutation|parseIdentityMutation/u.test(source)
+    ) {
+      unguarded.push(file);
+    }
+  }
+  assert.ok(routes.length > 50);
+  assert.deepEqual(unguarded, []);
+});

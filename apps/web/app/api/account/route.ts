@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../lib/governance-request-security';
 import { getAccountProfile, updateAccountProfile } from '../../../lib/account';
 import { appendPortalAudit } from '../../../lib/portal-audit';
 import { authorizeOrganizationApi } from '../../../lib/organization-authorization';
@@ -17,6 +18,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizeOrganizationApi('organization.view', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });

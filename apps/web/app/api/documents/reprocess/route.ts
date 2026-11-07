@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../lib/governance-request-security';
 
 import { authorizeDocumentReprocessApi } from '../../../../lib/document-authorization';
 import { getDocumentTenantContext } from '../../../../lib/document-model';
@@ -9,6 +10,9 @@ import { appendCriticalDocumentAudit } from '../../../../lib/production-audit';
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   try {
     const authorization = await authorizeDocumentReprocessApi();
     if (authorization.response) return authorization.response;

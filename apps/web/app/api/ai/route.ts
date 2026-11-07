@@ -1,8 +1,12 @@
 import { authorizeOrganizationApi } from '../../../lib/organization-authorization';
+import { governanceMutationOriginAllowed } from '../../../lib/governance-request-security';
 import { getDocumentTenantContext } from '../../../lib/document-model';
 import { getDocumentServices } from '../../../lib/document-services';
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return Response.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   try {
     const authorization = await authorizeOrganizationApi('knowledge.search');
     if (authorization.response) return authorization.response;

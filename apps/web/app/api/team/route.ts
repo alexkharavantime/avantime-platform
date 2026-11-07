@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../lib/governance-request-security';
 import { appendPortalAudit } from '../../../lib/portal-audit';
 import { getIdentityRateLimiter } from '../../../lib/identity-rate-limit';
 import { identityTestResponseEnabled } from '../../../lib/identity-route';
@@ -23,6 +24,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizeOrganizationApi('members.invite', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });

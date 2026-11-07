@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 
 import { authorizePlatformApi } from '../../../../../lib/platform-authorization';
 import { changePlatformRoleAssignment } from '../../../../../lib/platform-role-governance';
 
 export async function POST(request: Request, { params }: { params: Promise<{ userId: string }> }) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizePlatformApi('platform.roles.manage');
   if (authorization.response) return authorization.response;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

@@ -8,6 +8,7 @@ import type { DocumentMetadataDatabaseClient } from '../../lib/document-reposito
 import { loadRagConfiguration } from '../../lib/rag-configuration';
 import type { VectorDatabaseClient } from '../../lib/vector-repository';
 import {
+  BROWSER_BASE_URL,
   BROWSER_DATA_DIRECTORY,
   BROWSER_DATABASE_URL,
   browserIdentities,
@@ -205,7 +206,7 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
     await expect(page.getByText(/32\.50 EUR/u).last()).toBeVisible();
     await page.goto('/ru/portal/knowledge');
 
-    await page.request.delete('/api/documents/history');
+    await page.request.delete('/api/documents/history', { headers: { origin: BROWSER_BASE_URL } });
     const askRequests: string[] = [];
     page.on('request', (request) => {
       if (
@@ -292,6 +293,7 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
     expect(askRequests).toHaveLength(3);
 
     const logoutHistory = await page.request.post('/api/documents/history', {
+      headers: { origin: BROWSER_BASE_URL },
       data: { question: 'Logout retention check', answer: 'Stored before logout', sources: [] },
     });
     expect(logoutHistory.status()).toBe(200);
@@ -321,7 +323,10 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
       results: Array<{ documentId: string; documentName: string; preview: string }>;
     };
     expect(foreignSearchBody.results).toHaveLength(0);
-    const foreignAnswer = await page.request.post('/api/documents/ask', { data: { question } });
+    const foreignAnswer = await page.request.post('/api/documents/ask', {
+      headers: { origin: BROWSER_BASE_URL },
+      data: { question },
+    });
     expect(foreignAnswer.status()).toBe(200);
     const foreignAnswerBody = await foreignAnswer.text();
     expect(foreignAnswerBody).not.toContain(projectMarker);
@@ -339,7 +344,10 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
     await loginAs('identityViewer');
     await page.goto('/ru/admin/documents');
     await expect(page).toHaveURL(/\/ru\/portal$/u);
-    const viewerUpload = await page.request.post('/api/documents/upload', { data: {} });
+    const viewerUpload = await page.request.post('/api/documents/upload', {
+      headers: { origin: BROWSER_BASE_URL },
+      data: {},
+    });
     expect(viewerUpload.status()).toBe(403);
     const viewerMembership = await prisma.organizationMembership.findUniqueOrThrow({
       where: { id: 'browser-membership-identity-viewer' },
@@ -372,7 +380,12 @@ test('synthetic PDF travels from the upload UI through workers, retrieval and ci
       expect((await page.request.get(route)).status()).toBe(401);
     }
     expect(
-      (await page.request.post('/api/documents/ask', { data: { question } })).status(),
+      (
+        await page.request.post('/api/documents/ask', {
+          headers: { origin: BROWSER_BASE_URL },
+          data: { question },
+        })
+      ).status(),
     ).toBe(401);
   } finally {
     if (documentId) {

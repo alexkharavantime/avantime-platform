@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../../lib/governance-request-security';
 import { addAttachment, listAttachments } from '../../../../../lib/attachments';
 import { authorizeOrganizationApi } from '../../../../../lib/organization-authorization';
 import { getRequest } from '../../../../../lib/requests-store';
@@ -15,6 +16,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   const authorization = await authorizeOrganizationApi('requests.comment', {
     correlationId: request.headers.get('x-avantime-correlation-id'),
   });

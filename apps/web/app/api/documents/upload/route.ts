@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { governanceMutationOriginAllowed } from '../../../../lib/governance-request-security';
 
 import {
   authorizeDocumentDeleteApi,
@@ -46,6 +47,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   try {
     const authorization = await authorizeDocumentUploadApi();
     if (authorization.response) return authorization.response;
@@ -160,6 +164,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  if (!governanceMutationOriginAllowed(request)) {
+    return NextResponse.json({ error: 'Источник запроса не разрешён.' }, { status: 403 });
+  }
   try {
     const authorization = await authorizeDocumentDeleteApi();
     if (authorization.response) return authorization.response;
