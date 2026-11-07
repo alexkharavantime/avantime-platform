@@ -51,7 +51,9 @@ async function main() {
   );
 }
 
-void main().catch(() => {
-  console.error('Document worker failed.');
+void main().catch((error: unknown) => {
+  console.error(
+    error instanceof Error ? `Document worker failed: ${error.message}` : 'Document worker failed.',
+  );
   process.exit(1);
 });

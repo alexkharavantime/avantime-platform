@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -196,8 +197,29 @@ test('tracked staging templates use the current migration and no stale task rele
 test('document worker exits immediately after a fatal runtime failure', async () => {
   const source = await repositoryFile('apps/web/scripts/run-document-worker.ts');
 
-  assert.match(source, /void main\(\)\.catch\(\(\) => \{[\s\S]*process\.exit\(1\);[\s\S]*\}\);/u);
+  assert.match(
+    source,
+    /void main\(\)\.catch\(\(error: unknown\) => \{[\s\S]*process\.exit\(1\);[\s\S]*\}\);/u,
+  );
   assert.doesNotMatch(source, /process\.exitCode\s*=/u);
+});
+
+test('document worker prints the cause of a fatal failure', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['--import', 'tsx', 'scripts/run-document-worker.ts'],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, NODE_ENV: 'production', DOCUMENT_WORKER_TENANT_ID: '' },
+    },
+  );
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(
+    result.stderr,
+    /Document worker failed: DOCUMENT_WORKER_TENANT_ID is required for the selected document configuration\./u,
+  );
 });
 
 test('Next.js tracing and Turbopack roots are pinned to the repository', async () => {
