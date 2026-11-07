@@ -1,6 +1,7 @@
 .git
 .next
 **/.next
+**/.next.diagnostic-*
 .turbo
 **/.turbo
 .data
