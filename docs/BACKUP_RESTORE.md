@@ -80,6 +80,28 @@ manifest checksum. The guarded local integration environment may set `none`
 because MinIO without KMS rejects SSE-S3; this exception is denied in production.
 Enable provider versioning/object lock/replication according to data policy.
 
+## Request attachment volume backup
+
+Request attachments are not in PostgreSQL or object storage: `lib/attachments.ts` writes their bytes
+to `UPLOAD_DIR`, and PostgreSQL keeps only `RequestAttachment.storageKey`. The staging and
+production compose files set `UPLOAD_DIR=/var/lib/avantime-uploads` on `web` and mount the named
+volume `uploads` (production) / `staging-uploads` (staging) there; the web image creates that
+directory owned by the runtime user 10001, so a new volume is writable without an init job.
+
+**Include this volume in every backup run.** Neither `backup:create` nor `backup:objects` copies
+it; without it a restored database points to attachment files that no longer exist.
+
+- Archive the volume right after the PostgreSQL backup of the same run, read-only, for example
+  `docker run --rm -v <project>_uploads:/data:ro -v <backup-dir>:/backup alpine:3.22.1 tar -C /data -czf /backup/uploads-<timestamp>.tar.gz .`
+  (staging: `avantime-staging_staging-uploads`), then record its SHA-256 next to the database
+  manifest.
+- Copy, verify, encrypt at rest and apply retention exactly as for the database archive (off-host,
+  immutable). Files written between the two steps are only in the next run; this is within the
+  24-hour object RPO.
+- Restore into an empty volume and keep the owner: extract with `tar -C /data -xzf …`, then
+  `chown -R 10001:10001 /data`, before starting `web`. Restore the database from the same run.
+- Never run `docker compose down --volumes` on these projects: it deletes the attachments.
+
 ## Restore rehearsal
 
 ```bash

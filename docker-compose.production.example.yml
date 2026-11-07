@@ -76,8 +76,11 @@ services:
         condition: service_started
     environment:
       CMS_SNAPSHOT_DIR: /var/lib/avantime-cms-snapshots
+      # Request attachments (lib/attachments.ts); back this volume up, see docs/BACKUP_RESTORE.md.
+      UPLOAD_DIR: /var/lib/avantime-uploads
     volumes:
       - cms-snapshots:/var/lib/avantime-cms-snapshots
+      - uploads:/var/lib/avantime-uploads
     # Next.js data and image cache; the root file system is read-only. Emptied on restart.
     tmpfs:
       - /tmp:size=512m,mode=1770
@@ -296,6 +299,7 @@ volumes:
   object-data:
   backup-data:
   cms-snapshots:
+  uploads:
 
 secrets:
   postgres_password:

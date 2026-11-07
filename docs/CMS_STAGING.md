@@ -297,7 +297,7 @@ mode:
 
 `avantime-staging_staging-postgres-data`, `_staging-redis-data`, `_staging-minio-data` (local mode),
 `_staging-cms-snapshots`, `_staging-caddy-data` (certificates, internal CA key), `_staging-caddy-config`,
-`_staging-backups`, `_staging-edge-ca` (internal TLS only); `avantime-cms-staging_cms_postgres_data`
+`_staging-backups`, `_staging-uploads` (request attachments), `_staging-edge-ca` (internal TLS only); `avantime-cms-staging_cms_postgres_data`
 and `avantime-cms-staging_cms_uploads`. Never use `down --volumes` on the DEV projects.
 
 ### Backups
@@ -307,8 +307,11 @@ and `avantime-cms-staging_cms_uploads`. Never use `down --volumes` on the DEV pr
   `CMS_ENV_FILE=… CMS_COMPOSE_FILE=docker-compose.staging.yml CMS_BACKUP_DIR=/srv/avantime/backups/cms
 CMS_BACKUP_RETENTION_DAYS=<n> bash scripts/backup.sh avantime-cms-staging` for the CMS, for example
   daily, plus once before every deployment.
+- Request attachments: after the platform database backup archive the `staging-uploads` volume
+  (see "Request attachment volume backup" in [BACKUP_RESTORE.md](./BACKUP_RESTORE.md)); the
+  database backup does not contain the attachment files.
 - Off-host copy: after each run copy the platform archive and manifest out of the
-  `staging-backups` volume and the CMS restore point to `<backup-destination>`, verify the SHA-256
+  `staging-backups` volume, the attachment archive, and the CMS restore point to `<backup-destination>`, verify the SHA-256
   values there (`*.manifest.json`, `SHA256SUMS`) and apply the retention there.
 - Keys: `BACKUP_ENCRYPTION_KEY`, `CMS_BACKUP_ENCRYPTION_KEY` and both env files live only in the
   secret store, never next to the copies; without them the archives cannot be restored.

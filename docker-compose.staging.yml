@@ -177,8 +177,11 @@ services:
       HOSTNAME: 0.0.0.0
       COMMIT_SHA: ${COMMIT_SHA:?COMMIT_SHA is required}
       CMS_SNAPSHOT_DIR: /var/lib/avantime-cms-snapshots
+      # Request attachments (lib/attachments.ts); back this volume up, see docs/BACKUP_RESTORE.md.
+      UPLOAD_DIR: /var/lib/avantime-uploads
     volumes:
       - staging-cms-snapshots:/var/lib/avantime-cms-snapshots
+      - staging-uploads:/var/lib/avantime-uploads
     # Next.js data and image cache; the root file system is read-only. Emptied on restart.
     tmpfs:
       - /tmp:size=256m,mode=1777
@@ -252,3 +255,4 @@ networks:
 volumes:
   staging-backups:
   staging-cms-snapshots:
+  staging-uploads:
