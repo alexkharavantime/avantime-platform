@@ -1,4 +1,4 @@
-import { AVANTIME_DOCUMENT_COMPANY_ID, type DocumentTenantContext } from '../lib/document-model';
+import type { DocumentTenantContext } from '../lib/document-model';
 import { cleanupDeletedDocuments, getDocumentServices } from '../lib/document-services';
 
 function argumentValue(name: string) {
@@ -7,9 +7,10 @@ function argumentValue(name: string) {
 }
 
 async function main() {
+  const companyId = argumentValue('tenant')?.trim();
+  if (!companyId) throw new Error('Document cleanup requires --tenant=<companyId>.');
   const tenant: DocumentTenantContext = {
-    companyId:
-      argumentValue('tenant') ?? process.env.CLEANUP_TENANT_ID ?? AVANTIME_DOCUMENT_COMPANY_ID,
+    companyId,
     userId: 'document-cleanup',
   };
   const services = getDocumentServices();

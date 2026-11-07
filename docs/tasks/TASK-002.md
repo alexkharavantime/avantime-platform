@@ -307,13 +307,13 @@ Metadata получила обязательный SHA-256 checksum и `deletedA
 
 1. Создать private bucket с закрытым публичным доступом, шифрованием и versioning.
 2. Применить Prisma migration и настроить `DOCUMENT_STORAGE_DRIVER=s3` и `DOCUMENT_METADATA_DRIVER=postgresql`.
-3. Выполнить `npm run documents:migrate -w @avantime/web -- --dry-run`.
+3. Выполнить `npm run documents:migrate -w @avantime/web -- --tenant=<companyId> --dry-run`.
 4. Проверить отчёт и выполнить ту же команду без `--dry-run`.
 5. Сверить количество metadata и checksum объектов до переключения трафика.
 
 Для отката вернуть drivers на local только в development или до production cutover. После production cutover восстановить PostgreSQL и bucket из backup либо удалить перенесённые записи и объекты по migration report. Legacy `.data` остаётся неизменной и служит источником повторной миграции. Автоматического destructive rollback нет.
 
-Soft-deleted записи проверяются командой `npm run documents:cleanup -w @avantime/web -- --dry-run`. Запуск без `--dry-run` физически удаляет объекты и затем metadata; до него запись можно восстановить через управляемое изменение `deletedAt`. После cleanup восстановление возможно только из backup.
+Soft-deleted записи проверяются командой `npm run documents:cleanup -w @avantime/web -- --tenant=<companyId> --dry-run`. Запуск без `--dry-run` физически удаляет объекты и затем metadata; до него запись можно восстановить через управляемое изменение `deletedAt`. После cleanup восстановление возможно только из backup.
 
 ### Третья итерация
 

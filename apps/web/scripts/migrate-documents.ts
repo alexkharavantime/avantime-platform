@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { AVANTIME_DOCUMENT_COMPANY_ID, type DocumentTenantContext } from '../lib/document-model';
+import type { DocumentTenantContext } from '../lib/document-model';
 import { migrateDocuments } from '../lib/document-migration';
 import {
   LocalDocumentHistoryRepository,
@@ -33,8 +33,8 @@ function createLegacyServices(dataDirectory: string): DocumentPersistenceService
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
-  const companyId =
-    argumentValue('tenant') ?? process.env.MIGRATION_TENANT_ID ?? AVANTIME_DOCUMENT_COMPANY_ID;
+  const companyId = argumentValue('tenant')?.trim();
+  if (!companyId) throw new Error('Document migration requires --tenant=<companyId>.');
   const tenant: DocumentTenantContext = {
     companyId,
     userId: 'legacy-import',
