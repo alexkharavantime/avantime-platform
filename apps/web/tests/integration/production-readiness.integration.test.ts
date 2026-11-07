@@ -27,6 +27,62 @@ import type { VectorDatabaseClient } from '../../lib/vector-repository';
 import { integrationDatabase, integrationTenant } from './integration-test-environment';
 import { backupObjectStorage } from '../../lib/object-storage-backup';
 
+test('failed AI reservations count only within their own budget period', async () => {
+  const database = await integrationDatabase();
+  const tenant = integrationTenant(`budget-window-${crypto.randomUUID()}`);
+  const insertFailed = (amount: number, createdAt: string) =>
+    database.$executeRawUnsafe(
+      `INSERT INTO "AiBudgetReservation" (
+         "id", "companyId", "userId", "provider", "correlationId", "idempotencyKey",
+         "estimatedCostEur", "currency", "status", "expiresAt", "createdAt", "updatedAt"
+       ) VALUES ($1, $2, $3, 'fake', $1, $1, $4, 'EUR', 'FAILED', ${createdAt}, ${createdAt}, ${createdAt})`,
+      crypto.randomUUID(),
+      tenant.companyId,
+      tenant.userId,
+      amount,
+    );
+  try {
+    await database.$executeRawUnsafe(
+      `INSERT INTO "AiBudgetPolicy" (
+         "companyId", "dailyLimitEur", "monthlyLimitEur", "warningThreshold",
+         "hardStopThreshold", "createdAt", "updatedAt"
+       ) VALUES ($1, 1, 10, 0.8, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      tenant.companyId,
+    );
+    await insertFailed(1, `date_trunc('day', CURRENT_TIMESTAMP) - INTERVAL '1 second'`);
+    await insertFailed(9.5, `date_trunc('month', CURRENT_TIMESTAMP) - INTERVAL '1 second'`);
+    const cost = new PostgreSQLAiCostController(
+      async () => database as unknown as VectorDatabaseClient,
+      1,
+      10,
+    );
+    const reservation = {
+      tenant,
+      provider: 'fake',
+      model: 'fake-v1',
+      requestType: 'rag_answer' as const,
+      correlationId: `window-${tenant.companyId}`,
+      idempotencyKey: `window-${tenant.companyId}-1`,
+      estimatedCostEur: 0.1,
+    };
+    await cost.reserve(reservation);
+
+    await insertFailed(0.85, 'CURRENT_TIMESTAMP');
+    await assert.rejects(
+      cost.reserve({ ...reservation, idempotencyKey: `window-${tenant.companyId}-2` }),
+      (error: unknown) =>
+        error instanceof AiBudgetDeniedError && error.reason === 'insufficient_reservation',
+    );
+  } finally {
+    for (const table of ['AiBudgetReservation', 'AiBudgetPolicy']) {
+      await database.$executeRawUnsafe(
+        `DELETE FROM "${table}" WHERE "companyId" = $1`,
+        tenant.companyId,
+      );
+    }
+  }
+});
+
 test('Redis queues, fencing, distributed rate limits, cost ledger and audit work end to end', async () => {
   const database = await integrationDatabase();
   const redisUrl = process.env.REDIS_URL || 'redis://:avantime_redis_test_only@127.0.0.1:56379/0';

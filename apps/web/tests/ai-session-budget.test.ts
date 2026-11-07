@@ -136,7 +136,8 @@ function sessionDatabase(session: { providerOperations: number; providerSpendEur
             dailyUsage: 0,
             monthlyUsage: 0,
             providerUsage: 0,
-            reserved: 0,
+            dailyReserved: 0,
+            monthlyReserved: 0,
             providerReserved: 0,
           },
         ] as T;

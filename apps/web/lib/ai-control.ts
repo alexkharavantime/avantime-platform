@@ -377,7 +377,8 @@ export class PostgreSQLAiCostController implements AiCostController {
           dailyUsage: number;
           monthlyUsage: number;
           providerUsage: number;
-          reserved: number;
+          dailyReserved: number;
+          monthlyReserved: number;
           providerReserved: number;
         }>
       >(
@@ -393,7 +394,8 @@ export class PostgreSQLAiCostController implements AiCostController {
            COALESCE(usage.daily, 0)::float8 AS "dailyUsage",
            COALESCE(usage.monthly, 0)::float8 AS "monthlyUsage",
            COALESCE(usage.provider, 0)::float8 AS "providerUsage",
-           COALESCE(reservations.total, 0)::float8 AS "reserved",
+           COALESCE(reservations.daily, 0)::float8 AS "dailyReserved",
+           COALESCE(reservations.monthly, 0)::float8 AS "monthlyReserved",
            COALESCE(reservations.provider, 0)::float8 AS "providerReserved"
          FROM (SELECT 1) AS singleton
          LEFT JOIN "AiBudgetPolicy" policy ON policy."companyId" = $1
@@ -410,13 +412,19 @@ export class PostgreSQLAiCostController implements AiCostController {
              AND "occurredAt" >= date_trunc('month', CURRENT_TIMESTAMP)
          ) usage ON true
          LEFT JOIN LATERAL (
+           -- Live reservations always count; failed or cancelled ones only in the period they were made.
            SELECT
-             SUM("estimatedCostEur") AS total,
+             SUM(CASE WHEN "status" = 'RESERVED' OR "createdAt" >= date_trunc('day', CURRENT_TIMESTAMP)
+               THEN "estimatedCostEur" ELSE 0 END) AS daily,
+             SUM("estimatedCostEur") AS monthly,
              SUM(CASE WHEN "provider" = $2 THEN "estimatedCostEur" ELSE 0 END) AS provider
            FROM "AiBudgetReservation"
              WHERE "companyId" = $1
-               AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
-               AND ("status" <> 'RESERVED' OR "expiresAt" > CURRENT_TIMESTAMP)
+               AND (
+                 ("status" = 'RESERVED' AND "expiresAt" > CURRENT_TIMESTAMP)
+                 OR ("status" IN ('FAILED', 'CANCELLED')
+                   AND "createdAt" >= date_trunc('month', CURRENT_TIMESTAMP))
+               )
          ) reservations ON true`,
         request.tenant.companyId,
         request.provider,
@@ -435,7 +443,7 @@ export class PostgreSQLAiCostController implements AiCostController {
       const blockReason =
         getBudgetBlockReason(
           totals.dailyUsage,
-          totals.reserved,
+          totals.dailyReserved,
           request.estimatedCostEur,
           totals.dailyLimit,
           'daily_limit_reached',
@@ -443,7 +451,7 @@ export class PostgreSQLAiCostController implements AiCostController {
         ) ??
         getBudgetBlockReason(
           totals.monthlyUsage,
-          totals.reserved,
+          totals.monthlyReserved,
           request.estimatedCostEur,
           totals.monthlyLimit,
           'monthly_limit_reached',
