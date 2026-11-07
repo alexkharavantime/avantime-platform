@@ -3,6 +3,7 @@ import type { DocumentTenantContext } from '../lib/document-model';
 import { createDocumentProcessingWorker, getDocumentServices } from '../lib/document-services';
 import { DocumentWorkerShutdown, runDocumentWorkerLoop } from '../lib/document-worker-runtime';
 import { startCriticalStagingWorkerHeartbeat } from '../lib/staging-worker-heartbeat';
+import { workerFailureMessage } from '../lib/worker-failure-message';
 
 async function main() {
   const configuration = loadDocumentWorkerConfiguration();
@@ -52,8 +53,6 @@ async function main() {
 }
 
 void main().catch((error: unknown) => {
-  console.error(
-    error instanceof Error ? `Document worker failed: ${error.message}` : 'Document worker failed.',
-  );
+  console.error(workerFailureMessage('Document worker', error));
   process.exit(1);
 });

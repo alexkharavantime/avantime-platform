@@ -3,6 +3,7 @@ import type { DocumentTenantContext } from '../lib/document-model';
 import { getDocumentServices } from '../lib/document-services';
 import { DocumentWorkerShutdown, runDocumentWorkerLoop } from '../lib/document-worker-runtime';
 import { startCriticalStagingWorkerHeartbeat } from '../lib/staging-worker-heartbeat';
+import { workerFailureMessage } from '../lib/worker-failure-message';
 
 async function main() {
   const workerConfiguration = loadDocumentWorkerConfiguration();
@@ -46,7 +47,7 @@ async function main() {
   console.info(JSON.stringify({ outcome: 'STOPPED', workerId: workerConfiguration.workerId }));
 }
 
-void main().catch(() => {
-  console.error('Document embedding worker failed.');
+void main().catch((error: unknown) => {
+  console.error(workerFailureMessage('Document embedding worker', error));
   process.exitCode = 1;
 });
