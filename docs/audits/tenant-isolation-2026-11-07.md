@@ -18,9 +18,16 @@
 проверка прав. На одной странице портала такой проверки нет, но там видны только счётчики
 документов.
 
+**Статус на 2026-11-07:** находки 1 и 2 исправлены в `fc4dc14`, находка 4 в части скриптов — в `4bcb2c6`.
+Находка 3 остаётся открытой: это намеренная совместимость локального драйвера. После
+исправления находки 1 сессия без компании до неё не доходит.
+
 ## Находки
 
-### 1. Пустой `companyId` молча превращается в арендатора `avantime` — Средняя (скрытый риск)
+### 1. Пустой `companyId` молча превращается в арендатора `avantime` — Средняя (скрытый риск) — исправлено
+
+**Исправлено в `fc4dc14`:** `getDocumentTenantContext` выбрасывает ошибку, если `companyId`
+пустой или из одних пробелов. Тест: `apps/web/tests/document-tenant-context.test.ts`.
 
 `apps/web/lib/document-model.ts:164-165`
 
@@ -39,7 +46,10 @@ const companyId = session.companyId?.trim() || AVANTIME_DOCUMENT_COMPANY_ID;
 любой новый вызов без этой проверки получит доступ к данным Avantime, а не ошибку. Отказ
 внутри самой функции закрыл бы это для всех будущих вызовов.
 
-### 2. Главная страница портала строит контекст без проверки прав на документы — Низкая
+### 2. Главная страница портала строит контекст без проверки прав на документы — Низкая — исправлено
+
+**Исправлено в `fc4dc14`:** главная портала читает документы только при `documents.view`,
+иначе счётчики равны нулю. Тест: `apps/web/tests/document-tenant-context.test.ts`.
 
 `apps/web/app/portal/page.tsx:31-46`
 
@@ -60,7 +70,13 @@ const companyId = session.companyId?.trim() || AVANTIME_DOCUMENT_COMPANY_ID;
 содержат компанию (`documents/${companyId}/...`, `document-storage.ts:132`). Вместе с находкой 1
 это значит, что сессия без компании на локальном стенде видит наследованные данные.
 
-### 4. Скрипты обслуживания по умолчанию работают с арендатором `avantime` — Низкая (эксплуатационный риск)
+### 4. Скрипты обслуживания по умолчанию работают с арендатором `avantime` — Низкая (эксплуатационный риск) — частично исправлено
+
+**Исправлено в `4bcb2c6`:** `documents:cleanup` и `documents:migrate` падают без
+`--tenant=<companyId>`. Переменные `CLEANUP_TENANT_ID` и `MIGRATION_TENANT_ID` больше не
+читаются. Команды в `docs/tasks/TASK-002.md` обновлены. Тест:
+`apps/web/tests/document-script-tenant.test.ts`. Значение по умолчанию для воркера
+(`DOCUMENT_WORKER_TENANT_ID` вне production) не менялось.
 
 - `apps/web/scripts/cleanup-deleted-documents.ts:11-12`: `--tenant` → `CLEANUP_TENANT_ID` → `avantime`.
 - `apps/web/scripts/migrate-documents.ts:37`: `--tenant` → `MIGRATION_TENANT_ID` → `avantime`.
