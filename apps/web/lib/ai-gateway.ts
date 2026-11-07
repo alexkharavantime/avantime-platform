@@ -57,6 +57,8 @@ export type RagContextSource = {
 
   chunkId: string;
   title: string;
+  // Numbered section headings that apply to the chunk, when the document has them.
+  section?: string;
   pageStart: number | null;
   pageEnd: number | null;
   text: string;
@@ -667,7 +669,7 @@ export function assembleProviderContext(request: RagGenerationRequest) {
   const sources = request.sources
     .map(
       (source) =>
-        `<source id="${escapeXmlAttribute(source.sourceId)}" type="${source.sourceType}" document="${escapeXmlAttribute(source.documentId ?? '')}" article="${escapeXmlAttribute(source.articleId ?? '')}" title="${escapeXmlAttribute(source.title)}" chunk="${escapeXmlAttribute(source.chunkId)}" page_start="${source.pageStart ?? ''}" page_end="${source.pageEnd ?? ''}">\n${escapeXmlText(source.text)}\n</source>`,
+        `<source id="${escapeXmlAttribute(source.sourceId)}" type="${source.sourceType}" document="${escapeXmlAttribute(source.documentId ?? '')}" article="${escapeXmlAttribute(source.articleId ?? '')}" title="${escapeXmlAttribute(source.title)}" chunk="${escapeXmlAttribute(source.chunkId)}"${source.section ? ` section="${escapeXmlAttribute(source.section)}"` : ''} page_start="${source.pageStart ?? ''}" page_end="${source.pageEnd ?? ''}">\n${escapeXmlText(source.text)}\n</source>`,
     )
     .join('\n\n');
   return [
@@ -1094,8 +1096,11 @@ export class DefaultAiGateway implements AiGateway {
     embeddingUnits: number,
     status: 'SUCCEEDED' | 'FAILED' = 'SUCCEEDED',
   ) {
+    // Isolated real-AI diagnostic databases record conservative costs; a manual session on the
+    // shared ledger (sessionStartedAt) keeps the provider-reported estimate.
     const estimatedCostEur =
-      this.configuration.limits.sessionBudgetLimitEur === undefined
+      this.configuration.limits.sessionBudgetLimitEur === undefined ||
+      this.configuration.limits.sessionStartedAt !== undefined
         ? usage.estimatedCostEur
         : Math.max(reservation.estimatedCostEur, Number((usage.estimatedCostEur * 2).toFixed(6)));
     await this.costController.reconcile({

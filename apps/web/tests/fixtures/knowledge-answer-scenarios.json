@@ -1,0 +1,20 @@
+{
+  "description": "Scenario annotations for the local knowledge base used by scripts/evaluate-knowledge-answers.ts. customer-materials: the organization processes materials supplied by a customer; external-processor: the organization sends its own materials to an external processor.",
+  "documents": [
+    {
+      "originalName": "upp_instr_940-960.pdf",
+      "chunks": [
+        { "from": 0, "to": 11, "scenario": "customer-materials" },
+        { "from": 13, "to": 999, "scenario": "external-processor" }
+      ]
+    },
+    {
+      "originalName": "5s2c_BookFull.pdf",
+      "chunks": [{ "from": 153, "to": 154, "scenario": "customer-materials" }]
+    }
+  ],
+  "questions": [
+    { "pattern": "принят\\S* (?:для|в) переработк", "scenario": "customer-materials" },
+    { "pattern": "стороннему переработчику|у стороннего переработчика", "scenario": "external-processor" }
+  ]
+}

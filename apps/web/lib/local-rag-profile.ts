@@ -38,6 +38,10 @@ export function configureLocalRagProfile(
     });
     // Default reasoning leaves too few output tokens for answer text within RAG_MAX_OUTPUT_TOKENS.
     environment.RAG_REASONING_EFFORT ||= 'low';
+    // A manual session budget counts spend from the launch unless an earlier start is given.
+    if (environment.AI_SESSION_BUDGET_EUR?.trim()) {
+      environment.AI_SESSION_STARTED_AT ||= new Date().toISOString();
+    }
     if (target !== 'web') environment.DOCUMENT_WORKER_TENANT_ID ||= 'avantime';
     return;
   }

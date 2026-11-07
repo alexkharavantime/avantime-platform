@@ -221,6 +221,9 @@ export function createDocumentServices(
               undefined,
               ragConfiguration.limits.sessionProviderOperationLimit,
               ragConfiguration.limits.sessionBudgetLimitEur,
+              ragConfiguration.limits.sessionStartedAt
+                ? new Date(ragConfiguration.limits.sessionStartedAt)
+                : undefined,
             ),
         }
       : {}),

@@ -52,6 +52,8 @@ export type RagConfiguration = {
     providerMaxAttempts: number;
     sessionProviderOperationLimit?: number;
     sessionBudgetLimitEur?: number;
+    // Start of a manual diagnostic session; session spend is counted from this moment.
+    sessionStartedAt?: string;
     queryMaximumCharacters: number;
     rateLimitPerMinute: number;
     rateLimitPerDay: number;
@@ -89,6 +91,23 @@ function parsePositiveInteger(
     throw new Error(`${name} must be a positive integer.`);
   }
   return parsed;
+}
+
+// AI_SESSION_BUDGET_EUR caps one manual diagnostic session on a shared database: spend and open
+// reservations since AI_SESSION_STARTED_AT plus the next operation must fit the cap.
+function manualDiagnosticSession(environment: Record<string, string | undefined>, production: boolean) {
+  const budget = environment.AI_SESSION_BUDGET_EUR?.trim();
+  if (!budget) return {};
+  if (production) throw new Error('AI_SESSION_BUDGET_EUR is not available in production.');
+  const sessionBudgetLimitEur = Number(budget);
+  if (!Number.isFinite(sessionBudgetLimitEur) || sessionBudgetLimitEur <= 0) {
+    throw new Error('AI_SESSION_BUDGET_EUR must be a positive number.');
+  }
+  const startedAt = environment.AI_SESSION_STARTED_AT?.trim();
+  if (!startedAt || Number.isNaN(Date.parse(startedAt))) {
+    throw new Error('AI_SESSION_STARTED_AT must be an ISO timestamp when AI_SESSION_BUDGET_EUR is set.');
+  }
+  return { sessionBudgetLimitEur, sessionStartedAt: new Date(startedAt).toISOString() };
 }
 
 function parseNonNegativeNumber(
@@ -328,7 +347,7 @@ export function loadRagConfiguration(
         : {}),
       ...(environment.BROWSER_REAL_AI_DIAGNOSTIC_MODE === '1' && !disableBrowserSessionCaps
         ? { sessionBudgetLimitEur: 0.05 }
-        : {}),
+        : manualDiagnosticSession(environment, production)),
       queryMaximumCharacters: parsePositiveInteger(environment, 'RAG_QUERY_MAX_CHARACTERS', 2_000),
       rateLimitPerMinute: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_MINUTE', 30),
       rateLimitPerDay: parsePositiveInteger(environment, 'AI_RATE_LIMIT_PER_DAY', 5_000),

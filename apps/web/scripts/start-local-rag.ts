@@ -96,6 +96,12 @@ async function inspectRealProfile() {
           source: policy ? 'AiBudgetPolicy' : 'environment',
           dailyLimitEur,
           monthlyLimitEur,
+          ...(ragConfiguration.limits.sessionStartedAt
+            ? {
+                sessionLimitEur: ragConfiguration.limits.sessionBudgetLimitEur,
+                sessionStartedAt: ragConfiguration.limits.sessionStartedAt,
+              }
+            : {}),
         },
         vectorReadiness,
       }),

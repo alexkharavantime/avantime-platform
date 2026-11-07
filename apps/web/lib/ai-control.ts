@@ -305,6 +305,8 @@ export class PostgreSQLAiCostController implements AiCostController {
     private readonly reservationTtlMs = 300_000,
     private readonly sessionProviderOperationLimit?: number,
     private readonly sessionBudgetLimitEur?: number,
+    // Shared databases count session spend from this moment; isolated ones count everything.
+    private readonly sessionStartedAt?: Date,
   ) {}
 
   async reserve(request: AiBudgetReservationRequest) {
@@ -316,7 +318,7 @@ export class PostgreSQLAiCostController implements AiCostController {
     return database.$transaction(async (transaction) => {
       await transaction.$executeRawUnsafe(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        this.sessionProviderOperationLimit === undefined
+        this.sessionProviderOperationLimit === undefined && this.sessionBudgetLimitEur === undefined
           ? request.tenant.companyId
           : 'real-ai-provider-operation-session',
       );
@@ -329,19 +331,24 @@ export class PostgreSQLAiCostController implements AiCostController {
         >(
           `SELECT (
              (SELECT COUNT(*) FROM "AiUsageLedger"
-              WHERE "provider" IN ('openai', 'gemini')) +
+              WHERE "provider" IN ('openai', 'gemini')
+                AND ($1::timestamptz IS NULL OR "occurredAt" >= $1::timestamptz)) +
              (SELECT COUNT(*) FROM "AiBudgetReservation"
               WHERE "provider" IN ('openai', 'gemini')
-                AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED'))
+                AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+                AND ($1::timestamptz IS NULL OR "createdAt" >= $1::timestamptz))
            )::int AS "providerOperations",
            COALESCE((
              SELECT SUM(GREATEST(COALESCE("actualCostEur", 0), "estimatedCostEur"))
              FROM "AiUsageLedger" WHERE "provider" IN ('openai', 'gemini')
+               AND ($1::timestamptz IS NULL OR "occurredAt" >= $1::timestamptz)
            ), 0)::float8 + COALESCE((
              SELECT SUM("estimatedCostEur") FROM "AiBudgetReservation"
              WHERE "provider" IN ('openai', 'gemini')
                AND "status" IN ('RESERVED', 'FAILED', 'CANCELLED')
+               AND ($1::timestamptz IS NULL OR "createdAt" >= $1::timestamptz)
            ), 0)::float8 AS "providerSpendEur"`,
+          this.sessionStartedAt?.toISOString() ?? null,
         );
         if (!session) throw new Error('AI session budget totals are unavailable.');
         if (
