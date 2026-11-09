@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   assertSafeDocumentIntegrationEnvironment,
   loadDocumentIntegrationEnvironment,
+  reportIntegrationFailure,
   runIntegrationCommand,
 } from './document-integration-environment';
 import { reconcilePasswordResetTokens as reconcileExistingPasswordResetTokens } from './password-reset-reconciliation';
@@ -880,7 +881,6 @@ async function main() {
   );
 }
 
-void main().catch(() => {
-  console.error('Document migration rehearsal failed.');
-  process.exitCode = 1;
-});
+void main().catch((error: unknown) =>
+  reportIntegrationFailure('Document migration rehearsal', error),
+);

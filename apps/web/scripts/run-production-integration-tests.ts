@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   loadDocumentIntegrationEnvironment,
+  reportIntegrationFailure,
   runIntegrationCommand,
 } from './document-integration-environment';
 
@@ -28,7 +29,6 @@ async function main() {
   );
 }
 
-void main().catch(() => {
-  console.error('Production readiness integration tests failed.');
-  process.exitCode = 1;
-});
+void main().catch((error: unknown) =>
+  reportIntegrationFailure('Production readiness integration tests', error),
+);

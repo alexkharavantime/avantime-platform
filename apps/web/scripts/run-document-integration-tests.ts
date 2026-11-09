@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import {
   loadDocumentIntegrationEnvironment,
+  reportIntegrationFailure,
   runIntegrationCommand,
 } from './document-integration-environment';
 import { reconcilePasswordResetTokens } from './password-reset-reconciliation';
@@ -190,7 +191,6 @@ async function main() {
   );
 }
 
-void main().catch(() => {
-  console.error('Document integration tests failed.');
-  process.exitCode = 1;
-});
+void main().catch((error: unknown) =>
+  reportIntegrationFailure('Document integration tests', error),
+);

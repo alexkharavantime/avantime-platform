@@ -22,6 +22,7 @@ import { loadDocumentConfiguration } from '../lib/document-configuration';
 import { enqueueDocumentEmbedding } from '../lib/document-embedding';
 import { createDocumentServices } from '../lib/document-services';
 import { readAiUsageSummary } from '../lib/ai-usage-summary';
+import { resolveIntegrationCommand } from './document-integration-environment';
 import { buildRagSystemInstructions } from '../lib/rag-answer';
 import type { DocumentTenantContext } from '../lib/document-model';
 import { loadRagConfiguration } from '../lib/rag-configuration';
@@ -290,9 +291,8 @@ async function main() {
       await extensionDatabase.$disconnect();
     }
 
-    const prismaCli = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    const push = spawnSync(
-      prismaCli,
+    const prismaPush = resolveIntegrationCommand(
+      'npx',
       [
         'prisma',
         'db',
@@ -301,13 +301,13 @@ async function main() {
         '--schema',
         path.join(repositoryRoot, 'packages', 'database', 'prisma', 'schema.prisma'),
       ],
-      {
-        cwd: repositoryRoot,
-        env: { ...process.env, DATABASE_URL: testUrl.toString() },
-        shell: process.platform === 'win32',
-        stdio: 'inherit',
-      },
+      repositoryRoot,
     );
+    const push = spawnSync(prismaPush.command, prismaPush.arguments_, {
+      cwd: repositoryRoot,
+      env: { ...process.env, DATABASE_URL: testUrl.toString() },
+      stdio: 'inherit',
+    });
     if (push.error) throw push.error;
     if (push.status !== 0) throw new Error('Temporary AI session database migration failed.');
 
