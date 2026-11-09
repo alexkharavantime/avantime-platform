@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   loadDocumentIntegrationEnvironment,
+  reportIntegrationFailure,
   runIntegrationCommand,
 } from './document-integration-environment';
 
@@ -26,7 +27,4 @@ async function main() {
   });
 }
 
-void main().catch(() => {
-  console.error('RAG integration tests failed.');
-  process.exitCode = 1;
-});
+void main().catch((error: unknown) => reportIntegrationFailure('RAG integration tests', error));

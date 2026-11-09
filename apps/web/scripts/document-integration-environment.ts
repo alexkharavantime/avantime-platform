@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { workerFailureMessage } from '../lib/worker-failure-message';
 
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 
@@ -130,6 +134,53 @@ export async function loadDocumentIntegrationEnvironment() {
   };
 }
 
+/**
+ * Turns `npx <package> ...` into `node <package bin> ...` resolved from the repository's
+ * node_modules. On Windows `npx` is `npx.cmd`, which `spawn` cannot start without a shell
+ * (ENOENT, and EINVAL for `.cmd` since Node 20.12), and a shell would re-parse paths with spaces.
+ * Running the package's own entry point through the current Node works the same everywhere.
+ */
+export function resolveIntegrationCommand(
+  command: string,
+  arguments_: string[],
+  cwd: string,
+): { command: string; arguments_: string[] } {
+  if (command === 'node') return { command: process.execPath, arguments_ };
+  if (command !== 'npx') return { command, arguments_ };
+  const [packageName, ...rest] = arguments_;
+  if (!packageName || packageName.startsWith('-')) {
+    throw new Error('Integration command "npx" needs a package name as its first argument.');
+  }
+  const require = createRequire(path.join(cwd, 'package.json'));
+  let manifestPath: string;
+  try {
+    manifestPath = require.resolve(`${packageName}/package.json`);
+  } catch {
+    throw new Error(
+      `Integration command "npx ${packageName}" failed: package "${packageName}" is not installed. Run npm ci.`,
+    );
+  }
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    bin?: string | Record<string, string>;
+  };
+  const bin =
+    typeof manifest.bin === 'string'
+      ? manifest.bin
+      : (manifest.bin?.[packageName.replace(/^@[^/]+\//u, '')] ??
+        Object.values(manifest.bin ?? {})[0]);
+  if (!bin) {
+    throw new Error(`Integration command "npx ${packageName}" failed: the package has no bin.`);
+  }
+  return {
+    command: process.execPath,
+    arguments_: [path.resolve(path.dirname(manifestPath), bin), ...rest],
+  };
+}
+
+function describeCommand(command: string, arguments_: string[]) {
+  return [command, ...arguments_.slice(0, 3)].join(' ');
+}
+
 export async function runIntegrationCommand(
   command: string,
   arguments_: string[],
@@ -138,13 +189,21 @@ export async function runIntegrationCommand(
     environment: NodeJS.ProcessEnv;
   },
 ) {
+  const description = describeCommand(command, arguments_);
+  const resolved = resolveIntegrationCommand(command, arguments_, options.cwd);
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, arguments_, {
+    const child = spawn(resolved.command, resolved.arguments_, {
       cwd: options.cwd,
       env: options.environment,
       stdio: 'inherit',
     });
-    child.once('error', reject);
+    child.once('error', (error: NodeJS.ErrnoException) => {
+      reject(
+        new Error(
+          `Integration command "${description}" could not start: ${error.code ?? error.message}.`,
+        ),
+      );
+    });
     child.once('exit', (code, signal) => {
       if (code === 0) {
         resolve();
@@ -153,10 +212,16 @@ export async function runIntegrationCommand(
       reject(
         new Error(
           signal
-            ? `Integration command stopped by ${signal}.`
-            : `Integration command exited with code ${code ?? 'unknown'}.`,
+            ? `Integration command "${description}" stopped by ${signal}.`
+            : `Integration command "${description}" exited with code ${code ?? 'unknown'}.`,
         ),
       );
     });
   });
+}
+
+/** Prints why an integration script failed (URL passwords masked) and sets a failing exit code. */
+export function reportIntegrationFailure(label: string, error: unknown) {
+  console.error(workerFailureMessage(label, error));
+  process.exitCode = 1;
 }
